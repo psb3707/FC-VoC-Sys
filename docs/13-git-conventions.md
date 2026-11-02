@@ -110,6 +110,7 @@ Refs: REQ-IN-04, ADR-006
 ## 7. 단계(Phase)·게이트와 깃
 - 현재 단계는 `docs/gates/PHASE`. 단계별 허용 경로는 `12-delivery-plan.md` 1절, 검사는 `scripts/check_phase.py`.
 - **단계 전환은 `gate/*` 브랜치의 전용 PR**로만 한다. 이 PR은 `docs/gates/G*.md`(승인 기록)와 `PHASE` 변경만 담고 **사용자가 직접** 작성·커밋한다. 푸시 검토가 이를 강제한다(`PHASE` 변경은 `gate/*` 외 거부).
+- 승인 기록은 `docs/templates/gate-template.md` 양식으로 `docs/gates/G1-docs.md`, `G2-ui.md`, `G3-exp.md` 에 작성한다.
 - 게이트 통과 후 `main` 머지 커밋에 **주석 태그**를 단다.
 | 게이트 | 태그 | 시점 |
 |---|---|---|
