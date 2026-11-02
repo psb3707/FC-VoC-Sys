@@ -1,13 +1,41 @@
-/* S1 SFA 메인 목업 동작 (docs/06-ui-spec.md 3절, 11절).
+/* S1 SFA 메인 목업 동작 (docs/06-ui-spec.md 3절, 11절, ADR-012).
    상태는 주소 # 뒤에 둔다: role=FC|MANAGER|SALES|IT, user=U-001, popup=alarm, notice=next, demo=1
-   클릭하면 주소를 바꾸고, 주소가 바뀌면 화면을 다시 그린다(한 경로). */
+   클릭하면 주소를 바꾸고, 주소가 바뀌면 화면을 다시 그린다(한 경로).
+   ?compare=1 이면 SFA 화면 밖 시안 띠를 숨긴다(재현도 비교 캡처용). */
 (function () {
   'use strict';
   var ROLES = ['FC', 'MANAGER', 'SALES', 'IT'];
   var DEFAULT_NOTICE = '이 화면은 다음 단계에서 만들어요.';
   var users = [];
+  var home = {};
+  var board = 'general';
   var noticeText = null;   // 마지막으로 누른 요소의 안내 문구 (주소에는 남기지 않음)
   var $ = function (id) { return document.getElementById(id); };
+
+  /* 작은 요소 생성 도우미: el('div', 'cls', [자식 또는 글자]) */
+  function el(tag, cls, kids) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    (kids || []).forEach(function (k) {
+      if (k == null) return;
+      e.appendChild(typeof k === 'string' || typeof k === 'number' ? document.createTextNode(String(k)) : k);
+    });
+    return e;
+  }
+  function icon(id) {
+    var ns = document.querySelector('svg').namespaceURI;   // SVG 이름공간 (주소 문자열을 코드에 두지 않음)
+    var s = document.createElementNS(ns, 'svg');
+    var u = document.createElementNS(ns, 'use');
+    u.setAttribute('href', '#' + id);
+    s.appendChild(u);
+    return s;
+  }
+  function fill(id, nodes) {
+    var box = $(id);
+    box.innerHTML = '';
+    nodes.forEach(function (n) { box.appendChild(n); });
+  }
+  function mmdd(iso) { return iso.slice(5, 7) + '.' + iso.slice(8, 10); }
 
   function readHash() {
     var st = {};
@@ -43,6 +71,48 @@
     return parseInt(iso.slice(5, 7), 10) + '월 ' + parseInt(iso.slice(8, 10), 10) + '일 ' + iso.slice(11, 16);
   }
 
+  /* ---- 가상 데이터로 실제 SFA 자리 채우기 (한 번만) ---- */
+  function renderHome() {
+    var h = home;
+    fill('perf', (h.performance || []).map(function (p) {
+      return el('div', 'perf-cell', [el('span', 'perf-label', [p.label]),
+        el('span', 'perf-value', [el('b', null, [p.value]), p.unit])]);
+    }));
+    fill('activity', (h.activity || []).map(function (a) {
+      return el('div', 'act-card', [el('span', null, [a.label]), el('b', null, [a.count])]);
+    }));
+    fill('customers', (h.customerGroups || []).map(function (g) {
+      var rows = g.rows.map(function (r) { return el('li', null, [el('span', null, [r.label]), el('b', null, [r.count])]); });
+      return el('div', 'cust-card', [el('div', 'cust-head', [el('span', null, [g.title]), el('i', 'cust-more')]),
+        el('ul', null, rows)]);
+    }));
+    fill('days', (h.days || []).map(function (d) {
+      var head = el('div', 'day-head', [el('span', 'day-date', [mmdd(d.date)]), el('span', 'day-wd', [d.weekday]),
+        d.today ? el('i', 'day-dot') : null]);
+      var go = el('span', 'day-go');
+      go.appendChild(icon('i-right'));
+      var ico = el('span', 'day-ico');
+      ico.appendChild(icon('i-sun'));
+      return el('div', 'day-card' + (d.today ? ' is-today' : ''), [head, go, ico,
+        el('span', 'day-msg', [d.eventCount ? '일정 ' + d.eventCount + '건' : '등록된 일정 없음'])]);
+    }));
+    fill('pills', (h.summaries || []).map(function (s) {
+      return el('div', 'pill', [el('span', null, [s.label]), el('b', null, [s.count])]);
+    }));
+    fill('design-rows', (h.designHistory || []).map(function (r) {
+      return el('tr', null, [el('td', 'c-no', [r.designNo]), el('td', null, [r.customerName]),
+        el('td', 'c-prod', [r.productName]), el('td', 'c-date', [r.designedAt])]);
+    }));
+    renderBoard();
+  }
+
+  function renderBoard() {
+    var list = (home.boards || {})[board] || [];
+    fill('board', list.map(function (n) {
+      return el('li', null, [el('span', 'b-title', [n.title]), el('span', 'b-date', [n.postedAt])]);
+    }));
+  }
+
   function renderRole(st) {
     Array.prototype.forEach.call(document.querySelectorAll('#role-seg button'), function (b) {
       b.setAttribute('aria-pressed', String(b.getAttribute('data-role') === st.role));
@@ -59,6 +129,8 @@
     var cur = list.filter(function (u) { return u.id === st.user; })[0] || list[0];
     if (cur) sel.value = cur.id;
     $('ledger-link').hidden = !(st.role === 'SALES' || st.role === 'IT');
+    $('profile-name').textContent = cur ? cur.name : '';
+    $('profile-sub').textContent = home.profileSub || '';
     return cur ? cur.id : null;
   }
 
@@ -71,18 +143,10 @@
     var ul = $('alarm-list');
     ul.innerHTML = '';
     items.forEach(function (n) {
-      var li = document.createElement('li');
-      var b = document.createElement('button');
+      var b = el('button', 'alarm-item', [n.bodySnapshot, el('span', 'when', [fmtWhen(n.at)])]);
       b.type = 'button';
-      b.className = 'alarm-item';
       b.setAttribute('data-notice', '내 신고 경과 화면은 다음 단계에서 만들어요.');
-      b.appendChild(document.createTextNode(n.bodySnapshot));
-      var w = document.createElement('span');
-      w.className = 'when';
-      w.textContent = fmtWhen(n.at);
-      b.appendChild(w);
-      li.appendChild(b);
-      ul.appendChild(li);
+      ul.appendChild(el('li', null, [b]));
     });
     $('alarm-empty').hidden = items.length > 0;
     $('alarm-pop').hidden = st.popup !== 'alarm';
@@ -117,13 +181,19 @@
       noticeText = t.getAttribute('data-notice');
       update({ notice: 'next' });
     });
-    // 기존 탭은 모양만 바뀐다 (새 탭은 안내 상자)
-    Array.prototype.forEach.call(document.querySelectorAll('.tabs'), function (ul) {
-      ul.addEventListener('click', function (e) {
-        var t = e.target.closest('.tab');
-        if (!t || t.hasAttribute('data-notice')) return;
-        Array.prototype.forEach.call(ul.querySelectorAll('.tab'), function (x) { x.classList.toggle('is-on', x === t); });
-      });
+    // 기존 공지 탭: 모양과 목록만 바뀐다 (새 탭은 안내 상자)
+    $('notice-tabs').addEventListener('click', function (e) {
+      var t = e.target.closest('.tab');
+      if (!t || t.hasAttribute('data-notice')) return;
+      Array.prototype.forEach.call(this.querySelectorAll('.tab'), function (x) { x.classList.toggle('is-on', x === t); });
+      board = t.getAttribute('data-board');
+      renderBoard();
+    });
+    // 업무 탭: 모양만 바뀐다 (목록은 가입설계 이력 고정)
+    $('work-tabs').addEventListener('click', function (e) {
+      var t = e.target.closest('.stab');
+      if (!t) return;
+      Array.prototype.forEach.call(this.querySelectorAll('.stab'), function (x) { x.classList.toggle('is-on', x === t); });
     });
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') update({ popup: '', notice: '' });
@@ -131,8 +201,12 @@
     window.addEventListener('hashchange', render);
   }
 
-  window.SFA_READY = window.ApiClient.getUsers().then(function (list) {
-    users = list;
+  if (/[?&]compare=1(&|$)/.test(location.search)) document.documentElement.classList.add('compare');
+
+  window.SFA_READY = Promise.all([window.ApiClient.getUsers(), window.ApiClient.getSfaHome()]).then(function (r) {
+    users = r[0];
+    home = r[1];
+    renderHome();
     bind();
     return render();
   });

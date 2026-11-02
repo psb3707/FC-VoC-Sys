@@ -17,7 +17,8 @@
 /* 화면 시안 띠 (SFA 화면 밖) */
 .proto-band { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
   padding: 8px 16px; background: var(--band-bg); border-bottom: 2px solid var(--band-line);
-  font-size: var(--new-text); color: var(--new-ink); }
+  font-size: var(--new-text); color: var(--new-ink); flex: none; }
+.compare .proto-band { display: none; }   /* ?compare=1: 재현도 비교 캡처에서 SFA 화면만 */
 .proto-band .band-title { font-weight: 700; margin-right: auto; }
 .role-box { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .role-box .lbl { font-weight: 700; }

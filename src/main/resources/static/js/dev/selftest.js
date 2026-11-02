@@ -1,6 +1,7 @@
 /* 화면 자체 검사 (docs/06-ui-spec.md 11절). index.html?selftest=1 일 때만 불러온다.
    결과는 <pre id="selftest-result"> 에 {ok, checks:[{name, pass, detail}]} JSON으로 남긴다.
-   요소 구분: data-a11y="new"(새 요소) | "sfa"(기존 모양·진입점) | "placeholder"(회색 블록 글자, 대비 제외) | "badge" */
+   요소 구분: data-a11y="new"(새 요소) | "sfa"(기존 모양·진입점) | "replica"(재현한 기존 화면·가상 데이터, 대비 제외: ADR-012) | "badge"
+   data-clip-ok: 원래 화면처럼 일부러 잘라 보이는 영역(날짜 카드 슬라이더). 글자 잘림 검사 제외. */
 (function () {
   'use strict';
   var EPS = 0.5;
@@ -93,12 +94,18 @@
     });
     add('sfa-quick-token', qf, quick.length + '개');
 
-    // 5. SFA 탭 = 06번 0-1 (높이 44, 폭 126 이상, 글자 14)
+    // 5. SFA 공지 탭 = 06번 0-1 (높이 44, 글자 14, 위 모서리 12, 폭은 글자 폭 60px 이상, 한 줄에 5개 모두 보임)
     var tabs = all('[data-sfa="tab"]');
-    add('sfa-tab-token', tabs.filter(function (el) {
+    var tf = tabs.filter(function (el) {
       var r = el.getBoundingClientRect();
-      return !near(r.height, 44) || r.width < 126 - EPS || !near(px(cs(el).fontSize), 14);
-    }).map(function (el) { var r = el.getBoundingClientRect(); return label(el) + ' ' + r.width.toFixed(0) + 'x' + r.height.toFixed(0); }), tabs.length + '개');
+      return !near(r.height, 44) || r.width < 60 - EPS || !near(px(cs(el).fontSize), 14) || !near(px(cs(el).borderTopLeftRadius), 12);
+    }).map(function (el) { var r = el.getBoundingClientRect(); return label(el) + ' ' + r.width.toFixed(0) + 'x' + r.height.toFixed(0); });
+    if (tabs.length < 5) tf.push('공지 탭 수 ' + tabs.length + ' (5 필요)');
+    tabs.forEach(function (el) {
+      var box = el.closest('.tabs').getBoundingClientRect(), r = el.getBoundingClientRect();
+      if (r.right > box.right + EPS || Math.abs(r.top - tabs[0].getBoundingClientRect().top) > EPS) tf.push(label(el) + ' 탭 줄 밖');
+    });
+    add('sfa-tab-token', tf, tabs.length + '개');
 
     // 6. 새 진입점이 기존 것과 같은 모양인가
     var sf = [];
@@ -132,10 +139,10 @@
     });
     add('badge-popup-token', bf);
 
-    // 8. 대비 (placeholder 제외). 큰 글자(24px 이상, 굵은 18.66px 이상)는 3:1
+    // 8. 대비 (replica 제외). 큰 글자(24px 이상, 굵은 18.66px 이상)는 3:1
     var cf = [];
     texts.forEach(function (el) {
-      if (cat(el) === 'placeholder') return;
+      if (cat(el) === 'replica') return;
       var s = cs(el), size = px(s.fontSize), bold = parseInt(s.fontWeight, 10) >= 700;
       var need = (size >= 24 || (bold && size >= 18.66)) ? 3 : 4.5;
       var bg = bgOf(el), fg = parseColor(s.color);
@@ -151,7 +158,7 @@
 
     // 10. 글자 잘림 없음 (overflow hidden/clip 인데 내용이 더 큼)
     add('no-clipped-text', all('body *').filter(function (el) {
-      if (!el.textContent.trim()) return false;
+      if (!el.textContent.trim() || el.closest('[data-clip-ok]')) return false;
       var s = cs(el);
       var hx = /hidden|clip/.test(s.overflowX) || s.textOverflow === 'ellipsis';
       var hy = /hidden|clip/.test(s.overflowY);

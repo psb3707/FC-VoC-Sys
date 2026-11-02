@@ -15,7 +15,6 @@
   <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v8" stroke="currentColor" stroke-width="2"/><path d="M7 6.5a7 7 0 1 0 10 0" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
   <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" fill="currentColor"/><path d="M4 21a8 8 0 0 1 16 0z" fill="currentColor"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5 9-10" fill="none" stroke="currentColor" stroke-width="3"/></symbol>
-  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10" cy="10" r="6" fill="none" stroke="currentColor" stroke-width="3"/><path d="M15 15l6 6" stroke="currentColor" stroke-width="3"/></symbol>
   <symbol id="i-doc" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z" fill="currentColor"/><path d="M9 11h7M9 15h7" stroke="#0099e6" stroke-width="2"/></symbol>
   <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z" fill="currentColor"/></symbol>
   <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z" fill="currentColor"/></symbol>
@@ -23,9 +22,13 @@
   <symbol id="i-chat" viewBox="0 0 24 24"><path d="M3 5h18v11H9l-5 4V16H3z" fill="currentColor"/></symbol>
   <symbol id="i-remote" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1" fill="currentColor"/><path d="M8 20h8M12 16v4" stroke="currentColor" stroke-width="2"/></symbol>
   <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 2L1 21h22z" fill="currentColor"/><path d="M12 9v5" stroke="#0099e6" stroke-width="2.4"/><circle cx="12" cy="17.5" r="1.4" fill="#0099e6"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="currentColor"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2"/></symbol>
 </svg>
 
-<!-- ① 화면 시안 띠: SFA 화면 밖 요소 -->
+<!-- ① 화면 시안 띠: SFA 화면 밖 요소 (?compare=1 이면 숨김) -->
 <div class="proto-band" data-a11y="new" id="band">
   <span class="band-title">화면 시안 – 실제 동작 안 함</span>
   <div class="role-box">
@@ -42,16 +45,17 @@
           data-notice="결함 대장은 다음 단계에서 만들어요.">결함 대장 열기(다음 단계)</button>
 </div>
 
-<!-- ② SFA 메인 (캡처 이미지 전 단계: 회색 레이아웃 블록) -->
+<!-- ② SFA 메인: 실제 화면 구조 재현, 데이터는 전부 가상 (ADR-012) -->
 <div id="sfa">
   <header class="sfa-header">
-    <div class="logo-block" data-a11y="placeholder">[로고]</div>
-    <ul class="gnb" data-a11y="sfa">
+    <div class="logo-block" data-a11y="replica">로고 자리</div>
+    <ul class="gnb" data-a11y="replica">
       <li>고객관리</li><li>활동관리</li><li>DB관리</li><li>계약관리</li><li>재무설계</li>
       <li>가입설계</li><li>청약</li><li>영업관리</li><li>지식관리</li><li>관리자</li>
     </ul>
-    <ul class="util" data-a11y="sfa">
-      <li>제보</li><li>원격지원</li><li>수수료규정</li><li>메뉴검색</li><li>약관검색</li>
+    <ul class="util" data-a11y="replica">
+      <li><i class="util-dot"></i>제보</li><li><i class="util-dot"></i>원격지원</li><li><i class="util-dot"></i>수수료규정</li>
+      <li>메뉴검색</li><li>약관검색</li>
     </ul>
     <div class="icon-group" data-a11y="sfa">
       <button type="button" class="icon-btn" aria-label="스케줄"><svg><use href="#i-cal"/></svg></button>
@@ -68,57 +72,95 @@
     </div>
   </header>
 
+  <nav class="sfa-tabbar" data-a11y="replica" aria-label="열린 화면">
+    <span class="main-tab">메인</span>
+    <span class="tabbar-tools">
+      <button type="button" class="tb-round" aria-label="이전 탭"><svg><use href="#i-left"/></svg></button>
+      <button type="button" class="tb-round" aria-label="다음 탭"><svg><use href="#i-right"/></svg></button>
+      <button type="button" class="tb-text"><svg><use href="#i-menu"/></svg>탭 목록</button>
+      <button type="button" class="tb-text">전체 닫기</button>
+    </span>
+  </nav>
+
   <div class="sfa-body">
-    <aside class="col-left">
-      <div class="card"><div class="ph" data-a11y="placeholder" style="height:180px">사용자 정보 영역(가림)</div></div>
-      <div class="card"><div class="ph" data-a11y="placeholder" style="height:240px">실적 영역(가림)</div></div>
-      <div class="card"><div class="ph" data-a11y="placeholder" style="height:160px">목표·현황 영역(가림)</div></div>
+    <!-- 왼쪽: 사용자·실적·활동량 -->
+    <aside class="col-left" data-a11y="replica">
+      <div class="profile">
+        <div class="profile-who">
+          <div class="profile-name" id="profile-name"></div>
+          <div class="profile-sub" id="profile-sub"></div>
+        </div>
+        <button type="button" class="profile-btn"><i class="profile-btn-ico"></i>정보 수정</button>
+      </div>
+      <div class="perf-card" id="perf"></div>
+      <h2 class="act-title">나의 활동량 / 고객</h2>
+      <div class="act-grid" id="activity"></div>
+      <div class="cust-grid" id="customers"></div>
     </aside>
 
+    <!-- 가운데: 날짜 카드·요약·업무 탭·공지·배너 -->
     <main class="col-center">
-      <section class="card"><div class="ph" data-a11y="placeholder" style="height:150px">일정 영역(가림)</div></section>
-
-      <section class="card">
-        <ul class="tabs" data-a11y="sfa">
-          <li><button type="button" class="tab is-on" data-sfa="tab">가입설계 이력</button></li>
-          <li><button type="button" class="tab" data-sfa="tab">청약진행현황</button></li>
-          <li><button type="button" class="tab" data-sfa="tab">신계약보완</button></li>
-          <li><button type="button" class="tab" data-sfa="tab">해피콜보완</button></li>
-          <li><button type="button" class="tab" data-sfa="tab">계약문서열람</button></li>
-        </ul>
-        <div class="ph-rows" aria-hidden="true">
-          <div class="ph-row"></div><div class="ph-row"></div><div class="ph-row"></div><div class="ph-row"></div><div class="ph-row"></div>
-        </div>
+      <section class="days" data-a11y="replica" aria-label="일정">
+        <button type="button" class="day-arrow prev" aria-label="이전 날짜"><svg><use href="#i-left"/></svg></button>
+        <div class="days-view" data-clip-ok="1"><div class="days-track" id="days"></div></div>
+        <button type="button" class="day-arrow next" aria-label="다음 날짜"><svg><use href="#i-right"/></svg></button>
       </section>
 
-      <section class="card">
-        <ul class="tabs" data-a11y="sfa" id="notice-tabs">
-          <li><button type="button" class="tab is-on" data-sfa="tab">일반공지</button></li>
-          <li><button type="button" class="tab" data-sfa="tab">시스템공지</button></li>
-          <li><button type="button" class="tab" data-sfa="tab">CEO 메시지</button></li>
-          <li><button type="button" class="tab" data-sfa="tab">영업자료실</button></li>
-          <li><button type="button" class="tab tab-auto" data-sfa="tab" data-entry="tab"
-                      data-notice="알려진 오류와 내 신고 화면은 다음 단계에서 만들어요.">알려진 오류·내 신고</button></li>
-        </ul>
-        <div class="ph-rows" aria-hidden="true">
-          <div class="ph-row"></div><div class="ph-row"></div><div class="ph-row"></div><div class="ph-row"></div>
+      <section class="pills" id="pills" data-a11y="replica" aria-label="이번 달 요약"></section>
+
+      <section class="card work-card" data-a11y="replica">
+        <div class="work-head">
+          <ul class="seg-tabs" id="work-tabs">
+            <li><button type="button" class="stab is-on">가입설계 이력</button></li>
+            <li><button type="button" class="stab">청약진행현황</button></li>
+            <li><button type="button" class="stab">신계약보완</button></li>
+            <li><button type="button" class="stab">해피콜보완</button></li>
+            <li><button type="button" class="stab">계약문서열람</button></li>
+          </ul>
+          <button type="button" class="more">더보기<svg><use href="#i-right"/></svg></button>
         </div>
+        <table class="grid">
+          <colgroup><col style="width:15.5%"><col style="width:17.7%"><col style="width:46.5%"><col></colgroup>
+          <thead><tr><th>설계번호</th><th>고객</th><th>상품</th><th>설계일</th></tr></thead>
+          <tbody id="design-rows"></tbody>
+        </table>
       </section>
+
+      <div class="bottom-row">
+        <section class="card notice-card">
+          <ul class="tabs tabs-fit" id="notice-tabs" data-a11y="sfa">
+            <li><button type="button" class="tab is-on" data-sfa="tab" data-board="general">일반공지</button></li>
+            <li><button type="button" class="tab" data-sfa="tab" data-board="system">시스템공지</button></li>
+            <li><button type="button" class="tab" data-sfa="tab" data-board="ceo">CEO 메시지</button></li>
+            <li><button type="button" class="tab" data-sfa="tab" data-board="sales">영업자료실</button></li>
+            <li><button type="button" class="tab tab-auto" data-sfa="tab" data-entry="tab"
+                        data-notice="알려진 오류와 내 신고 화면은 다음 단계에서 만들어요.">알려진 오류·내 신고</button></li>
+          </ul>
+          <ul class="board" id="board" data-a11y="replica"></ul>
+        </section>
+        <section class="banner" data-a11y="replica" data-clip-ok="1" aria-label="안내 배너">
+          <i class="bn-dot d1"></i><i class="bn-dot d2"></i><i class="bn-dot d3"></i><i class="bn-dot d4"></i>
+          <span class="bn-small">가상 배너</span>
+          <span class="bn-big">새 상품 <b>미리보기</b> 안내</span>
+          <span class="bn-sub">가상 종신보험 A 출시 안내(가상)</span>
+        </section>
+      </div>
     </main>
 
-    <aside>
+    <!-- 오른쪽: 퀵메뉴 (전산 오류 접수는 원격요청·챗봇 사이, 1280×800 첫 화면에서도 보이는 5번째) -->
+    <aside class="col-quick">
       <ul class="quick" data-a11y="sfa">
         <li><button type="button" class="quick-btn" data-sfa="quick"><span class="quick-ico"><svg><use href="#i-check"/></svg></span><span class="quick-label">신규고객동의</span></button></li>
         <li><button type="button" class="quick-btn" data-sfa="quick"><span class="quick-ico"><svg><use href="#i-check"/></svg></span><span class="quick-label">기존고객동의</span></button></li>
         <li><button type="button" class="quick-btn" data-sfa="quick"><span class="quick-ico"><svg><use href="#i-user"/></svg></span><span class="quick-label">고객종합조회</span></button></li>
+        <li><button type="button" class="quick-btn" data-sfa="quick"><span class="quick-ico"><svg><use href="#i-remote"/></svg></span><span class="quick-label">원격요청</span></button></li>
+        <li><button type="button" class="quick-btn" data-sfa="quick" data-entry="quick"
+                    data-notice="전산 오류 접수 화면(오른쪽에서 열리는 접수 패널)은 다음 단계에서 만들어요."><span class="quick-ico"><svg><use href="#i-alert"/></svg></span><span class="quick-label">전산 오류<br>접수</span></button></li>
+        <li><button type="button" class="quick-btn" data-sfa="quick"><span class="quick-ico"><svg><use href="#i-chat"/></svg></span><span class="quick-label">챗봇</span></button></li>
         <li><button type="button" class="quick-btn" data-sfa="quick"><span class="quick-ico"><svg><use href="#i-doc"/></svg></span><span class="quick-label">가입설계</span></button></li>
         <li><button type="button" class="quick-btn" data-sfa="quick"><span class="quick-ico"><svg><use href="#i-shield"/></svg></span><span class="quick-label">상세 보장분석</span></button></li>
         <li><button type="button" class="quick-btn" data-sfa="quick"><span class="quick-ico"><svg><use href="#i-play"/></svg></span><span class="quick-label">교육방송</span></button></li>
         <li><button type="button" class="quick-btn" data-sfa="quick"><span class="quick-ico"><svg><use href="#i-book"/></svg></span><span class="quick-label">UW 매뉴얼</span></button></li>
-        <li><button type="button" class="quick-btn" data-sfa="quick" data-entry="quick"
-                    data-notice="전산 오류 접수 화면(오른쪽에서 열리는 접수 패널)은 다음 단계에서 만들어요."><span class="quick-ico"><svg><use href="#i-alert"/></svg></span><span class="quick-label">전산 오류<br>접수</span></button></li>
-        <li><button type="button" class="quick-btn" data-sfa="quick"><span class="quick-ico"><svg><use href="#i-chat"/></svg></span><span class="quick-label">챗봇</span></button></li>
-        <li><button type="button" class="quick-btn" data-sfa="quick"><span class="quick-ico"><svg><use href="#i-remote"/></svg></span><span class="quick-label">원격요청</span></button></li>
       </ul>
     </aside>
   </div>
@@ -133,6 +175,7 @@
 
 <script src="js/fixtures/users.js"></script>
 <script src="js/fixtures/notifications.js"></script>
+<script src="js/fixtures/sfa-home.js"></script>
 <script src="js/api-client.js"></script>
 <script src="js/sfa-mock.js"></script>
 <script>

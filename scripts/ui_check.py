@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ref_outline import SURNAME3, UI_WORDS  # noqa: E402  (참고 원본은 읽지 않음: main() 미호출)
 
 # 화면 문구에 흔한 3글자 낱말 중 성씨 글자로 시작하는 것 (이름 아님)
-EXTRA_UI_WORDS = {"사용자", "안내가", "부서가", "오류와"}
+EXTRA_UI_WORDS = {"사용자", "안내가", "부서가", "오류와", "설계일", "모바일"}
 
 BROWSERS = [
     Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
@@ -37,7 +37,7 @@ BROWSERS = [
     Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"),
 ]
 STATES = ["role=FC", "role=MANAGER", "role=SALES", "role=FC&popup=alarm", "role=FC&notice=next", "role=FC&demo=1"]
-SIZES = [(1280, 800), (1920, 1080)]
+SIZES = [(1280, 800), (1888, 952), (1920, 1080)]   # 1888×952: 기준 스크린샷 크기(ADR-012)
 
 EXTERNAL = re.compile(r"https?://|//cdn", re.I)
 NETWORK = re.compile(r"fetch\s*\(|XMLHttpRequest")

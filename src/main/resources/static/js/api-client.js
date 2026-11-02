@@ -12,6 +12,10 @@
     getUsers: function () {
       return Promise.resolve(copy(F.users || []));
     },
+    /* S1 메인 화면 가상 데이터 (화면 시안 전용, ADR-012. 대응하는 백엔드 API 없음) */
+    getSfaHome: function () {
+      return Promise.resolve(copy(F.sfaHome || {}));
+    },
     /* GET /api/notifications?userId=  -> NotificationLog[] (알림 미리보기 내역, 최신 순) */
     getNotifications: function (userId) {
       var list = (F.notifications || []).filter(function (n) { return n.recipientId === userId; });
