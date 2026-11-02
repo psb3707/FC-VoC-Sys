@@ -73,6 +73,6 @@ FC-Voc-Sys/
    ├─ main/java/.../pilot/ {intake, privacy, llm/{provider,prompt,log}, rules, defect, experiment, seed, common}
    ├─ main/resources/static/
    │   index.html(S1+S2+S3), ledger.html(S4), experiment.html(S5), facilitator.html(S6)
-   │   js/api-client.js, js/fixtures/, js/, css/, vendor/alpine.min.js
+   │   js/api-client.js, js/fixtures/*.js, js/, js/dev/selftest.js, css/
    └─ test/java/ (privacy, rules, llm 계약, experiment 배정)
 ```
