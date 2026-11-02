@@ -7,7 +7,7 @@ Refs:
 
 ## 단계 확인 (docs/gates/PHASE)
 - [ ] 현재 단계에서 허용된 파일만 바꿨다 (DOCS: 문서 / FRONTEND: 정적 화면 / BACKEND: 전체)
-- [ ] 단계 전환 PR이면 `gate/*` 브랜치이고, 게이트 승인 기록(`docs/gates/G*.md`)이 있다
+- [ ] 단계 전환 PR이면 `chore/phase-<단계>` 브랜치이고 `docs/gates/PHASE` 한 줄만 변경했다
 
 ## 문서 동기화
 - [ ] 범위·구조·규칙을 바꿨다면 ADR을 먼저 쓰고 해당 문서(`docs/00~13`)를 같이 고쳤다

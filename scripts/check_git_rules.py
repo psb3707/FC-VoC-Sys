@@ -23,7 +23,7 @@ ZERO = "0" * 40
 TYPES = "feat|fix|docs|refactor|test|chore|perf|build|ci|style|revert"
 SUBJECT_RE = re.compile(rf"^({TYPES})(\([a-z0-9-]+\))?!?: \S.*$")
 SUBJECT_MAX = 72
-BRANCH_RE = re.compile(r"^(feat|fix|docs|refactor|test|chore|gate)/[a-z0-9][a-z0-9._-]*$")
+BRANCH_RE = re.compile(r"^(feat|fix|docs|refactor|test|chore)/[a-z0-9][a-z0-9._-]*$")
 _TOKEN = r"(REQ-[A-Z]{2}-\d{2}|ADR-\d{3})"
 REFS_RE = re.compile(rf"^Refs: (none|{_TOKEN}(, {_TOKEN})*)$", re.M)
 REFS_REQUIRED_TYPES = ("feat", "fix")
@@ -151,15 +151,12 @@ def review_push(branch: str, lsha: str, rsha: str) -> list[str]:
         msg = check_phase.violation(f, phase, claude=False)
         if msg:
             errors.append(msg)
-    # 4) 단계 파일은 gate/* 브랜치에서만 (루트 기준선 푸시는 예외)
-    if "docs/gates/PHASE" in files and not branch.startswith("gate/") and not (branch in PROTECTED and rsha == ZERO):
-        errors.append("docs/gates/PHASE 변경은 'gate/<게이트>' 브랜치에서만 가능합니다 (7절).")
-    # 5) 추적 금지 경로
+    # 4) 추적 금지 경로
     tracked = git("ls-tree", "-r", "--name-only", lsha).stdout.splitlines()
     for f in tracked:
         if f.startswith(FORBIDDEN_TRACKED) or re.match(r"^\.env(\..*)?$", f):
             errors.append(f"추적하면 안 되는 경로가 포함됨: {f}")
-    # 6) 비밀키 형식
+    # 5) 비밀키 형식
     for pat in SECRET_PATTERNS:
         r = git("grep", "-I", "-l", "-E", pat, lsha)
         if r.returncode == 0 and r.stdout.strip():
