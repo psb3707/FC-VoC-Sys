@@ -63,7 +63,7 @@ FC-Voc-Sys/
 ├─ .githooks/, .claude/settings.json, scripts/check_phase.py
 ├─ assets/sfa-main-masked.png
 ├─ references/                           (Git 제외, 참고 전용)
-├─ docs/  00~12, adr/, gates/, proposal.md
+├─ docs/  00~13, adr/, gates/PHASE(현재 단계), proposal.md
 ├─ config/  grading-rules.yml, department-map.yml, required-slots.yml, privacy-patterns.yml
 ├─ prompts/  {triage,refine,notice}.{system,user}.md, schemas/*.schema.json
 ├─ mock/  triage|refine|notice/*.json

@@ -1,5 +1,5 @@
 # ADR-003. 기술 스택
-- 상태: **제안** (버전은 G2 전 스파이크 후 04번 문서에 고정, G2에서 승인)
+- 상태: **제안** (버전은 M2 전 스파이크 후 04번 문서에 고정, 스파이크 완료 후 사용자 확인으로 확정)
 - 배경: 요청의 기본 가정(Java 17 + Spring Boot, H2/SQLite)은 임시이며 최적안 제안을 요청받았다.
 - 결정(안): Java 21 LTS + Spring Boot, Maven, H2 파일 DB + JPA, 정적 HTML + Alpine.js, 자체 `LlmGateway` + `RestClient`, networknt 스키마 검증, YAML 설정.
 - 근거와 제외한 대안: `04-tech-stack.md`.
