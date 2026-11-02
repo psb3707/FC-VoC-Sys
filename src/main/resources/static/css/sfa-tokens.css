@@ -1,0 +1,126 @@
+/* 기존 SFA 토큰과 모양 (docs/06-ui-spec.md 0-1절).
+   진입점은 원래 있던 것처럼 보여야 하므로 이 값만 쓴다. 새 요소 값은 app.css. */
+:root {
+  --sfa-font: "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", sans-serif;
+  --sfa-accent: #0099e6;          /* 장식·아이콘 전용(글자 배경 금지) */
+  --sfa-text: #292d33;
+  --sfa-text-2: #292c33;
+  --sfa-sub: #525866;
+  --sfa-dim: #636e81;
+  --sfa-dim-2: #6e7f9d;
+  --sfa-page-bg: #f0f3f6;
+
+  --sfa-header-h: 56px;
+  --sfa-header-bg: #fff;
+  --sfa-menu-size: 18px;
+  --sfa-menu-weight: 500;
+  --sfa-util-size: 14px;
+  --sfa-util-weight: 500;
+  --sfa-icon-btn: 40px;
+
+  --sfa-popup-w: 320px;
+  --sfa-popup-radius: 12px;
+  --sfa-popup-border: #e6ebf0;
+  --sfa-popup-shadow: 0 5px 15px rgba(163, 177, 204, .2);
+
+  --sfa-quick-col: 9.2%;
+  --sfa-quick-h: 96px;
+  --sfa-quick-radius: 16px;
+  --sfa-quick-shadow: 0 3px 12px rgba(64, 96, 128, .1);
+  --sfa-quick-shadow-hover: 0 3px 12px rgba(64, 96, 128, .3);
+  --sfa-quick-font: 14px;
+  --sfa-quick-line: 18px;
+  --sfa-quick-icon: 32px;
+  --sfa-quick-gap: 10px;
+
+  --sfa-tab-w: 126px;
+  --sfa-tab-h: 44px;
+  --sfa-tab-bg: #f7f9fa;
+  --sfa-tab-border: #d3dce6;
+  --sfa-tab-radius: 12px;
+  --sfa-tab-font: 14px;
+  --sfa-tab-color: #636e81;
+  --sfa-tab-active-bg: #fff;
+  --sfa-tab-active-color: #292c33;
+
+  --sfa-card-bg: #fff;
+  --sfa-card-radius: 24px;
+  --sfa-card-pad: 28px 24px;
+
+  /* 회색 레이아웃 블록 (캡처 이미지 전 단계, 06번 0절 6항) */
+  --ph-bg: #e4e9ef;
+  --ph-bg-2: #edf1f5;
+  --ph-text: #6b7686;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { font-family: var(--sfa-font); color: var(--sfa-text); background: var(--sfa-page-bg); }
+button { font-family: inherit; }
+
+/* 상단 영역 */
+.sfa-header {
+  display: flex; align-items: center; gap: 16px;
+  min-height: var(--sfa-header-h); padding: 0 24px;
+  background: var(--sfa-header-bg); box-shadow: 0 1px 0 #e6ebf0;
+  position: relative; z-index: 5;
+}
+.logo-block { width: 112px; height: 32px; flex: none; border-radius: 6px; background: var(--ph-bg);
+  display: flex; align-items: center; justify-content: center; font-size: 13px; color: var(--ph-text); }
+.gnb { display: flex; flex: 1 1 auto; min-width: 0; gap: clamp(8px, 1.2%, 22px); margin: 0; padding: 0 0 0 12px; list-style: none; }
+.gnb li { font-size: var(--sfa-menu-size); font-weight: var(--sfa-menu-weight); color: var(--sfa-text);
+  white-space: nowrap; line-height: var(--sfa-header-h); }
+.util { display: flex; gap: 14px; margin: 0; padding: 0; list-style: none; flex: none; }
+.util li { font-size: var(--sfa-util-size); font-weight: var(--sfa-util-weight); color: var(--sfa-sub); white-space: nowrap; }
+.icon-group { display: flex; gap: 4px; flex: none; position: relative; }
+.icon-btn { position: relative; width: var(--sfa-icon-btn); height: var(--sfa-icon-btn); border-radius: 50%;
+  border: 0; background: none; padding: 0; display: flex; align-items: center; justify-content: center;
+  color: var(--sfa-sub); cursor: pointer; }
+.icon-btn:hover { background: #f2f5f8; }
+.icon-btn svg { width: 24px; height: 24px; }
+/* 좁은 화면(1600 미만): 유틸리티를 헤더 위 얇은 줄로 옮겨 가로 넘침을 막는다 */
+@media (max-width: 1599px) {
+  .sfa-header { flex-wrap: wrap; row-gap: 0; }
+  .util { order: -1; width: 100%; justify-content: flex-end; padding-top: 6px; }
+}
+
+/* 알림 팝업 (기존 모양) */
+.alarm-pop { position: absolute; top: 48px; right: 0; width: var(--sfa-popup-w);
+  background: #fff; border: 1px solid var(--sfa-popup-border); border-radius: var(--sfa-popup-radius);
+  box-shadow: var(--sfa-popup-shadow); overflow: hidden; z-index: 20; }
+
+/* 본문 3열 */
+.sfa-body { display: grid; grid-template-columns: 18% minmax(0, 1fr) var(--sfa-quick-col);
+  gap: 16px; padding: 16px; align-items: start; }
+.card { background: var(--sfa-card-bg); border-radius: var(--sfa-card-radius); padding: var(--sfa-card-pad); }
+.col-left, .col-center { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+
+/* 회색 블록 */
+.ph { background: var(--ph-bg); border-radius: 12px; color: var(--ph-text); font-size: 14px;
+  display: flex; align-items: center; justify-content: center; text-align: center; padding: 8px; }
+.ph-rows { display: flex; flex-direction: column; gap: 8px; }
+.ph-row { height: 36px; border-radius: 8px; background: var(--ph-bg-2); }
+.ph-row:first-child { background: var(--ph-bg); }
+
+/* 탭 (공지 탭 토큰) */
+.tabs { display: flex; margin: 0 0 16px; padding: 0; list-style: none; border-bottom: 1px solid var(--sfa-tab-border); }
+.tab { min-width: var(--sfa-tab-w); width: var(--sfa-tab-w); height: var(--sfa-tab-h);
+  background: var(--sfa-tab-bg); border: 1px solid var(--sfa-tab-border); border-bottom: 0;
+  border-radius: var(--sfa-tab-radius) var(--sfa-tab-radius) 0 0; margin-right: -1px;
+  font-size: var(--sfa-tab-font); font-weight: 500; color: var(--sfa-tab-color);
+  white-space: nowrap; padding: 0 12px; cursor: pointer; }
+.tab.is-on { background: var(--sfa-tab-active-bg); font-weight: 700; color: var(--sfa-tab-active-color);
+  box-shadow: inset 0 -2px 0 var(--sfa-accent);   /* 선택 탭 밑줄 */ }
+.tab.tab-auto { width: auto; }   /* "알려진 오류·내 신고": 폭 자동(최소 126px), 06번 0-2 */
+
+/* 퀵메뉴 */
+.quick { display: flex; flex-direction: column; gap: var(--sfa-quick-gap); margin: 0; padding: 0; list-style: none; }
+.quick-btn { width: 100%; height: var(--sfa-quick-h); border: 0; border-radius: var(--sfa-quick-radius);
+  background: #fff; box-shadow: var(--sfa-quick-shadow); cursor: pointer; padding: 8px 4px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+.quick-btn:hover { box-shadow: var(--sfa-quick-shadow-hover); }
+.quick-ico { width: var(--sfa-quick-icon); height: var(--sfa-quick-icon); border-radius: 50%; flex: none;
+  background: var(--sfa-accent); color: #fff; display: flex; align-items: center; justify-content: center; }
+.quick-ico svg { width: 18px; height: 18px; }
+.quick-label { font-size: var(--sfa-quick-font); font-weight: 500; line-height: var(--sfa-quick-line);
+  color: var(--sfa-sub); text-align: center; word-break: keep-all; }

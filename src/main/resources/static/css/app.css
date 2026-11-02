@@ -1,0 +1,64 @@
+/* 새 요소 토큰과 모양 (docs/06-ui-spec.md 0-2절, 1절).
+   새 요소는 글자 18px 이상, 누르는 요소 높이 56px 이상, 대비 4.5:1 이상. */
+:root {
+  --new-text: 18px;
+  --new-title: 24px;
+  --new-btn-h: 56px;
+  --new-radius: 12px;
+  --new-accent: #0077b3;          /* 글자·버튼 강조 (흰 배경 대비 약 4.9:1) */
+  --new-ink: #292d33;
+  --badge-bg: #d93025;            /* 알림 배지 (흰 글자 대비 약 4.8:1) */
+  --badge-min: 18px;
+  --band-bg: #fff3bf;
+  --band-line: #e0c45c;
+  --demo-outline: #d93025;
+}
+
+/* 화면 시안 띠 (SFA 화면 밖) */
+.proto-band { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
+  padding: 8px 16px; background: var(--band-bg); border-bottom: 2px solid var(--band-line);
+  font-size: var(--new-text); color: var(--new-ink); }
+.proto-band .band-title { font-weight: 700; margin-right: auto; }
+.role-box { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.role-box .lbl { font-weight: 700; }
+.seg { display: flex; }
+.seg button { height: var(--new-btn-h); min-width: 72px; padding: 0 16px; font-size: var(--new-text);
+  border: 1px solid #8a94a6; background: #fff; color: var(--new-ink); cursor: pointer; margin-left: -1px; }
+.seg button:first-child { border-radius: var(--new-radius) 0 0 var(--new-radius); margin-left: 0; }
+.seg button:last-child { border-radius: 0 var(--new-radius) var(--new-radius) 0; }
+.seg button[aria-pressed="true"] { background: var(--new-accent); border-color: var(--new-accent); color: #fff; font-weight: 700; }
+.user-select { height: var(--new-btn-h); font-size: var(--new-text); padding: 0 12px; border-radius: var(--new-radius);
+  border: 1px solid #8a94a6; background: #fff; color: var(--new-ink); font-family: inherit; }
+.ledger-link { height: var(--new-btn-h); padding: 0 20px; font-size: var(--new-text); font-weight: 700;
+  border: 2px solid var(--new-accent); border-radius: var(--new-radius); background: #fff; color: var(--new-accent);
+  text-decoration: underline; cursor: pointer; }
+
+/* 알림 배지: 기존 알림 아이콘 오른쪽 위 */
+.badge { position: absolute; top: 0; right: 0; min-width: var(--badge-min); height: var(--badge-min);
+  padding: 0 4px; border-radius: 9px; background: var(--badge-bg); color: #fff;
+  font-size: 12px; font-weight: 700; line-height: var(--badge-min); text-align: center; }
+
+/* 알림 팝업 내용 (모양은 기존, 내용 글자는 새 기준) */
+.alarm-head { padding: 14px 16px; border-bottom: 1px solid var(--sfa-popup-border);
+  font-size: var(--new-text); font-weight: 700; color: var(--new-ink); }
+.alarm-list { margin: 0; padding: 0; list-style: none; max-height: 420px; overflow-y: auto; }
+.alarm-item { display: block; width: 100%; min-height: var(--new-btn-h); padding: 12px 16px; border: 0;
+  border-bottom: 1px solid var(--sfa-popup-border); background: #fff; text-align: left; cursor: pointer;
+  font-size: var(--new-text); color: var(--new-ink); line-height: 1.45; word-break: keep-all; }
+.alarm-item:hover { background: #f5f8fb; }
+.alarm-item .when { display: block; margin-top: 4px; font-size: var(--new-text); color: #525866; }
+.alarm-empty { margin: 0; padding: 20px 16px; font-size: var(--new-text); color: #525866; }
+
+/* 안내 상자 */
+.notice-box { position: fixed; left: 50%; top: 28%; transform: translateX(-50%); width: min(440px, calc(100% - 32px));
+  padding: 24px; background: #fff; border: 2px solid var(--new-accent); border-radius: var(--new-radius);
+  box-shadow: 0 12px 32px rgba(41, 45, 51, .25); z-index: 50; font-size: var(--new-text); color: var(--new-ink); }
+.notice-box h2 { margin: 0 0 8px; font-size: var(--new-title); }
+.notice-box p { margin: 0 0 20px; line-height: 1.5; }
+.btn-primary { height: var(--new-btn-h); min-width: 120px; padding: 0 24px; border: 0; border-radius: var(--new-radius);
+  background: var(--new-accent); color: #fff; font-size: var(--new-text); font-weight: 700; cursor: pointer; }
+
+/* 시연용 강조 (#demo=1 일 때만) */
+.demo [data-entry] { outline: 3px solid var(--demo-outline); outline-offset: 3px; }
+
+[hidden] { display: none !important; }
