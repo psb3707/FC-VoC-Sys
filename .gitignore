@@ -15,5 +15,9 @@ references/
 # 스파이크(버릴 코드, 결과만 문서화)
 spikes/
 
+# 파이썬 캐시 (scripts/*.py 실행 시 생성)
+__pycache__/
+*.pyc
+
 # 개인 로컬 설정
 .claude/settings.local.json

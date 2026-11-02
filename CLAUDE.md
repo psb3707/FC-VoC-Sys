@@ -11,7 +11,7 @@
 
 ## 깃 규칙 (상세: `docs/13-git-conventions.md`)
 - `main`에 직접 커밋·푸시하지 않는다. 기능 브랜치(`feat|fix|docs|refactor|test|chore|gate/<kebab>`) → PR → squash merge. 머지는 사용자만.
-- 새 작업은 작업 트리에서: `git worktree add ../FC-Voc-Sys.worktrees/<이름> -b <브랜치> origin/main`. 메인 작업 트리는 `main` 전용.
+- 새 작업은 작업 트리에서: `git worktree add --no-track ../FC-Voc-Sys.worktrees/<이름> -b <브랜치> origin/main` (`--no-track` 필수). 첫 푸시는 `git push -u origin <브랜치>`. 메인 작업 트리는 `main` 전용.
 - 커밋은 `<type>(<scope>): <요약>`, feat·fix는 `Refs: REQ-xx-nn | ADR-nnn | none` 필수. 최신화는 rebase, 병합 커밋 금지.
 - 푸시는 사용자가 요청한 브랜치만. 태그 생성·`PHASE` 변경·PR 머지는 하지 않는다. pre-push가 거부하면 우회하지 말고 원인을 고친다.
 - 금지: `--no-verify`, `core.hooksPath` 변경, `--force`/`-f`/`+ref`/`:ref` 푸시, `git clean -x`.

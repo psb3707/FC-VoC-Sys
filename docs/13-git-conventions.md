@@ -44,7 +44,7 @@ git switch main && git pull --ff-only
 
 # 1) 브랜치 + 작업 트리 생성 (원격 main 기준)
 git fetch origin
-git worktree add ../FC-Voc-Sys.worktrees/feat-req-in-04-intake-form \
+git worktree add --no-track ../FC-Voc-Sys.worktrees/feat-req-in-04-intake-form \
     -b feat/req-in-04-intake-form origin/main
 cd ../FC-Voc-Sys.worktrees/feat-req-in-04-intake-form
 
@@ -126,9 +126,10 @@ Refs: REQ-IN-04, ADR-006
 | 메인 작업 트리 | `…/Desktop/FC-Voc-Sys` (`main` 고정). pull, 태그, 정리, `references/` 보관 전용. 여기서 기능 작업을 하지 않는다 |
 | 기능 작업 트리 | 저장소 **밖** 형제 폴더 `…/Desktop/FC-Voc-Sys.worktrees/<브랜치의 / 를 - 로 바꾼 이름>` |
 | 동시 개수 | 기능 작업 트리 **최대 2개**(혼자 개발, 맥락 전환 비용 제한) |
-| 생성 | `git worktree add ../FC-Voc-Sys.worktrees/<이름> -b <브랜치> origin/main` |
+| 생성 | `git worktree add --no-track ../FC-Voc-Sys.worktrees/<이름> -b <브랜치> origin/main` |
+| upstream | **반드시 `--no-track`**. 없으면 새 브랜치의 upstream이 `origin/main`이 되어 인자 없는 `git push`가 `main`을 향한다. 첫 푸시는 항상 `git push -u origin <브랜치>`로 upstream을 자기 브랜치로 지정 |
 | 같은 브랜치 | 두 작업 트리에서 동시에 체크아웃 불가(깃이 거부) |
-| 훅·설정 | `core.hooksPath=.githooks` 는 공통 설정이라 모든 작업 트리에 적용. 생성 직후 `git config core.hooksPath` 로 확인 |
+| 훅·설정 | `core.hooksPath=.githooks` 는 공통 설정이라 모든 작업 트리에 적용. 생성 직후 `git rev-parse --git-path hooks` 가 `.githooks` 를 가리키는지 확인 (Claude 훅은 `core.hooksPath` 문자열이 든 명령을 읽기 전용이라도 차단하므로 이 명령을 쓴다) |
 | 추적 제외 폴더 | `references/`, `data/`, `logs/`, `.tools/`, `spikes/` 는 작업 트리에 **복사되지 않는다.** 참고 원본은 메인 작업 트리 것을 읽기 전용으로 본다(복사·이동 금지) |
 | 의존 폴더 | BACKEND 단계의 `target/`, `data/` 는 작업 트리마다 따로 생긴다. 포트 충돌에 주의(하나만 실행) |
 | 정리 | 머지 후 `git worktree remove <경로>` → `git branch -D <브랜치>` → `git fetch --prune`. 주 1회 `git worktree list`, `git worktree prune` 점검 |
