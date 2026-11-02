@@ -5,7 +5,7 @@
   --claude : Claude Code PreToolUse 훅. stdin JSON의 tool_input.file_path 검사. 위반 시 exit 2.
   --git    : Git pre-commit 훅. 스테이징된 파일 경로 검사. 위반 시 exit 1.
 
-현재 단계는 docs/gates/PHASE 한 줄(사용자만 변경)에서 읽는다.
+현재 단계는 docs/gates/PHASE 한 줄에서 읽는다. 변경은 PHASE 전환 PR(chore(phase))이 머지되면 가능하다(ADR-010).
 """
 import json
 import subprocess
@@ -26,12 +26,12 @@ EXTRA = {
     "BACKEND": None,
     "RELEASE": None,
 }
-# Claude는 어떤 단계에서도 쓰지 못함 (게이트 승인과 단계 변경은 사용자만, 참고 원본은 읽기 전용)
-CLAUDE_PROTECTED = ["docs/gates/", "references/"]
+# Claude는 어떤 단계에서도 쓰지 못함 (참고 원본은 읽기 전용)
+CLAUDE_PROTECTED = ["references/"]
 
 HINT = {
-    "DOCS": "문서 단계: docs/ 와 규칙 파일만 수정할 수 있습니다. G1(문서 기준선) 승인 뒤 PHASE가 FRONTEND로 바뀝니다.",
-    "FRONTEND": "프론트 단계: src/main/resources/static/ 의 화면만 만들 수 있습니다. 백엔드 코드는 G2(화면 승인) 뒤에 가능합니다.",
+    "DOCS": "문서 단계: docs/ 와 규칙 파일만 수정할 수 있습니다. PHASE 전환 PR(chore(phase))이 머지되면 FRONTEND 작업이 가능합니다.",
+    "FRONTEND": "프론트 단계: src/main/resources/static/ 의 화면만 만들 수 있습니다. 백엔드 코드는 PHASE 전환 PR(chore(phase))이 머지되면 가능합니다.",
 }
 
 
@@ -60,7 +60,7 @@ def violation(path: str, phase: str, claude: bool) -> str | None:
     if claude:
         for p in CLAUDE_PROTECTED:
             if r.startswith(p) or r == p.rstrip("/"):
-                return f"'{r}' 은(는) 사용자만 수정할 수 있습니다 (게이트 기록·단계 파일·참고 원본)."
+                return f"'{r}' 은(는) 수정할 수 없습니다 (참고 원본, 읽기 전용)."
     extra = EXTRA[phase]
     if extra is None:
         return None

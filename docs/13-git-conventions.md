@@ -1,13 +1,13 @@
 # 13. 깃 컨벤션·브랜치·작업 트리 규칙
 
-> 상태: 초안 v0.1 (2026-11-02). 결정 근거: ADR-008. 이 문서의 규칙은 `scripts/check_git_rules.py`와 `.githooks/`가 **자동으로 검사**한다(9절).
+> 상태: 초안 v0.1 (2026-11-02). 결정 근거: ADR-008, ADR-010. 이 문서의 규칙은 `scripts/check_git_rules.py`와 `.githooks/`가 **자동으로 검사**한다(9절).
 > 우선순위는 `00-index.md` 3절을 따른다.
 
 ## 1. 원칙
 1. `main`은 항상 **시연 가능하고 문서와 일치**하는 상태다. 직접 커밋·푸시하지 않는다.
 2. 모든 변경은 **짧은 기능 브랜치 → PR → squash merge**로 들어간다. 브랜치 수명은 길어도 2~3일.
 3. 브랜치 하나는 **작업 트리(worktree) 하나**에서 작업한다. 메인 작업 트리는 `main` 전용이다.
-4. 단계(`docs/gates/PHASE`)와 게이트(G1~G3)는 깃 흐름 안에서 지킨다(7절).
+4. 단계(`docs/gates/PHASE`) 순서는 깃 흐름 안에서 지킨다(7절).
 5. 규칙은 문서가 아니라 **훅이 강제**한다. 훅을 우회하지 않는다(`--no-verify` 금지).
 
 ## 2. 저장소 구성
@@ -30,7 +30,7 @@
 | `refactor` | 동작 불변 구조 개선 | `refactor/privacy-pattern-loader` |
 | `test` | 테스트만 추가·수정 | `test/masking-holdout-corpus` |
 | `chore` | 도구·설정·저장소 관리 | `chore/git-hooks` |
-| `gate` | **단계 전환**(PHASE 변경, 게이트 기록) 전용 | `gate/g1-docs` |
+| `chore/phase-<단계>` | **단계 전환**(PHASE 한 줄 변경)은 `chore` 유형의 일반 PR | `chore/phase-frontend` |
 - 요구사항이 있으면 이름에 소문자 REQ-ID를 앞에 둔다 (`req-in-04-...`).
 - `main`, `master` 는 보호 브랜치. `release/*`, `develop` 같은 장기 브랜치는 만들지 않는다.
 
@@ -107,18 +107,18 @@ Refs: REQ-IN-04, ADR-006
 | 충돌 | `git rebase origin/main` 으로 해결 후 `git push --force-with-lease` (본인 기능 브랜치만) |
 | 되돌리기 | `git revert <squash 커밋>` 을 새 브랜치(`fix/…` 또는 `chore/…`)에서 PR로. `main` 이력을 고쳐 쓰지 않는다 |
 
-## 7. 단계(Phase)·게이트와 깃
-- 현재 단계는 `docs/gates/PHASE`. 단계별 허용 경로는 `12-delivery-plan.md` 1절, 검사는 `scripts/check_phase.py`.
-- **단계 전환은 `gate/*` 브랜치의 전용 PR**로만 한다. 이 PR은 `docs/gates/G*.md`(승인 기록)와 `PHASE` 변경만 담고 **사용자가 직접** 작성·커밋한다. 푸시 검토가 이를 강제한다(`PHASE` 변경은 `gate/*` 외 거부).
-- 승인 기록은 `docs/templates/gate-template.md` 양식으로 `docs/gates/G1-docs.md`, `G2-ui.md`, `G3-exp.md` 에 작성한다.
-- 게이트 통과 후 `main` 머지 커밋에 **주석 태그**를 단다.
-| 게이트 | 태그 | 시점 |
+## 7. 단계(PHASE) 전환
+- 현재 단계는 `docs/gates/PHASE`. 단계별 허용 경로는 `12-delivery-plan.md` 1절, 검사는 `scripts/check_phase.py`. 승인 절차는 없다(ADR-010).
+- 단계 전환은 **일반 PR**로 한다. 브랜치 `chore/phase-<다음단계>`(예: `chore/phase-frontend`), 커밋 `chore(phase): <요약>`, 변경은 `docs/gates/PHASE` **한 줄만**. 승인 기록 파일은 만들지 않는다.
+- 전환 전 `12-delivery-plan.md` 2절의 권고 체크리스트를 훑는다(비차단). 마일스톤 M1~M3(11/13, 11/19, 12/2)는 일정 지표다.
+- 필요하면 머지 후 `main` 머지 커밋에 **선택적** 주석 태그를 단다.
+| 마일스톤 | 태그(선택) | 시점 |
 |---|---|---|
-| G1 | `docs-v1.0` | 문서 기준선 확정 |
-| G2 | `ui-v1.0` | 화면 승인 |
-| G3 | `exp-ready` | 실험 전 구간 통과 |
+| M1 | `docs-v1.0` | 문서 기준선 |
+| M2 | `ui-v1.0` | 화면 완료 |
+| M3 | `exp-ready` | 실험 전 구간 점검 |
 | 프롬프트 동결 | `prompt-v1` | 실험 직전(07번 문서) |
-- 태그는 사용자가 만든다: `git tag -a docs-v1.0 -m "G1 문서 기준선" && git push origin docs-v1.0`. 태그 이동·삭제 금지.
+- 태그는 사용자가 만든다: `git tag -a docs-v1.0 -m "M1 문서 기준선" && git push origin docs-v1.0`. 태그 이동·삭제 금지.
 - 단계가 FRONTEND일 때 `src/main/java`, `pom.xml` 을 건드리는 PR은 푸시 검토에서 거부된다.
 
 ## 8. 작업 트리(worktree) 규칙
@@ -152,10 +152,9 @@ Refs: REQ-IN-04, ADR-006
 | 3 | 커밋 메시지 | 5절 형식 위반, feat/fix 의 `Refs:` 누락, `fixup!`/`squash!` |
 | 4 | 선형 이력 | 푸시 범위에 병합 커밋 |
 | 5 | 단계 허용 경로 | 푸시 범위의 변경 파일이 현재 단계에서 금지된 경로 (`check_phase.py` 규칙) |
-| 6 | 게이트 파일 | `docs/gates/PHASE` 변경이 `gate/*` 브랜치가 아님 |
-| 7 | 추적 금지 경로 | `references/`, `data/`, `logs/`, `spikes/`, `.tools/`, `target/`, `.env*` 포함 |
-| 8 | 비밀키 | `sk-…`, `ghp_…`, `AKIA…`, 개인 키 블록 형식 문자열 |
-| 9 | 강제 푸시 알림 | 비 fast-forward 푸시 시 경고(허용은 기능 브랜치에 한함) |
+| 6 | 추적 금지 경로 | `references/`, `data/`, `logs/`, `spikes/`, `.tools/`, `target/`, `.env*` 포함 |
+| 7 | 비밀키 | `sk-…`, `ghp_…`, `AKIA…`, 개인 키 블록 형식 문자열 |
+| 8 | 강제 푸시 알림 | 비 fast-forward 푸시 시 경고(허용은 기능 브랜치에 한함) |
 
 ### 같이 동작하는 로컬 훅
 | 훅 | 검사 |
@@ -165,8 +164,8 @@ Refs: REQ-IN-04, ADR-006
 | Claude `PreToolUse(Bash)` | `--no-verify`, `git commit -n`, `core.hooksPath` 변경, 강제·삭제·미러 푸시(`--force`, `-f`, `+ref`, `:ref`), `git clean -x/-X` 차단 |
 
 ### 에이전트(Claude·서브에이전트) 작업 규칙
-- 푸시 전에 위 9가지를 스스로 점검하고, **훅이 거부하면 우회하지 말고 원인을 고쳐** 다시 시도한다.
-- 푸시는 **사용자가 요청한 브랜치만**. `main` 반영(PR 머지), 태그 생성·푸시, `PHASE` 변경은 하지 않는다.
+- 푸시 전에 위 8가지를 스스로 점검하고, **훅이 거부하면 우회하지 말고 원인을 고쳐** 다시 시도한다.
+- 푸시는 **사용자가 요청한 브랜치만**. `main` 반영(PR 머지), 태그 생성·푸시는 하지 않는다. `PHASE` 변경은 **사용자가 요청할 때만**, `chore(phase)` 전용 커밋으로 한다.
 - 푸시 결과(브랜치, 커밋 수, 훅 출력 요약)를 사용자에게 보고한다.
 - 자격 증명이 필요하면 멈추고 사용자에게 알린다. 토큰을 명령 줄이나 파일에 쓰지 않는다.
 
