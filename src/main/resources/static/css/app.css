@@ -18,6 +18,7 @@
 .proto-band { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
   padding: 8px 16px; background: var(--band-bg); border-bottom: 2px solid var(--band-line);
   font-size: var(--new-text); color: var(--new-ink); flex: none; }
+.proto-band { display: none; }   /* 상단 시안 띠는 숨김(요청). 역할 전환은 주소 #role=… 로 한다 */
 .compare .proto-band { display: none; }   /* ?compare=1: 재현도 비교 캡처에서 SFA 화면만 */
 .proto-band .band-title { font-weight: 700; margin-right: auto; }
 .role-box { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

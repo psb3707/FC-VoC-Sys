@@ -17,22 +17,22 @@ window.FIXTURES.sfaHome = {
     { "code": "CONSENT", "label": "동의 접수", "count": 5 }
   ],
   "customerGroups": [
-    { "title": "관심 고객", "rows": [
+    { "title": "관심 고객", "count": 11, "rows": [
       { "label": "가망 고객", "count": 6 }, { "label": "상담 예정", "count": 2 }, { "label": "설계 진행", "count": 3 } ] },
-    { "title": "계약 고객", "rows": [
+    { "title": "계약 고객", "count": 15, "rows": [
       { "label": "유지 고객", "count": 12 }, { "label": "만기 예정", "count": 1 }, { "label": "보완 필요", "count": 2 } ] }
   ],
   "days": [
-    { "date": "2026-10-31", "weekday": "토", "today": false, "eventCount": 0 },
-    { "date": "2026-11-01", "weekday": "일", "today": false, "eventCount": 0 },
-    { "date": "2026-11-02", "weekday": "월", "today": true, "eventCount": 0 },
-    { "date": "2026-11-03", "weekday": "화", "today": false, "eventCount": 0 }
+    { "date": "2026-10-31", "weekday": "SAT", "today": false, "eventCount": 0 },
+    { "date": "2026-11-01", "weekday": "SUN", "today": false, "eventCount": 0 },
+    { "date": "2026-11-02", "weekday": "MON", "today": true, "eventCount": 0 },
+    { "date": "2026-11-03", "weekday": "TUE", "today": false, "eventCount": 0 }
   ],
   "summaries": [
     { "code": "BIRTHDAY", "label": "이번 달 생일", "count": 2 },
     { "code": "POLICY_END", "label": "이번 달 보험만기", "count": 1 },
     { "code": "PAY_END", "label": "이번 달 납입만기", "count": 0 },
-    { "code": "CALLCENTER", "label": "이번 달 콜센터접촉", "count": 3 }
+    { "code": "CALLCENTER", "label": "이번 달 콜센터접촉 List", "count": 3 }
   ],
   "designHistory": [
     { "designNo": "P-0001", "customerName": "고객A(가상)", "productName": "가상 종신보험 A", "designedAt": "2026-10-30" },

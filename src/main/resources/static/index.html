@@ -24,6 +24,7 @@
   <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 2L1 21h22z" fill="currentColor"/><path d="M12 9v5" stroke="#0099e6" stroke-width="2.4"/><circle cx="12" cy="17.5" r="1.4" fill="#0099e6"/></symbol>
   <symbol id="i-left" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
   <symbol id="i-right" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15.5 15.5L21 21" stroke="currentColor" stroke-width="2"/></symbol>
   <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="currentColor"/></symbol>
   <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2"/></symbol>
 </svg>
@@ -48,15 +49,18 @@
 <!-- ② SFA 메인: 실제 화면 구조 재현, 데이터는 전부 가상 (ADR-012) -->
 <div id="sfa">
   <header class="sfa-header">
-    <div class="logo-block" data-a11y="replica">로고 자리</div>
+    <a class="logo-block" data-a11y="replica" aria-label="홈"><img src="img/logo.png" alt=""></a>
     <ul class="gnb" data-a11y="replica">
       <li>고객관리</li><li>활동관리</li><li>DB관리</li><li>계약관리</li><li>재무설계</li>
       <li>가입설계</li><li>청약</li><li>영업관리</li><li>지식관리</li><li>관리자</li>
     </ul>
     <ul class="util" data-a11y="replica">
       <li><i class="util-dot"></i>제보</li><li><i class="util-dot"></i>원격지원</li><li><i class="util-dot"></i>수수료규정</li>
-      <li>메뉴검색</li><li>약관검색</li>
     </ul>
+    <div class="search-btns" data-a11y="replica">
+      <button type="button" class="search-btn">메뉴검색<svg><use href="#i-search"/></svg></button>
+      <button type="button" class="search-btn">약관검색<svg><use href="#i-search"/></svg></button>
+    </div>
     <div class="icon-group" data-a11y="sfa">
       <button type="button" class="icon-btn" aria-label="스케줄"><svg><use href="#i-cal"/></svg></button>
       <button type="button" class="icon-btn" id="alarm-btn" aria-label="알림" aria-haspopup="dialog" data-entry="alarm">
@@ -77,8 +81,8 @@
     <span class="tabbar-tools">
       <button type="button" class="tb-round" aria-label="이전 탭"><svg><use href="#i-left"/></svg></button>
       <button type="button" class="tb-round" aria-label="다음 탭"><svg><use href="#i-right"/></svg></button>
-      <button type="button" class="tb-text"><svg><use href="#i-menu"/></svg>탭 목록</button>
-      <button type="button" class="tb-text">전체 닫기</button>
+      <button type="button" class="tb-text t-list"><svg><use href="#i-menu"/></svg>탭목록</button>
+      <button type="button" class="tb-text t-close">모두닫기</button>
     </span>
   </nav>
 
@@ -121,7 +125,7 @@
         </div>
         <table class="grid">
           <colgroup><col style="width:15.5%"><col style="width:17.7%"><col style="width:46.5%"><col></colgroup>
-          <thead><tr><th>설계번호</th><th>고객</th><th>상품</th><th>설계일</th></tr></thead>
+          <thead><tr><th>설계번호</th><th>설계명</th><th>주상품</th><th>설계일자</th></tr></thead>
           <tbody id="design-rows"></tbody>
         </table>
       </section>

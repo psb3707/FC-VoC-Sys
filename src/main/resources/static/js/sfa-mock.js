@@ -75,33 +75,36 @@
   function renderHome() {
     var h = home;
     fill('perf', (h.performance || []).map(function (p) {
-      return el('div', 'perf-cell', [el('span', 'perf-label', [p.label]),
-        el('span', 'perf-value', [el('b', null, [p.value]), p.unit])]);
+      return el('div', 'perf-cell', [el('span', 'perf-label', [p.label, el('small', null, ['(' + p.unit + ')'])]),
+        el('span', 'perf-value', [p.value])]);
     }));
     fill('activity', (h.activity || []).map(function (a) {
-      return el('div', 'act-card', [el('span', null, [a.label]), el('b', null, [a.count])]);
+      return el('div', 'act-card', [el('span', null, [a.label]), el('b', 'num', [a.count])]);
     }));
     fill('customers', (h.customerGroups || []).map(function (g) {
       var rows = g.rows.map(function (r) { return el('li', null, [el('span', null, [r.label]), el('b', null, [r.count])]); });
-      return el('div', 'cust-card', [el('div', 'cust-head', [el('span', null, [g.title]), el('i', 'cust-more')]),
+      return el('div', 'cust-card', [el('div', 'cust-head', [el('span', null, [g.title]), el('b', 'num', [g.count])]),
         el('ul', null, rows)]);
     }));
     fill('days', (h.days || []).map(function (d) {
-      var head = el('div', 'day-head', [el('span', 'day-date', [mmdd(d.date)]), el('span', 'day-wd', [d.weekday]),
-        d.today ? el('i', 'day-dot') : null]);
+      var head = el('div', 'day-head', [el('span', 'day-date', [mmdd(d.date)]),
+        el('span', 'day-wd', [d.today ? d.weekday + '(TODAY)' : d.weekday])]);
       var go = el('span', 'day-go');
       go.appendChild(icon('i-right'));
       var ico = el('span', 'day-ico');
-      ico.appendChild(icon('i-sun'));
+      var mascot = document.createElement('img');
+      mascot.src = 'img/mascot.png';
+      mascot.alt = '';
+      ico.appendChild(mascot);
       return el('div', 'day-card' + (d.today ? ' is-today' : ''), [head, go, ico,
-        el('span', 'day-msg', [d.eventCount ? '일정 ' + d.eventCount + '건' : '등록된 일정 없음'])]);
+        el('span', 'day-msg', [d.eventCount ? '일정 ' + d.eventCount + '건' : '일정이 없습니다.'])]);
     }));
     fill('pills', (h.summaries || []).map(function (s) {
       return el('div', 'pill', [el('span', null, [s.label]), el('b', null, [s.count])]);
     }));
     fill('design-rows', (h.designHistory || []).map(function (r) {
       return el('tr', null, [el('td', 'c-no', [r.designNo]), el('td', null, [r.customerName]),
-        el('td', 'c-prod', [r.productName]), el('td', 'c-date', [r.designedAt])]);
+        el('td', 'c-prod', [r.productName]), el('td', 'c-date', [r.designedAt.replace(/-/g, '.')])]);
     }));
     renderBoard();
   }
