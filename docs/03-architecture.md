@@ -61,7 +61,7 @@ FC-Voc-Sys/
 ├─ start.cmd, reset.cmd, README.md, CLAUDE.md, .gitignore
 ├─ pom.xml, mvnw, .mvn/                 (백엔드 단계부터)
 ├─ .githooks/, .claude/settings.json, scripts/check_phase.py
-├─ assets/sfa-main-masked.png
+├─ assets/                              (공용 자산. 실제 화면 캡처는 넣지 않음, ADR-012)
 ├─ references/                           (Git 제외, 참고 전용)
 ├─ docs/  00~13, adr/, gates/PHASE(현재 단계), proposal.md
 ├─ config/  grading-rules.yml, department-map.yml, required-slots.yml, privacy-patterns.yml
