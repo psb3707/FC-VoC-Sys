@@ -1,0 +1,7 @@
+# 줄바꿈: 저장소에는 LF. 훅·스크립트가 CRLF로 바뀌면 sh 훅이 깨진다.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.png binary
+*.jpg binary
+*.jpeg binary

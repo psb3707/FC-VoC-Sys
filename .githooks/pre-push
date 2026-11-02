@@ -1,0 +1,5 @@
+#!/bin/sh
+# 푸시 직전 자동 검토 (docs/13-git-conventions.md 9절). 우회(--no-verify) 금지.
+# stdin(푸시 대상 ref 목록)은 스크립트로 그대로 전달된다.
+ROOT="$(git rev-parse --show-toplevel)"
+python "$ROOT/scripts/check_git_rules.py" --pre-push "$1" "$2"

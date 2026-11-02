@@ -1,0 +1,12 @@
+#!/bin/sh
+# 단계 순서 검사 + 브랜치 규칙 + 비밀키 형식 검사. 우회(--no-verify) 금지.
+ROOT="$(git rev-parse --show-toplevel)"
+python "$ROOT/scripts/check_git_rules.py" --pre-commit || exit 1
+python "$ROOT/scripts/check_phase.py" --git || exit 1
+
+# API 키 형식 문자열이 스테이징에 있는지 검사
+if git diff --cached -U0 | grep -E '^\+' | grep -Eq 'sk-[A-Za-z0-9_-]{20,}|sk-ant-[A-Za-z0-9_-]{20,}'; then
+  echo "[비밀키 차단] API 키로 보이는 문자열이 포함되어 있습니다." >&2
+  exit 1
+fi
+exit 0

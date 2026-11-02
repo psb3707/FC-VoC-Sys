@@ -1,0 +1,4 @@
+#!/bin/sh
+# 커밋 메시지 형식 검사 (docs/13-git-conventions.md). 우회(--no-verify) 금지.
+ROOT="$(git rev-parse --show-toplevel)"
+python "$ROOT/scripts/check_git_rules.py" --commit-msg "$1"
