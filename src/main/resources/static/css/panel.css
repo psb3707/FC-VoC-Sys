@@ -14,7 +14,9 @@
   --pn-icon: 40px;                             /* 아이콘 원 (퀵메뉴 32px 원의 확대판) */
   /* 모서리 */
   --pn-btn-radius: var(--new-radius);          /* 12px: 버튼·입력란 */
-  --pn-card-radius: var(--sfa-quick-radius);   /* 16px: 퀵메뉴 버튼과 같은 카드 모서리 */
+  --pn-card-radius: var(--sfa-card-radius);    /* 24px: 홈 콘텐츠 카드(업무 탭·공지)와 같은 모서리 */
+  --pn-choice-radius: var(--sfa-quick-radius); /* 16px: 선택 카드는 퀵메뉴 버튼과 같은 모서리 */
+  --pn-note-radius: 16px;
   /* 색 */
   --pn-accent: var(--new-accent);              /* #0077b3 글자·버튼 */
   --pn-accent-hover: #00669a;
@@ -28,28 +30,30 @@
   --pn-field-line: #8a94a6;                    /* 입력란 테두리 (흰 배경 대비 3:1 이상) */
   --pn-selected-bg: #f2f9fd;
   --pn-info-bg: #f2f9fd;
+  --pn-info-edge: #d6ebf7;                     /* 안내 상자 경계 (바탕 #f7f9fa와 구분) */
   --pn-warn-bg: #fdecea;
   --pn-warn-line: var(--badge-bg);             /* #d93025 */
   --pn-warn-ink: #a1221a;
+  --pn-warn-edge: #f3b5b0;
   --pn-ok: #1e7f4f;
   --pn-track: var(--sfa-popup-border);
   /* 그림자: 홈 카드와 같은 rgba(64,96,128) 계열 */
-  --pn-card-shadow: 0 4px 16px rgba(64, 96, 128, .06);
+  --pn-card-shadow: var(--sfa-card-shadow);    /* 홈 날짜·콘텐츠 카드 그림자 */
   --pn-choice-shadow: var(--sfa-quick-shadow);
   --pn-choice-shadow-hover: var(--sfa-quick-shadow-hover);
   --pn-panel-shadow: -8px 0 32px rgba(64, 96, 128, .18);
   --pn-scrim: rgba(41, 45, 51, .2);
-  /* 시안 전용 띠 (기존 시안 띠 색) */
-  --pn-proto-bg: var(--band-bg);
+  /* 시안 전용 띠 (기존 시안 띠 색을 옅게: #0077b3 글자 대비 4.5 이상 유지) */
+  --pn-proto-bg: #fff8db;
   --pn-proto-line: var(--band-line);
 }
 
 .pn-scrim { position: fixed; inset: 0; background: var(--pn-scrim); z-index: 44; }
 .pn { position: fixed; top: 0; right: 0; bottom: 0; width: var(--pn-w); max-width: 100%; z-index: 45;
   display: flex; flex-direction: column; background: var(--pn-bg); box-shadow: var(--pn-panel-shadow);
-  font-size: var(--pn-text); line-height: 1.5; color: var(--pn-ink); letter-spacing: 0; word-break: keep-all; }
+  font-size: var(--pn-text); line-height: 1.5; color: var(--pn-ink); letter-spacing: -.02em; word-break: keep-all; }
 @media (max-width: 1279.98px) { .pn { width: 100%; } }
-.pn button, .pn input, .pn select, .pn textarea { font-family: inherit; font-size: var(--pn-text); letter-spacing: 0; color: var(--pn-ink); }
+.pn button, .pn input, .pn select, .pn textarea { font-family: inherit; font-size: var(--pn-text); letter-spacing: inherit; color: var(--pn-ink); }
 .pn button { cursor: pointer; }
 .pn :focus-visible { outline: 3px solid var(--pn-accent); outline-offset: 2px; }
 .pn [tabindex="-1"]:focus { outline: none; }
@@ -76,9 +80,10 @@
 .pn-steps-text { margin: 0 0 8px; }
 .pn-steps-text b { color: var(--pn-accent); }
 .pn-track { display: flex; gap: 6px; margin: 0; padding: 0; list-style: none; }
-.pn-track li { flex: 1; height: 8px; border-radius: 4px; background: var(--pn-track); }
-.pn-track li.is-done { background: var(--pn-accent); }
-.pn-track li.is-now { background: var(--pn-deco); box-shadow: inset 0 0 0 2px var(--pn-accent); }
+/* 막대는 장식(뜻은 "N단계" 글자가 전함): 지난 칸은 홈 파란 탭 바 색, 지금 칸은 진한 강조색 */
+.pn-track li { flex: 1; height: 8px; border-radius: 999px; background: var(--pn-track); }
+.pn-track li.is-done { background: var(--pn-deco); }
+.pn-track li.is-now { background: var(--pn-accent); }
 
 /* 본문 */
 .pn-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 24px var(--pn-gutter) 32px; background: var(--pn-surface); }
@@ -86,8 +91,11 @@
 .pn-body h4 { margin: 24px 0 12px; font-size: var(--pn-text); font-weight: 700; }
 .pn-lead { color: var(--pn-sub); }
 .pn-plain { margin: 0; padding: 0; list-style: none; }
-.pn-card { margin: 16px 0 0; padding: 20px; background: var(--pn-bg); border: 1px solid var(--pn-line-soft);
+/* 콘텐츠 카드: 홈 카드처럼 테두리 없이 흰 바탕 + 24px 모서리 + 은은한 그림자 */
+.pn-card { margin: 16px 0 0; padding: 20px 24px; background: var(--pn-bg); border: 0;
   border-radius: var(--pn-card-radius); box-shadow: var(--pn-card-shadow); }
+.pn-card > :last-child { margin-bottom: 0; }
+.pn-lead + .pn-choices, .pn-lead + .pn-card { margin-top: 16px; }
 .pn-card-title { margin: 0 0 12px; font-size: var(--pn-card-title); font-weight: 700; line-height: 1.4; }
 .pn-rows { margin: 0 0 16px; }
 .pn-rows div { display: flex; gap: 12px; padding: 8px 0; border-top: 1px solid var(--pn-line-soft); }
@@ -96,20 +104,20 @@
 .pn-rows dd { flex: 1; margin: 0; font-weight: 500; }
 
 /* 안내·경고 상자 (색 + 아이콘 + 굵은 제목을 함께 써서 색만으로 뜻을 전하지 않음) */
-.pn-note { display: flex; gap: 12px; margin: 16px 0 0; padding: 14px 16px; border-radius: var(--pn-btn-radius);
-  background: var(--pn-info-bg); border-left: 4px solid var(--pn-deco); }
+.pn-note { display: flex; gap: 12px; margin: 16px 0 0; padding: 16px 20px; border-radius: var(--pn-note-radius);
+  background: var(--pn-info-bg); box-shadow: inset 0 0 0 1px var(--pn-info-edge); text-align: left; }
 .pn-note svg { color: var(--pn-accent); margin-top: 3px; }
 .pn-note b { display: block; }
-.pn-warn { background: var(--pn-warn-bg); border-left-color: var(--pn-warn-line); }
+.pn-warn { background: var(--pn-warn-bg); box-shadow: inset 0 0 0 1px var(--pn-warn-edge); }
 .pn-warn svg, .pn-warn b { color: var(--pn-warn-ink); }
-.pn-proto-note { background: var(--pn-proto-bg); border-left-color: var(--pn-proto-line); }
+.pn-proto-note { background: var(--pn-proto-bg); box-shadow: inset 0 0 0 1px var(--pn-proto-line); }
 .pn-proto-note svg { color: var(--pn-ink); }
 .pn-proto-note .pn-btn-out { margin-top: 12px; }
 
 /* 큰 선택 카드: 퀵메뉴처럼 파란 아이콘 원 + 글자 */
 .pn-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
 .pn-choice { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; min-height: var(--pn-choice-h);
-  padding: 12px 40px 12px 14px; border: 2px solid transparent; border-radius: var(--pn-card-radius); background: var(--pn-bg);
+  padding: 12px 40px 12px 14px; border: 2px solid transparent; border-radius: var(--pn-choice-radius); background: var(--pn-bg);
   box-shadow: var(--pn-choice-shadow); font-weight: 500; text-align: left; line-height: 1.35; }
 .pn-choice:hover { box-shadow: var(--pn-choice-shadow-hover); }
 .pn-choice[aria-pressed="true"] { border-color: var(--pn-accent); background: var(--pn-selected-bg); font-weight: 700; }
@@ -121,16 +129,16 @@
 
 /* 되묻기 선택지: 줄바꿈되는 알약 버튼 */
 .pn-chips { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0 0; padding: 0; list-style: none; }
-.pn-chip { min-height: var(--pn-btn-h); padding: 0 20px; border: 2px solid var(--pn-line); border-radius: var(--pn-btn-radius);
+.pn-chip { min-height: var(--pn-btn-h); padding: 0 21px; border: 1px solid var(--pn-line); border-radius: var(--pn-btn-radius);
   background: var(--pn-bg); font-weight: 500; }
-.pn-chip[aria-pressed="true"] { border-color: var(--pn-accent); background: var(--pn-selected-bg); font-weight: 700; }
+.pn-chip[aria-pressed="true"] { padding: 0 20px; border: 2px solid var(--pn-accent); background: var(--pn-selected-bg); font-weight: 700; }
 .pn-chip[aria-pressed="true"]::before { content: "✓ "; color: var(--pn-accent); }
 .pn-q-no { color: var(--pn-sub); font-weight: 500; }
 
 /* 입력란 */
 .pn-field { margin: 16px 0 0; }
 .pn-field label, .pn-label { display: block; margin: 0 0 8px; font-weight: 700; }
-.pn-input, .pn select, .pn textarea { width: 100%; min-height: var(--pn-btn-h); padding: 0 16px; border: 1px solid var(--pn-field-line);
+.pn-input, .pn select, .pn textarea { display: block; width: 100%; min-height: var(--pn-btn-h); padding: 0 16px; border: 1px solid var(--pn-field-line);
   border-radius: var(--pn-btn-radius); background: var(--pn-bg); box-sizing: border-box; }
 .pn textarea { min-height: 112px; padding: 12px 16px; line-height: 1.5; resize: vertical; }
 .pn-input[aria-invalid="true"] { border: 2px solid var(--pn-warn-line); }
@@ -139,14 +147,20 @@
 .pn-err { margin: 12px 0 0; color: var(--pn-warn-ink); font-weight: 700; }
 
 /* AI 전달 내용 미리보기 (마스킹 발생 시 자동 펼침) */
-.pn-details { margin: 16px 0 0; background: var(--pn-bg); border: 1px solid var(--pn-line); border-radius: var(--pn-card-radius); }
-.pn-details summary { display: flex; align-items: center; min-height: var(--pn-btn-h); padding: 0 20px; font-weight: 700;
-  color: var(--pn-accent); cursor: pointer; }
+.pn-details { margin: 16px 0 0; background: var(--pn-bg); border: 0; border-radius: var(--pn-card-radius);
+  box-shadow: var(--pn-card-shadow); overflow: hidden; }
+.pn-details summary { display: flex; align-items: center; gap: 12px; min-height: var(--pn-btn-h); padding: 0 24px; font-weight: 700;
+  color: var(--pn-accent); cursor: pointer; list-style: none; }
+.pn-details summary::-webkit-details-marker { display: none; }
+.pn-details summary::after { content: ""; flex: none; margin-left: auto; width: 10px; height: 10px;
+  border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-3px) rotate(45deg); }
+.pn-details[open] summary::after { transform: translateY(3px) rotate(-135deg); }
 .pn-details[open] summary { border-bottom: 1px solid var(--pn-line-soft); }
-.pn-details .pn-rows { margin: 0; padding: 16px 20px; }
+.pn-details .pn-rows { margin: 0; padding: 16px 24px; }
 .pn-mask { padding: 0 4px; border-radius: 4px; background: var(--pn-selected-bg); outline: 1px dashed var(--pn-accent); font-weight: 700; }
-.pn-tag { display: inline-block; margin-left: 6px; padding: 0 8px; border: 1px solid var(--pn-accent); border-radius: 8px;
-  color: var(--pn-accent); font-weight: 700; }
+.pn-tag { display: inline-block; margin-left: 6px; padding: 0 10px; border: 0; border-radius: 999px;
+  background: var(--pn-selected-bg); color: var(--pn-accent); font-weight: 700; }
+.pn-chip[aria-pressed="true"] .pn-tag { background: var(--pn-bg); }
 
 /* 로딩 (타이머 없음. 시안 버튼으로만 다음 상태로) */
 .pn-loading { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 32px 8px; }
@@ -168,7 +182,7 @@
 .pn-btn { flex: 1; min-height: var(--pn-btn-h); padding: 0 24px; border: 0; border-radius: var(--pn-btn-radius);
   background: var(--pn-accent); color: #fff !important; font-weight: 700; }
 .pn-btn:hover { background: var(--pn-accent-hover); }
-.pn-btn-2 { min-height: var(--pn-btn-h); min-width: 120px; padding: 0 20px; border: 1px solid var(--pn-field-line);
+.pn-btn-2 { min-height: var(--pn-btn-h); min-width: 120px; padding: 0 20px; border: 1px solid var(--pn-line);
   border-radius: var(--pn-btn-radius); background: var(--pn-bg); font-weight: 700; }
 .pn-btn-2:hover { background: var(--pn-surface); }
 .pn-btn-out { width: 100%; min-height: var(--pn-btn-h); padding: 0 20px; border: 2px solid var(--pn-accent);
@@ -176,12 +190,15 @@
 .pn-btn-out:hover { background: var(--pn-selected-bg); }
 
 /* 화면 시안 전용 조절 (실제 화면에는 없음) */
-.pn-proto { flex: none; background: var(--pn-proto-bg); border-top: 2px solid var(--pn-proto-line); }
-.pn-proto-bar { display: flex; align-items: center; gap: 12px; padding: 8px var(--pn-gutter); }
+.pn-proto { flex: none; background: var(--pn-proto-bg); border-top: 1px solid var(--pn-proto-line); }
+.pn-proto-bar { display: flex; align-items: center; gap: 12px; padding: 0 var(--pn-gutter); }
 .pn-proto-bar b { flex: 1; }
-.pn-proto-panel { max-height: 36vh; overflow-y: auto; padding: 0 var(--pn-gutter) 16px; }
+/* 시안 조절 열기: 버튼 높이 56px은 유지하고 테두리 없는 글자 버튼으로 가볍게 */
+.pn-proto-bar .pn-chip { border: 0; padding: 0 8px; background: transparent; color: var(--pn-accent); font-weight: 700;
+  text-decoration: underline; text-underline-offset: 4px; }
+.pn-proto-panel { max-height: 28vh; overflow-y: auto; padding: 0 var(--pn-gutter) 16px; }
 .pn-proto-group { margin: 8px 0 0; }
 .pn-proto-group .pn-label { margin: 0 0 6px; }
 .pn-proto .pn-chips { margin: 0; gap: 8px; }
-.pn-proto .pn-chip { border-color: var(--pn-field-line); }
+.pn-proto .pn-chip:not([aria-pressed="true"]) { border-color: var(--pn-field-line); }
 .compare .pn-proto { display: none; }
