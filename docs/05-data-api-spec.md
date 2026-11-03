@@ -11,6 +11,7 @@
 | `autoContext` 내용 | reportedFrom(접수 화면·기기), screenCode, errorCode, occurredAt | 오류가 난 기기·경로는 슬롯으로 별도 |
 | `FollowUpQa` | id, reportId, slot, question, maskedAnswer, seq | Report 1:N |
 | `Defect` | id(D-2026-001), title, type, systemGen(OLD/NEW), grade, status, departmentCode, workaround, plannedFixDate?, wontFixReasonCode?, wontFixReasonText?, published, updatedAt | 영향 지점 수·신고 수는 계산 |
+| `Defect.status` 코드 | `RECEIVED`(접수) · `REPRODUCED`(재현 확인, FC 화면 이름 "문제 확인") · `CAUSE_FOUND`(원인 파악) · `WORKAROUND`(임시조치) · `FIX_PLANNED`(수정 예정, plannedFixDate 필수) · `RESOLVED`(해결) · `WONT_FIX`(수정하지 않음, wontFixReason* 필수) | 02번 3절 상태 단계. 화면 이름은 06번 5절(ADR-015) |
 | `DefectStatusHistory` | id, defectId, from, to, reason, actorId, at, notifiable | Defect 1:N |
 | `FcNotice` | id, defectId, draftText, approvedText, status(DRAFT/APPROVED), llmCallId, approverId | 승인본만 FC에 노출 |
 | `NotificationLog` | id, defectId, historyId, recipientId, bodySnapshot, channel=PREVIEW, at | 실발송 없음 |
@@ -89,6 +90,21 @@
 ```json
 {"reportId":"R-001","type":"DEFECT","grade":"IMMEDIATE","departmentCode":"SUBSCRIPTION_IT","closedAsGuidance":false}
 ```
+
+### GET `/api/reports/mine?userId=` 응답 (S3 내 신고, ADR-015)
+신고마다 묶인 대표 결함의 지금 상태, 대표 결함의 상태 이력, **승인된** FC용 안내문만 붙인다(미승인 초안은 `null`, REQ-NT-01). 대표 결함에 아직 묶이지 않은 신고는 `defectId`·`defect`가 `null`이고 화면에서는 "접수"로 본다. 최신 신고 순.
+```json
+[{"id":"R-011","reporterId":"U-001","kind":"FULL","finalType":"DEFECT","createdAt":"2026-10-30T14:10:00+09:00",
+  "maskedText":"서명 알림톡을 누르면 세미나 초대장 화면이 떠요","defectId":"D-2026-001",
+  "defect":{"id":"D-2026-001","title":"...","status":"WORKAROUND","workaround":"...","plannedFixDate":null,
+            "wontFixReasonCode":null,"wontFixReasonText":null,"updatedAt":"2026-11-02T10:20:00+09:00"},
+  "statusHistory":[{"from":null,"to":"RECEIVED","at":"..."},{"from":"RECEIVED","to":"CAUSE_FOUND","at":"..."},
+                   {"from":"CAUSE_FOUND","to":"WORKAROUND","at":"..."}],
+  "fcNotice":{"id":"FN-001","status":"APPROVED","approvedText":"..."}}]
+```
+- `statusHistory`는 `DefectStatusHistory`에서 FC에 필요한 `from`·`to`·`at`만 내린다(`actorId`·`reason` 제외).
+- 단계는 건너뛸 수 있다(예: `RECEIVED → CAUSE_FOUND`). 화면은 지금 상태 기준으로 지난 단계를 채운다.
+- `WONT_FIX`이면 화면은 직전 상태(`statusHistory` 마지막 항목의 `from`)까지 막대를 채우고 "수정하지 않음 · ○○ 단계에서 끝났어요"로 표시한다(06번 5절).
 
 ### POST `/api/defects/{id}/status/preview` 응답
 ```json
