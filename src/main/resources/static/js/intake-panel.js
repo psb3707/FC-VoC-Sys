@@ -151,10 +151,14 @@
   /* 단계에 필요한 고정 응답을 미리 받아 둔다 (주소로 바로 열어도 같은 화면) */
   function ensure(st) {
     var step = st.step, chain = Promise.resolve();
-    // 주소로 바로 연 경우에만 빈 칸을 예시로 채운다 (클릭으로 따라갈 때는 채우지 않음)
-    if (!booted && !form.business) {
+    // 주소로 바로 연 경우에만 빈 칸을 예시로 채운다 (클릭으로 따라갈 때는 채우지 않음).
+    // 4단계 이후는 3단계 검사를 거쳐야 오므로 업무가 비어 있으면 주소로 건너뛴 것: 첫 화면이 아니어도 채운다.
+    if (!form.business) {
       var deep = isAfter(step, '3') || step === 'done' || step === 'usage';
-      if (deep || (st['case'] && (step === '2' || step === '3'))) prefill(caseOf(st));
+      if (deep || (!booted && st['case'] && (step === '2' || step === '3'))) {
+        prefill(caseOf(st));
+        if (booted) invalidate();   // 빈 값으로 받아 둔 응답은 버린다
+      }
     }
     syncProto(st);
     var needPreview = isAfter(step, '4') || step === 'done' || step === 'usage';
@@ -367,7 +371,9 @@
     },
     '4': function (st) {
       var blocked = st.alert === 'blocked';
-      var types = blocked ? ((res.preview && res.preview.detections) || [{ type: 'RRN' }]).map(function (d) { return DETECT_LABEL[d.type] || d.type; }).join(', ') : '';
+      var dets = (res.preview && res.preview.detections) || [];
+      if (!dets.length) dets = [{ type: 'RRN' }];   // 감지 결과가 없으면(차단 아닌 미리보기 재사용 등) 대표 예시로 표시
+      var types = !blocked ? '' : dets.map(function (d) { return DETECT_LABEL[d.type] || d.type; }).join(', ');
       return {
         body: [el('h3', { tabindex: '-1' }, ['무슨 일이 있었는지 한 줄로 적어 주세요']),
           note('', 'i-shield', '이름·번호는 적지 마세요', '고객 이름, 전화번호, 주민등록번호, 계좌·카드번호는 빼고 적어 주세요.'),
