@@ -29,6 +29,14 @@
       list.sort(function (a, b) { return a.at < b.at ? 1 : -1; });
       return Promise.resolve(copy(list));
     },
+    /* GET /api/reports/mine?userId=  -> 내 신고와 진행 단계 (최근 바뀐 순).
+       각 건: Report 키 + defect(지금 상태) + statusHistory + fcNotice(승인본만, 없으면 null) */
+    getMyReports: function (userId) {
+      var list = (F.myReports || []).filter(function (r) { return r.reporterId === userId; });
+      var when = function (r) { return (r.defect && r.defect.updatedAt) || r.createdAt; };
+      list.sort(function (a, b) { return when(a) < when(b) ? 1 : -1; });
+      return Promise.resolve(copy(list));
+    },
 
     /* ---- S2 접수 패널 ---- */
     setProto: function (p) {

@@ -7,7 +7,8 @@
    (d) 성씨로 시작하는 한글 3글자 낱말은 UI 낱말이거나 바로 뒤에 "(가상)"
 2) 상태 주소 × 화면 크기마다 headless Chrome(없으면 Edge)으로
    캡처(target/ui-check/<상태>_<폭>.png)와 자체 검사(index.html?selftest=1#<상태>)
-   S1 상태(STATES × SIZES)와 S2 접수 패널 상태(PANEL_STATES × PANEL_SIZES)를 함께 본다.
+   S1 상태(STATES × SIZES), S2 접수 패널 상태(PANEL_STATES × PANEL_SIZES),
+   S3 공지 카드 요약(KNOWN_HOME_STATES × SIZES)과 S3 패널(KNOWN_PANEL_STATES × PANEL_SIZES)을 함께 본다.
 
 사용: 작업 트리 루트에서  python scripts/ui_check.py
 표준 라이브러리만 쓴다. 하나라도 실패하면 종료 코드 1.
@@ -35,7 +36,9 @@ EXTRA_UI_WORDS = {"사용자", "안내가", "부서가", "오류와", "설계일
                   # S2 접수 패널 고정 응답(js/fixtures/intake.js) 문구
                   "보여요", "오류가", "오류는", "어떻게", "사례별", "사무실", "인터넷", "지우고", "이름을", "고쳐질",
                   "고객님", "고객의", "고객을", "고객도", "고객은", "방법을", "연결됨", "보낸다", "보내면", "보인다",
-                  "문제가", "나나요", "모른다", "오른쪽", "주세요", "고른다"}
+                  "문제가", "나나요", "모른다", "오른쪽", "주세요", "고른다",
+                  # S3 알려진 오류·내 신고(index.html, js/fixtures/reports.js·notifications.js) 문구
+                  "고르기", "고치지", "문자로", "문제를", "이어서", "원인을", "전에는", "반응이"}
 
 BROWSERS = [
     Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
@@ -53,6 +56,12 @@ PANEL_STATES = [P + "step=0", P + "step=1", P + "case=customer&step=2", P + "cas
                 P + "step=done", P + "step=metoo", P + "case=usage&step=usage", P + "known=off&step=1",
                 P + "step=1&proto=1", "role=MANAGER&panel=intake&step=7"]
 PANEL_SIZES = [(1280, 800), (1888, 952), (1024, 768)]   # 1024: 1280 미만 → 패널 폭 100%
+# S3 알려진 오류·내 신고 (js/known-panel.js 주소 키, ADR-015): 공지 카드 요약 줄, 패널 두 탭, 알림→내 신고, 빈 화면
+KNOWN_HOME_STATES = ["role=FC&board=known", "role=SALES&board=known"]
+K = "role=FC&board=known&panel=known&"
+KNOWN_PANEL_STATES = [K + "tab=known", K + "tab=known&item=D-2026-005", K + "tab=mine",
+                      "role=FC&panel=known&tab=mine&item=R-013",   # 알림 팝업 항목에서 연 상태
+                      "role=MANAGER&panel=known&tab=mine", "role=SALES&panel=known&tab=mine"]   # 빈 화면
 
 EXTERNAL = re.compile(r"https?://|//cdn", re.I)
 NETWORK = re.compile(r"fetch\s*\(|XMLHttpRequest")
@@ -148,8 +157,10 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     base = index.as_uri()
     profile = tempfile.mkdtemp(prefix="ui-check-", dir=str(OUT))
-    combos = [(st, w, h) for st in STATES for w, h in SIZES] + [(st, w, h) for st in PANEL_STATES for w, h in PANEL_SIZES]
-    print(f"\n[화면 검사] {browser.name}, S1 {len(STATES)}개 상태 × {len(SIZES)}개 크기 + S2 {len(PANEL_STATES)}개 상태 × {len(PANEL_SIZES)}개 크기")
+    combos = ([(st, w, h) for st in STATES + KNOWN_HOME_STATES for w, h in SIZES]
+              + [(st, w, h) for st in PANEL_STATES + KNOWN_PANEL_STATES for w, h in PANEL_SIZES])
+    print(f"\n[화면 검사] {browser.name}, S1·S3 요약 {len(STATES) + len(KNOWN_HOME_STATES)}개 상태 × {len(SIZES)}개 크기"
+          f" + S2·S3 패널 {len(PANEL_STATES) + len(KNOWN_PANEL_STATES)}개 상태 × {len(PANEL_SIZES)}개 크기")
     print(f"  {'상태':<26}{'크기':<11}결과")
     rows = []
     try:

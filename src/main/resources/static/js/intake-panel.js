@@ -8,7 +8,8 @@
      llm=ok|slow|fail      AI 응답 시안: 정상 / 늦음(로딩) / 실패(규칙 되묻기)
      case=defect|customer|usage|blocked   예시 사례(고정 응답 선택)
      alert=blocked         입력 차단 경고 표시
-     proto=1               시안 조절 열림 */
+     proto=1               시안 조절 열림
+   panel 값은 하나라서 S3(panel=known, js/known-panel.js)와 동시에 열리지 않는다. */
 (function () {
   'use strict';
   var A = window.ApiClient;
@@ -587,7 +588,7 @@
 
   function close() {
     blank();
-    go({ panel: '', step: '', alert: '', 'case': '', proto: '' });
+    go({ panel: '', step: '', alert: '', 'case': '', proto: '', tab: '', item: '' });
     var t = opener || document.querySelector('[data-panel="intake"]');
     if (t) t.focus();
   }
@@ -686,7 +687,7 @@
       opener = this;
       blank();
       lastStep = null;
-      go({ panel: 'intake', step: '', alert: '', 'case': '', popup: '', notice: '' });
+      go({ panel: 'intake', step: '', alert: '', 'case': '', popup: '', notice: '', tab: '', item: '' });   // S3 키(tab, item)도 지운다
     });
     var panel = $('intake-panel');
     panel.addEventListener('click', onClick);
