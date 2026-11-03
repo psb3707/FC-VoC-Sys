@@ -1,5 +1,6 @@
 /* S1 SFA 메인 목업 동작 (docs/06-ui-spec.md 3절, 11절, ADR-012).
-   상태는 주소 # 뒤에 둔다: role=FC|MANAGER|SALES|IT, user=U-001, popup=alarm, notice=next, demo=1
+   상태는 주소 # 뒤에 둔다: role=FC|MANAGER|SALES|IT, user=U-001, popup=alarm, notice=next, demo=1,
+     board=system|ceo|sales|known (공지 탭. 없으면 일반공지. known 이면 S3 요약 줄을 js/known-panel.js 가 그린다)
    클릭하면 주소를 바꾸고, 주소가 바뀌면 화면을 다시 그린다(한 경로).
    ?compare=1 이면 SFA 화면 밖 시안 띠를 숨긴다(재현도 비교 캡처용). */
 (function () {
@@ -8,7 +9,7 @@
   var DEFAULT_NOTICE = '이 화면은 다음 단계에서 만들어요.';
   var users = [];
   var home = {};
-  var board = 'general';
+  var BOARDS = ['general', 'system', 'ceo', 'sales', 'known'];
   var noticeText = null;   // 마지막으로 누른 요소의 안내 문구 (주소에는 남기지 않음)
   var $ = function (id) { return document.getElementById(id); };
 
@@ -51,7 +52,9 @@
 
   function writeHash(st) {
     // S1 키 다음에 S2 접수 패널 키(js/intake-panel.js), 그 밖의 키는 받은 순서대로 유지
-    var order = ['role', 'user', 'popup', 'notice', 'demo', 'panel', 'mode', 'known', 'llm', 'case', 'step', 'alert', 'proto'];
+    // S3(js/known-panel.js): board, panel=known, tab, item
+    var order = ['role', 'user', 'popup', 'notice', 'demo', 'board', 'panel', 'tab', 'item',
+      'mode', 'known', 'llm', 'case', 'step', 'alert', 'proto'];
     Object.keys(st).forEach(function (k) { if (order.indexOf(k) < 0) order.push(k); });
     var parts = order.filter(function (k) { return st[k]; }).map(function (k) {
       return k + '=' + encodeURIComponent(st[k]);
@@ -108,10 +111,15 @@
       return el('tr', null, [el('td', 'c-no', [r.designNo]), el('td', null, [r.customerName]),
         el('td', 'c-prod', [r.productName]), el('td', 'c-date', [r.designedAt.replace(/-/g, '.')])]);
     }));
-    renderBoard();
   }
 
-  function renderBoard() {
+  function renderBoard(st) {
+    var board = BOARDS.indexOf(st.board) < 0 ? 'general' : st.board;
+    Array.prototype.forEach.call(document.querySelectorAll('#notice-tabs .tab'), function (x) {
+      x.classList.toggle('is-on', x.getAttribute('data-board') === board);
+      x.setAttribute('aria-pressed', String(x.getAttribute('data-board') === board));
+    });
+    if (board === 'known') return;   // S3 요약 줄은 js/known-panel.js 가 그린다
     var list = (home.boards || {})[board] || [];
     fill('board', list.map(function (n) {
       return el('li', null, [el('span', 'b-title', [n.title]), el('span', 'b-date', [n.postedAt])]);
@@ -150,7 +158,8 @@
     items.forEach(function (n) {
       var b = el('button', 'alarm-item', [n.bodySnapshot, el('span', 'when', [fmtWhen(n.at)])]);
       b.type = 'button';
-      b.setAttribute('data-notice', '내 신고 경과 화면은 다음 단계에서 만들어요.');
+      b.setAttribute('data-kn-defect', n.defectId);   // 누르면 S3 패널 [내 신고] (js/known-panel.js)
+      b.setAttribute('aria-haspopup', 'dialog');
       ul.appendChild(el('li', null, [b]));
     });
     $('alarm-empty').hidden = items.length > 0;
@@ -162,6 +171,7 @@
     var st = readHash();
     document.body.classList.toggle('demo', st.demo === '1');
     var userId = renderRole(st);
+    renderBoard(st);
     $('notice-text').textContent = noticeText || DEFAULT_NOTICE;
     $('notice-box').hidden = st.notice !== 'next';
     return window.ApiClient.getNotifications(userId).then(function (items) {
@@ -186,13 +196,12 @@
       noticeText = t.getAttribute('data-notice');
       update({ notice: 'next' });
     });
-    // 기존 공지 탭: 모양과 목록만 바뀐다 (새 탭은 안내 상자)
+    // 공지 탭: 주소의 board 만 바꾼다 (알려진 오류·내 신고 탭이면 S3 요약 줄)
     $('notice-tabs').addEventListener('click', function (e) {
       var t = e.target.closest('.tab');
-      if (!t || t.hasAttribute('data-notice')) return;
-      Array.prototype.forEach.call(this.querySelectorAll('.tab'), function (x) { x.classList.toggle('is-on', x === t); });
-      board = t.getAttribute('data-board');
-      renderBoard();
+      if (!t) return;
+      var b = t.getAttribute('data-board');
+      update({ board: b === 'general' ? '' : b });
     });
     // 업무 탭: 모양만 바뀐다 (목록은 가입설계 이력 고정)
     $('work-tabs').addEventListener('click', function (e) {

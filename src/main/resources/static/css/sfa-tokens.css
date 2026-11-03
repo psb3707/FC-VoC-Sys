@@ -53,6 +53,7 @@
   --sfa-tab-bg: #f7f9fa;
   --sfa-tab-border: #d3dce6;
   --sfa-tab-radius: 12px;
+  --sfa-tab-rule: #3d434d;          /* 공지 탭 줄 아래 2px 선 */
   --sfa-tab-font: 14px;
   --sfa-tab-color: #636e81;
   --sfa-tab-active-bg: #fff;
@@ -232,7 +233,7 @@ svg { display: block; }
 /* 공지 탭 카드 + 배너 */
 .bottom-row { margin-top: 16px; display: grid; grid-template-columns: minmax(0, 529fr) minmax(0, 481fr); gap: 32px; }
 .notice-card { height: 308px; padding: 28px 24px 0; }
-.tabs { display: flex; border-bottom: 2px solid #3d434d; }
+.tabs { display: flex; border-bottom: 2px solid var(--sfa-tab-rule); }
 .tabs li { display: flex; min-width: 0; }
 .tab { min-width: 0; height: var(--sfa-tab-h);
   background: var(--sfa-tab-bg); border: 1px solid var(--sfa-tab-border); border-bottom: 0;

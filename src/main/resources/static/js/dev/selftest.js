@@ -119,8 +119,19 @@
     same(newQ && newQ.querySelector('.quick-label'), oldQ && oldQ.querySelector('.quick-label'), ['fontSize', 'fontWeight', 'color', 'lineHeight'], '퀵메뉴 글자');
     same(newQ && newQ.querySelector('.quick-ico'), oldQ && oldQ.querySelector('.quick-ico'), ['width', 'height', 'backgroundColor', 'borderTopLeftRadius'], '퀵메뉴 아이콘');
     var newT = document.querySelector('[data-entry="tab"]');
-    var oldT = newT && newT.closest('.tabs').querySelector('.tab:not(.is-on):not([data-entry])');
-    same(newT, oldT, ['height', 'fontSize', 'fontWeight', 'color', 'backgroundColor', 'borderTopLeftRadius', 'borderTopColor'], '공지 탭');
+    var newOn = !!newT && newT.classList.contains('is-on');
+    var otherT = newT && newT.closest('.tabs').querySelector('.tab:not([data-entry])');
+    same(newT, otherT, ['height', 'fontSize', 'borderTopLeftRadius'], '공지 탭');
+    if (!newOn) {
+      same(newT, newT && newT.closest('.tabs').querySelector('.tab:not(.is-on):not([data-entry])'),
+        ['fontWeight', 'color', 'backgroundColor', 'borderTopColor'], '공지 탭');
+    } else {
+      // 새 탭이 선택된 상태(board=known): 다른 탭과 비교할 수 없으므로 선택 탭 토큰(0-1)과 비교
+      var ts = cs(newT);
+      if (hex(parseColor(ts.backgroundColor)) !== '#ffffff') sf.push('공지 탭(선택) 바탕 ' + ts.backgroundColor);
+      if (parseInt(ts.fontWeight, 10) !== 700) sf.push('공지 탭(선택) 굵기 ' + ts.fontWeight);
+      if (hex(parseColor(ts.color)) !== '#292c33') sf.push('공지 탭(선택) 글자 ' + ts.color);
+    }
     add('entry-same-look', sf, '퀵메뉴·공지 탭');
 
     // 7. 알림 배지(0-2)와 팝업(0-1)
@@ -199,6 +210,68 @@
       // 시안 표시
       if (!/화면 시안/.test((pn.querySelector('.pn-proto') || {}).textContent || '')) pf.push('"화면 시안" 표시 없음');
       add('panel-token', pf, wantW + 'px');
+    }
+
+    // 12. S3 공지 카드 요약 줄(진입점, 06번 0-1 공지 목록 줄: 높이 48·글자 14·#292c33, 카드 안)
+    var sums = all('#board .kn-sum');
+    if (sums.length) {
+      var smf = [], card = document.querySelector('.notice-card').getBoundingClientRect();
+      sums.forEach(function (li) {
+        var r = li.getBoundingClientRect(), s = cs(li);
+        if (!near(r.height, 48) || !near(px(s.fontSize), 14) || hex(parseColor(s.color)) !== '#292c33') {
+          smf.push(label(li) + ' h=' + r.height.toFixed(1) + ' font=' + s.fontSize + ' color=' + s.color);
+        }
+        if (li.getAttribute('data-a11y') !== 'sfa') smf.push(label(li) + ' data-a11y=sfa 아님');
+        if (r.bottom > card.bottom + EPS) smf.push(label(li) + ' 공지 카드 밖');
+        var t = li.querySelector('.b-title');
+        if (t && cs(t).fontSize !== cs(li).fontSize) smf.push(label(t) + ' 글자 크기 다름');
+      });
+      var et = document.querySelector('[data-entry="tab"]');
+      if (!et || !et.classList.contains('is-on')) smf.push('알려진 오류·내 신고 탭이 선택 표시 아님');
+      add('s3-summary-token', smf, sums.length + '줄');
+    }
+
+    // 13. S3 패널(열려 있을 때만): S2와 같은 틀(0-2절) + 전환 탭 + 내 신고 단계 글자 (06번 5절, ADR-015)
+    var kn = document.getElementById('known-panel');
+    if (kn && visible(kn)) {
+      var kf = [], kr = kn.getBoundingClientRect(), kvw = document.documentElement.clientWidth;
+      var kW = window.innerWidth < 1280 ? kvw : 520;
+      if (!near(kr.width, kW)) kf.push('패널 폭 ' + kr.width.toFixed(1) + ' (기대 ' + kW + ')');
+      if (!near(kr.right, kvw) || !near(kr.top, 0)) kf.push('패널 위치 오른쪽·위 아님');
+      if (kn.getAttribute('role') !== 'dialog' || kn.getAttribute('aria-modal') !== 'true') kf.push('role=dialog/aria-modal 없음');
+      var kl = document.getElementById(kn.getAttribute('aria-labelledby') || '');
+      if (!kl || !kl.textContent.trim()) kf.push('aria-labelledby 대상 없음');
+      var kt = kn.querySelector('.pn-head h2');
+      if (!kt || px(cs(kt).fontSize) < 24 - EPS) kf.push('패널 제목 24px 미만');
+      all('#known-panel .pn-body h3').forEach(function (h) { if (px(cs(h).fontSize) < 24 - EPS) kf.push(label(h) + ' 제목 24px 미만'); });
+      var ki = kn.querySelector('.pn-head .pn-ico');
+      if (!ki || hex(parseColor(cs(ki).backgroundColor)) !== '#0099e6') kf.push('머리 아이콘 원 #0099e6 아님');
+      if (document.getElementById('intake-panel') && visible(document.getElementById('intake-panel'))) kf.push('S2 패널과 함께 열림');
+      // 전환 탭: tablist, 2개, 선택 하나, 선택은 굵게(색 아닌 표시)
+      var tl = kn.querySelector('[role="tablist"]'), ktabs = all('#known-panel [role="tab"]');
+      if (!tl) kf.push('role=tablist 없음');
+      if (ktabs.length !== 2) kf.push('전환 탭 ' + ktabs.length + '개 (2 필요)');
+      var sel = ktabs.filter(function (b) { return b.getAttribute('aria-selected') === 'true'; });
+      if (sel.length !== 1) kf.push('선택된 탭 ' + sel.length + '개');
+      sel.forEach(function (b) { if (parseInt(cs(b).fontWeight, 10) < 700) kf.push('선택 탭 굵게 아님'); });
+      // 본문 스크롤 영역
+      var kb = document.getElementById('kn-body');
+      if (!kb || !/auto|scroll/.test(cs(kb).overflowY)) kf.push('본문 스크롤 영역 아님');
+      // 내 신고: 카드마다 지금 단계 글자 + 단계 이름 줄 + 상태 태그 (색만으로 전하지 않음)
+      all('#known-panel .kn-progress').forEach(function (p) {
+        var now = p.querySelector('.kn-now'), names = p.querySelector('.kn-stages');
+        if (!now || !now.textContent.trim()) kf.push('단계 글자 없음');
+        if (!names || !names.querySelector('[aria-current="step"]')) kf.push('지금 단계 표시(aria-current) 없음');
+      });
+      all('#known-panel .kn-card').forEach(function (c) {
+        var tag = c.querySelector('.pn-tag');
+        if (!tag || !tag.textContent.trim()) kf.push(label(c) + ' 상태 글자 없음');
+      });
+      // 주 행동 버튼은 한 화면 하나 이하
+      var kp = all('#known-panel .pn-btn');
+      if (kp.length > 1) kf.push('주 행동 버튼 ' + kp.length + '개');
+      if (!/화면 시안/.test((kn.querySelector('.pn-proto') || {}).textContent || '')) kf.push('"화면 시안" 표시 없음');
+      add('s3-panel-token', kf, kW + 'px');
     }
 
     var result = { ok: checks.every(function (c) { return c.pass; }), url: location.hash, checks: checks };

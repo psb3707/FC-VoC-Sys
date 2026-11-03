@@ -7,6 +7,8 @@ window.FIXTURES.notifications = [
     "bodySnapshot": "알림톡 링크 오류 — 임시조치 안내가 등록됐어요", "channel": "PREVIEW", "at": "2026-11-02T10:20:00+09:00" },
   { "id": "N-002", "defectId": "D-2026-002", "historyId": "H-005", "recipientId": "U-001",
     "bodySnapshot": "청약 서명 화면 멈춤 — 고칠 날짜가 11월 20일로 정해졌어요", "channel": "PREVIEW", "at": "2026-11-01T16:05:00+09:00" },
+  { "id": "N-006", "defectId": "D-2026-005", "historyId": "H-008", "recipientId": "U-001",
+    "bodySnapshot": "고객 목록 이름 누름 오류 — 새 시스템에서 고치기로 해서 지금 화면은 고치지 않아요", "channel": "PREVIEW", "at": "2026-10-30T15:00:00+09:00" },
   { "id": "N-004", "defectId": "D-2026-001", "historyId": "H-003", "recipientId": "U-002",
     "bodySnapshot": "알림톡 링크 오류 — 임시조치 안내가 등록됐어요", "channel": "PREVIEW", "at": "2026-11-02T10:20:00+09:00" },
   { "id": "N-005", "defectId": "D-2026-002", "historyId": "H-005", "recipientId": "U-010",

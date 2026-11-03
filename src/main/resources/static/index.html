@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="css/sfa-tokens.css">
 <link rel="stylesheet" href="css/app.css">
 <link rel="stylesheet" href="css/panel.css">
+<link rel="stylesheet" href="css/known.css">
 </head>
 <body>
 <!-- 아이콘 모음 (외부 이미지 없이 인라인 SVG) -->
@@ -148,8 +149,7 @@
             <li><button type="button" class="tab" data-sfa="tab" data-board="system">시스템공지</button></li>
             <li><button type="button" class="tab" data-sfa="tab" data-board="ceo">CEO 메시지</button></li>
             <li><button type="button" class="tab" data-sfa="tab" data-board="sales">영업자료실</button></li>
-            <li><button type="button" class="tab tab-auto" data-sfa="tab" data-entry="tab"
-                        data-notice="알려진 오류와 내 신고 화면은 다음 단계에서 만들어요.">알려진 오류·내 신고</button></li>
+            <li><button type="button" class="tab tab-auto" data-sfa="tab" data-entry="tab" data-board="known">알려진 오류·내 신고</button></li>
           </ul>
           <ul class="board" id="board" data-a11y="replica"></ul>
         </section>
@@ -215,13 +215,33 @@
   </div>
 </section>
 
+<!-- ⑤ S3 알려진 오류·내 신고 패널 (새 요소, ADR-015). S2 패널과 같은 틀. 내용은 js/known-panel.js 가 그린다 -->
+<div class="pn-scrim" id="kn-scrim" hidden></div>
+<section class="pn kn" id="known-panel" role="dialog" aria-modal="true" aria-labelledby="kn-title" data-a11y="new" hidden>
+  <header class="pn-head">
+    <span class="pn-ico"><svg aria-hidden="true"><use href="#i-bell"/></svg></span>
+    <h2 id="kn-title">알려진 오류·내 신고</h2>
+    <button type="button" class="pn-close" id="kn-close"><svg aria-hidden="true"><use href="#i-close"/></svg>닫기</button>
+  </header>
+  <div class="kn-tabs" role="tablist" aria-label="보기 고르기">
+    <button type="button" role="tab" class="kn-tab" id="kn-tab-known" data-tab="known" aria-controls="kn-body">알려진 오류</button>
+    <button type="button" role="tab" class="kn-tab" id="kn-tab-mine" data-tab="mine" aria-controls="kn-body">내 신고</button>
+  </div>
+  <div class="pn-body" id="kn-body" role="tabpanel" tabindex="-1"></div>
+  <div class="pn-proto">
+    <div class="pn-proto-bar kn-proto-bar"><b>화면 시안 – 실제 동작 안 함</b></div>
+  </div>
+</section>
+
 <script src="js/fixtures/users.js"></script>
 <script src="js/fixtures/notifications.js"></script>
 <script src="js/fixtures/sfa-home.js"></script>
 <script src="js/fixtures/intake.js"></script>
+<script src="js/fixtures/reports.js"></script>
 <script src="js/api-client.js"></script>
 <script src="js/sfa-mock.js"></script>
 <script src="js/intake-panel.js"></script>
+<script src="js/known-panel.js"></script>
 <script>
   // ?selftest=1 일 때만 화면 자체 검사를 불러온다 (docs/06-ui-spec.md 11절)
   if (/[?&]selftest=1(&|$)/.test(location.search)) {
