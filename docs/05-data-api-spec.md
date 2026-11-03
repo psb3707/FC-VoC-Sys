@@ -99,4 +99,5 @@
 09번 문서 참조.
 
 ## 5. 프론트 fixtures 규칙
-`js/fixtures/*.json`은 위 응답 형식과 동일한 키를 쓴다. 키 불일치는 M2 점검 항목.
+`js/fixtures/*.js`는 `window.FIXTURES.<이름> = {...}` 형태로, 위 응답 형식과 동일한 키를 쓴다(더블클릭 `file://` 실행에서는 JSON 파일을 읽을 수 없으므로 .js, 2026-11-02 사용자 결정). 화면은 `api-client.js`를 거쳐서만 읽는다. 키 불일치는 M2 점검 항목.
+- 예외: `js/fixtures/sfa-home.js`(`window.FIXTURES.sfaHome`)는 S1에서 실제 SFA 화면의 실데이터 자리를 채우는 **화면 시안 전용 가상 데이터**다(ADR-012). 대응하는 백엔드 API는 없고, 키는 같은 규약(camelCase, 날짜 ISO-8601)을 따른다. 화면은 `ApiClient.getSfaHome()`으로만 읽는다.

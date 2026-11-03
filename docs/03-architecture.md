@@ -61,7 +61,7 @@ FC-Voc-Sys/
 ├─ start.cmd, reset.cmd, README.md, CLAUDE.md, .gitignore
 ├─ pom.xml, mvnw, .mvn/                 (백엔드 단계부터)
 ├─ .githooks/, .claude/settings.json, scripts/check_phase.py
-├─ assets/sfa-main-masked.png
+├─ assets/                              (공용 자산. 실제 화면 캡처는 넣지 않음, ADR-012)
 ├─ references/                           (Git 제외, 참고 전용)
 ├─ docs/  00~13, adr/, gates/PHASE(현재 단계), proposal.md
 ├─ config/  grading-rules.yml, department-map.yml, required-slots.yml, privacy-patterns.yml
@@ -73,6 +73,6 @@ FC-Voc-Sys/
    ├─ main/java/.../pilot/ {intake, privacy, llm/{provider,prompt,log}, rules, defect, experiment, seed, common}
    ├─ main/resources/static/
    │   index.html(S1+S2+S3), ledger.html(S4), experiment.html(S5), facilitator.html(S6)
-   │   js/api-client.js, js/fixtures/, js/, css/, vendor/alpine.min.js
+   │   js/api-client.js, js/fixtures/*.js, js/, js/dev/selftest.js, css/
    └─ test/java/ (privacy, rules, llm 계약, experiment 배정)
 ```
