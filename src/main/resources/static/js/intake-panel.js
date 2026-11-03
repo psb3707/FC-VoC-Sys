@@ -1,14 +1,15 @@
 /* S2 접수 패널 (docs/06-ui-spec.md 4절, REQ-IN-01~09, REQ-MD-01/02, REQ-PV-01).
-   기능 없는 화면 시안: 데이터는 ApiClient(=fixtures)만 읽고, 저장·타이머·실제 마스킹은 없다.
-   상태는 주소 # 뒤에 둔다(06번 11절과 같은 방식). S1 키(role, user, popup, notice, demo)에 더해
+   기능 없는 화면(프론트 단계): 데이터는 ApiClient(=fixtures)만 읽고, 저장·타이머·실제 마스킹은 없다.
+   화면 안에 시안 조절 버튼은 없다(ADR-016). 모든 상태는 주소 # 뒤 키로만 바꾼다(06번 11절, 시연 주소 목록).
+   S1 키(role, user, popup, notice, demo)에 더해
      panel=intake          패널 열림
      step=0..7|metoo|usage|done   단계(끝 화면 포함)
      mode=A|B              A: AI 끔(5단계 없음, 6단계는 저장용 마스킹 결과만) / B: AI 켬 (기본 B)
      known=off             알려진 오류 단계(0) 끔 (S5 실험 재사용용)
-     llm=ok|slow|fail      AI 응답 시안: 정상 / 늦음(로딩) / 실패(규칙 되묻기)
-     case=defect|customer|usage|blocked   예시 사례(고정 응답 선택)
+     llm=ok|slow|fail      AI 응답: 정상 / 늦음(로딩에서 멈춤) / 실패(규칙 되묻기)
+     case=defect|customer|usage|blocked   예시 사례(고정 응답 선택). 값이 바뀌면 칸을 그 사례로 다시 채운다
      alert=blocked         입력 차단 경고 표시
-     proto=1               시안 조절 열림
+   열린 채로 mode·llm·case·role 이 주소에서 바뀌면 받아 둔 응답을 버리고 새로 받는다(syncKeys).
    panel 값은 하나라서 S3(panel=known, js/known-panel.js)와 동시에 열리지 않는다. */
 (function () {
   'use strict';
@@ -38,7 +39,7 @@
   var DETECT_LABEL = { RRN: '주민등록번호', ACCOUNT: '계좌번호', CARD: '카드번호' };
   var ATTR_LABEL = { contractStatus: '계약 상태', productGroup: '상품 종류', lastChange: '최근 변경', channel: '청약 경로' };
 
-  /* 시안 예시 입력 (모두 가상). 단계로 바로 갈 때 빈 칸을 채운다 */
+  /* 예시 입력 (모두 가상). 단계로 바로 갈 때 빈 칸을 채운다 */
   var SAMPLES = {
     defect: { customer: 'no', business: 'SUBSCRIPTION', symptom: 'WRONG_SCREEN', oneLine: '서명 알림톡을 누르면 세미나 초대장 화면이 떠요',
       answers: { device_path: '휴대폰 알림톡', key_condition: '네', steps: '매번 나요' } },
@@ -51,15 +52,15 @@
   var FALLBACK_ANSWERS = { device_path: '휴대폰', steps: '알림톡에서 서명 버튼을 누르면 매번 생겨요' };
 
   var meta = null, ctx = null, known = [], users = [];
-  var form, res, lastStep = null, opener = null, booted = false;
+  var form, res, lastStep = null, opener = null, booted = false, lastKeys = null;
 
   function blank() {
     form = { customer: null, customerNo: '', business: null, symptom: null, oneLine: '', answers: {},
       onBehalf: '', edit: null, typeOverride: null, err: '' };
-    res = { preview: null, session: null, refined: null, report: null, meToo: null, released: false };
+    res = { preview: null, session: null, refined: null, report: null, meToo: null };
   }
   blank();
-  function invalidate() { res.preview = res.session = res.refined = res.report = null; res.released = false; form.edit = null; }
+  function invalidate() { res.preview = res.session = res.refined = res.report = null; form.edit = null; }
 
   /* ---- 작은 도우미 ---- */
   function el(tag, attrs, kids) {
@@ -131,11 +132,12 @@
   }
   function caseOf(st) {
     if (st['case'] && SAMPLES[st['case']]) return st['case'];
+    if (st.step === 'usage' && !form.business) return 'usage';   // 주소로 사용법 끝 화면을 바로 연 경우
     if (form.customer === 'yes') return 'customer';
     if (form.symptom === 'HOW_TO') return 'usage';
     return 'defect';
   }
-  function syncProto(st) { A.setProto({ 'case': caseOf(st), llm: st.llm === 'fail' ? 'fail' : 'ok' }); }
+  function syncFixture(st) { A.setProto({ 'case': caseOf(st), llm: st.llm === 'fail' ? 'fail' : 'ok' }); }
   function prefill(c) {
     var s = SAMPLES[c] || SAMPLES.defect;
     form.customer = s.customer; form.customerNo = s.customerNo || ''; form.business = s.business; form.symptom = s.symptom;
@@ -161,11 +163,11 @@
         if (booted) invalidate();   // 빈 값으로 받아 둔 응답은 버린다
       }
     }
-    syncProto(st);
+    syncFixture(st);
     var needPreview = isAfter(step, '4') || step === 'done' || step === 'usage';
     if (needPreview && !res.preview) chain = chain.then(function () { return A.postIntakePreview(req(st)).then(function (p) { res.preview = p; }); });
     var aiStep = st.mode === 'B' && (isAfter(step, '4') || step === 'done' || step === 'usage');
-    var waiting = step === '5' && st.llm === 'slow' && !res.released;
+    var waiting = step === '5' && st.llm === 'slow';
     chain = chain.then(function () {
       if (res.preview && res.preview.blocked && needPreview) return;
       if (aiStep && !waiting && !res.session) return A.postIntakeSession(req(st)).then(function (s) { res.session = s; });
@@ -222,7 +224,8 @@
     panel.hidden = !open;
     $('pn-scrim').hidden = !open;
     document.querySelector('[data-panel="intake"]').setAttribute('aria-expanded', String(open));
-    if (!open) { lastStep = null; return Promise.resolve(); }
+    if (!open) { lastStep = null; lastKeys = null; return Promise.resolve(); }
+    syncKeys(st);
     var q = seqOf(st);
     if (!st.step || (/^\d$/.test(st.step) && q.indexOf(st.step) < 0)) {
       var fix = !st.step ? q[0] : (q.filter(function (s) { return s > st.step; })[0] || q[q.length - 1]);
@@ -241,6 +244,18 @@
     });
   }
 
+  /* 패널이 열린 채로 주소의 mode·llm·case·role 이 바뀌면(시연 주소로 바로 이동) 이전 응답을 버린다.
+     case 가 새 값이면 칸을 그 사례로 다시 채운다. case 가 지워지는 경우(차단 경고 해제)는 적은 내용을 그대로 둔다. */
+  function syncKeys(st) {
+    var k = { mode: st.mode, llm: st.llm, 'case': st['case'] || '', role: st.role };
+    var was = lastKeys;
+    lastKeys = k;
+    if (!was || !booted) return;
+    if (k['case'] && k['case'] !== was['case']) { blank(); prefill(k['case']); return; }
+    if (k.role !== was.role) form.onBehalf = '';
+    if (k.mode !== was.mode || k.llm !== was.llm) { invalidate(); res.meToo = null; }
+  }
+
   function paint(st) {
     var fk = document.activeElement && document.activeElement.getAttribute && document.activeElement.getAttribute('data-fk');
     var caret = fk && document.activeElement.selectionStart;
@@ -253,7 +268,6 @@
     var foot = $('pn-foot');
     foot.innerHTML = '';
     view.foot.forEach(function (n) { if (n) foot.appendChild(n); });
-    paintProto(st);
     if (st.step !== lastStep) {
       body.scrollTop = 0;
       var h = body.querySelector('h3');
@@ -396,10 +410,7 @@
         return {
           body: [el('div', { cls: 'pn-loading', role: 'status' }, [el('span', { cls: 'pn-spin', 'aria-hidden': 'true' }),
             el('h3', { tabindex: '-1' }, ['AI가 내용을 살펴보고 있어요']),
-            el('p', { cls: 'pn-lead' }, ['잠시만 기다려 주세요. 오래 걸리면 기본 질문으로 넘어가요.'])]),
-            el('div', { cls: 'pn-note pn-proto-note' }, [icon('i-info'), el('div', null, [el('b', null, ['화면 시안']),
-              '실제로는 응답이 오면 저절로 넘어가요. 아래 버튼으로 응답을 받은 화면을 볼 수 있어요.',
-              btn('pn-btn-out', '시안: 응답 받은 화면 보기', 'release')])])],
+            el('p', { cls: 'pn-lead' }, ['잠시만 기다려 주세요. 오래 걸리면 기본 질문으로 넘어가요.'])])],
           foot: footNav(st, null)
         };
       }
@@ -534,34 +545,6 @@
     }
   };
 
-  /* 시안 조절 (실제 화면에는 없음) */
-  function paintProto(st) {
-    var open = st.proto === '1';
-    var t = $('pn-proto-toggle');
-    t.setAttribute('aria-expanded', String(open));
-    t.textContent = open ? '시안 조절 닫기' : '시안 조절 열기';
-    var box = $('pn-proto-panel');
-    box.hidden = !open;
-    if (!open) return;
-    function group(title, key, cur, opts) {
-      return el('div', { cls: 'pn-proto-group', role: 'group', 'aria-label': title }, [el('p', { cls: 'pn-label' }, [title]),
-        el('ul', { cls: 'pn-chips' }, opts.map(function (o) {
-          return el('li', null, [btn('pn-chip', o[1], 'proto', { 'data-key': key, 'data-code': o[0], 'aria-pressed': String(cur === o[0]),
-            'data-fk': 'proto:' + key + ':' + o[0] })]);
-        }))]);
-    }
-    var q = seqOf(st);
-    box.innerHTML = '';
-    [group('방식 (mode)', 'mode', st.mode, [['B', 'B · AI 켬'], ['A', 'A · AI 끔']]),
-      group('알려진 오류 단계', 'known', st.known === 'off' ? 'off' : 'on', [['on', '보이기'], ['off', '끄기 (실험용)']]),
-      group('AI 응답', 'llm', st.llm, [['ok', '정상'], ['slow', '늦음'], ['fail', '실패']]),
-      group('예시 사례 (칸 채우기)', 'case', st['case'] || '', [['defect', '알림톡 오류'], ['customer', '고객 관련'], ['usage', '사용법 문의'], ['blocked', '차단될 입력']]),
-      group('보는 사람', 'role', st.role === 'MANAGER' ? 'MANAGER' : 'FC', [['FC', 'FC'], ['MANAGER', '관리자 (대리 접수)']]),
-      group('단계 바로 가기 (문서의 단계 번호)', 'step', st.step, q.map(function (s) { return [s, s + ' ' + STEP_TITLE[s]]; })
-        .concat([['metoo', '나도 겪었어요 끝'], ['usage', '사용법 끝'], ['done', '접수 끝']]))
-    ].forEach(function (g) { box.appendChild(g); });
-  }
-
   /* ---- 동작 ---- */
   function next(st) {
     var q = seqOf(st), i = q.indexOf(st.step);
@@ -570,7 +553,7 @@
     if (st.step === '3' && (!form.business || !form.symptom)) { form.err = '업무와 문제를 하나씩 골라 주세요.'; return render(); }
     if (st.step === '4') {
       if (!form.oneLine.trim()) { form.err = '한 줄 설명을 적어 주세요.'; return render(); }
-      syncProto(st);
+      syncFixture(st);
       invalidate();
       return A.postIntakePreview(req(st)).then(function (p) {
         if (p && p.blocked) { res.preview = p; go({ alert: 'blocked' }); return; }
@@ -588,7 +571,7 @@
 
   function close() {
     blank();
-    go({ panel: '', step: '', alert: '', 'case': '', proto: '', tab: '', item: '' });
+    go({ panel: '', step: '', alert: '', 'case': '', tab: '', item: '' });
     var t = opener || document.querySelector('[data-panel="intake"]');
     if (t) t.focus();
   }
@@ -611,38 +594,11 @@
       case 'symptom': form.symptom = code; form.err = ''; invalidate(); return render();
       case 'answer': form.answers[b.getAttribute('data-slot')] = code; res.refined = null; form.edit = null; return render();
       case 'type': editOf(st).type = code; return render();
-      case 'release': res.released = true; return render();
       case 'usage': return go({ step: 'usage' });
       case 'not-usage': form.typeOverride = 'DEFECT'; form.edit = null; return go({ step: '6' });
       case 'submit':
         return A.postReport(reportReq(st)).then(function (r) { res.report = r; go({ step: r.closedAsGuidance ? 'usage' : 'done' }); });
-      case 'proto': return onProto(st, b.getAttribute('data-key'), code);
     }
-  }
-
-  function onProto(st, key, code) {
-    var patch = {};
-    if (key === 'mode') { patch.mode = code; invalidate(); }
-    if (key === 'known') patch.known = code === 'off' ? 'off' : '';
-    if (key === 'llm') { patch.llm = code === 'ok' ? '' : code; res.session = res.refined = res.report = null; res.released = false; form.edit = null; }
-    if (key === 'role') { patch.role = code; patch.user = ''; form.onBehalf = ''; }
-    if (key === 'case') {
-      blank();
-      prefill(code);
-      patch['case'] = code;
-      patch.alert = '';
-      if (code === 'blocked') patch.step = '4';
-      else if (code === 'customer' && !isAfter(st.step, '1')) patch.step = '2';
-    }
-    if (key === 'step') {
-      patch.step = code;
-      patch.alert = '';
-      if (!form.business && (isAfter(code, '3') || code === 'done')) prefill(caseOf(st));
-      if (code === 'metoo') res.meToo = null;
-      if (code === 'done') res.report = null;
-      if (code === 'usage' && !st['case']) { blank(); prefill('usage'); patch['case'] = 'usage'; if (st.mode === 'A') patch.mode = ''; }
-    }
-    go(patch);
   }
 
   function onInput(e) {
@@ -693,7 +649,6 @@
     panel.addEventListener('click', onClick);
     panel.addEventListener('input', onInput);
     $('pn-close').addEventListener('click', close);
-    $('pn-proto-toggle').addEventListener('click', function () { go({ proto: read().proto === '1' ? '' : '1' }); });
     $('pn-proxy-select').addEventListener('change', function (e) { form.onBehalf = e.target.value; form.edit = null; });
     document.addEventListener('keydown', onKey);
     window.addEventListener('hashchange', render);

@@ -34,8 +34,6 @@
 .kn-tab[aria-selected="true"]::before { content: "✓ "; }
 .kn-tab:last-child { margin-right: 0; }
 
-.kn-proto-bar { min-height: var(--pn-btn-h); }
-
 /* 카드 머리: 제목 + 상태 태그(.pn-tag) */
 .kn-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin: 0 0 8px; }
 .kn-card-head .pn-card-title { margin: 0; }

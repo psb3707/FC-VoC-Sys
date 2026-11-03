@@ -2,7 +2,8 @@
    상태는 주소 # 뒤에 둔다: role=FC|MANAGER|SALES|IT, user=U-001, popup=alarm, notice=next, demo=1,
      board=system|ceo|sales|known (공지 탭. 없으면 일반공지. known 이면 S3 요약 줄을 js/known-panel.js 가 그린다)
    클릭하면 주소를 바꾸고, 주소가 바뀌면 화면을 다시 그린다(한 경로).
-   ?compare=1 이면 SFA 화면 밖 시안 띠를 숨긴다(재현도 비교 캡처용). */
+   화면 안에 시안 표시나 역할 전환 버튼은 없다(ADR-016). 역할·사용자는 주소로만 바꾼다(06번 11절 시연 주소 목록).
+   ?compare=1(scripts/ui_compare.py)은 <html class="compare"> 만 붙인다. 지금은 숨길 요소가 없다. */
 (function () {
   'use strict';
   var ROLES = ['FC', 'MANAGER', 'SALES', 'IT'];
@@ -54,7 +55,7 @@
     // S1 키 다음에 S2 접수 패널 키(js/intake-panel.js), 그 밖의 키는 받은 순서대로 유지
     // S3(js/known-panel.js): board, panel=known, tab, item
     var order = ['role', 'user', 'popup', 'notice', 'demo', 'board', 'panel', 'tab', 'item',
-      'mode', 'known', 'llm', 'case', 'step', 'alert', 'proto'];
+      'mode', 'known', 'llm', 'case', 'step', 'alert'];
     Object.keys(st).forEach(function (k) { if (order.indexOf(k) < 0) order.push(k); });
     var parts = order.filter(function (k) { return st[k]; }).map(function (k) {
       return k + '=' + encodeURIComponent(st[k]);
@@ -127,21 +128,8 @@
   }
 
   function renderRole(st) {
-    Array.prototype.forEach.call(document.querySelectorAll('#role-seg button'), function (b) {
-      b.setAttribute('aria-pressed', String(b.getAttribute('data-role') === st.role));
-    });
     var list = usersOf(st.role);
-    var sel = $('user-select');
-    sel.innerHTML = '';
-    list.forEach(function (u) {
-      var o = document.createElement('option');
-      o.value = u.id;
-      o.textContent = u.name;
-      sel.appendChild(o);
-    });
     var cur = list.filter(function (u) { return u.id === st.user; })[0] || list[0];
-    if (cur) sel.value = cur.id;
-    $('ledger-link').hidden = !(st.role === 'SALES' || st.role === 'IT');
     $('profile-name').textContent = cur ? cur.name : '';
     $('profile-sub').textContent = home.profileSub || '';
     return cur ? cur.id : null;
@@ -180,16 +168,11 @@
   }
 
   function bind() {
-    $('role-seg').addEventListener('click', function (e) {
-      var b = e.target.closest('button[data-role]');
-      if (b) update({ role: b.getAttribute('data-role'), user: '', popup: '' });
-    });
-    $('user-select').addEventListener('change', function (e) { update({ user: e.target.value }); });
     $('alarm-btn').addEventListener('click', function () {
       update({ popup: readHash().popup === 'alarm' ? '' : 'alarm' });
     });
     $('notice-close').addEventListener('click', function () { noticeText = null; update({ notice: '' }); });
-    // data-notice 가 있는 요소(진입점, 결함 대장 링크, 알림 항목)는 안내 상자를 연다
+    // data-notice 가 있는 요소(진입점 등)는 안내 상자를 연다
     document.addEventListener('click', function (e) {
       var t = e.target.closest('[data-notice]');
       if (!t) return;
