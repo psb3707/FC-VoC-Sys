@@ -165,6 +165,42 @@
       return (hx && el.scrollWidth > el.clientWidth + 1) || (hy && el.scrollHeight > el.clientHeight + 1);
     }).map(function (el) { return label(el) + ' ' + el.scrollWidth + '/' + el.clientWidth; }));
 
+    // 11. S2 접수 패널(열려 있을 때만): 06번 0-2·1·4절
+    var pn = document.getElementById('intake-panel');
+    if (pn && visible(pn)) {
+      var pf = [], pr = pn.getBoundingClientRect(), vw = document.documentElement.clientWidth;
+      var wantW = window.innerWidth < 1280 ? vw : 520;
+      if (!near(pr.width, wantW)) pf.push('패널 폭 ' + pr.width.toFixed(1) + ' (기대 ' + wantW + ')');
+      if (!near(pr.right, vw) || !near(pr.top, 0)) pf.push('패널 위치 오른쪽·위 아님');
+      if (pn.getAttribute('role') !== 'dialog' || pn.getAttribute('aria-modal') !== 'true') pf.push('role=dialog/aria-modal 없음');
+      var lab = document.getElementById(pn.getAttribute('aria-labelledby') || '');
+      if (!lab || !lab.textContent.trim()) pf.push('aria-labelledby 대상 없음');
+      var title = pn.querySelector('.pn-head h2');
+      if (!title || px(cs(title).fontSize) < 24 - EPS) pf.push('패널 제목 24px 미만');
+      all('#intake-panel .pn-body h3').forEach(function (h) { if (px(cs(h).fontSize) < 24 - EPS) pf.push(label(h) + ' 제목 24px 미만'); });
+      // 단계 표시줄은 스크롤 영역 밖(상단 고정)
+      var steps = pn.querySelector('.pn-steps'), body = pn.querySelector('.pn-body');
+      if (!steps || !body || body.contains(steps) || steps.getBoundingClientRect().bottom > body.getBoundingClientRect().top + EPS) pf.push('단계 표시줄이 상단 고정 아님');
+      if (body && !/auto|scroll/.test(cs(body).overflowY)) pf.push('본문 스크롤 영역 아님');
+      if (!(document.getElementById('pn-steps-text') || {}).textContent) pf.push('단계 글자 표시 없음(색만으로 전달)');
+      // 주 행동 버튼: 한 화면 하나, 56px·모서리 12px·강조색 #0077b3
+      var prim = all('#intake-panel .pn-foot .pn-btn');
+      if (prim.length > 1) pf.push('주 행동 버튼 ' + prim.length + '개');
+      prim.forEach(function (b) {
+        var r = b.getBoundingClientRect(), s = cs(b);
+        if (r.height < 56 - EPS || !near(px(s.borderTopLeftRadius), 12) || hex(parseColor(s.backgroundColor)) !== '#0077b3') {
+          pf.push(label(b) + ' h=' + r.height + ' r=' + s.borderTopLeftRadius + ' bg=' + s.backgroundColor);
+        }
+      });
+      // 큰 선택 카드: 아이콘 원은 장식색 #0099e6
+      all('#intake-panel .pn-choice .pn-ico').forEach(function (i) {
+        if (hex(parseColor(cs(i).backgroundColor)) !== '#0099e6') pf.push('선택 카드 아이콘 원 ' + cs(i).backgroundColor);
+      });
+      // 시안 표시
+      if (!/화면 시안/.test((pn.querySelector('.pn-proto') || {}).textContent || '')) pf.push('"화면 시안" 표시 없음');
+      add('panel-token', pf, wantW + 'px');
+    }
+
     var result = { ok: checks.every(function (c) { return c.pass; }), url: location.hash, checks: checks };
     var pre = document.createElement('pre');
     pre.id = 'selftest-result';

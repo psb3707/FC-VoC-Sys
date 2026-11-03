@@ -7,6 +7,7 @@
    (d) 성씨로 시작하는 한글 3글자 낱말은 UI 낱말이거나 바로 뒤에 "(가상)"
 2) 상태 주소 × 화면 크기마다 headless Chrome(없으면 Edge)으로
    캡처(target/ui-check/<상태>_<폭>.png)와 자체 검사(index.html?selftest=1#<상태>)
+   S1 상태(STATES × SIZES)와 S2 접수 패널 상태(PANEL_STATES × PANEL_SIZES)를 함께 본다.
 
 사용: 작업 트리 루트에서  python scripts/ui_check.py
 표준 라이브러리만 쓴다. 하나라도 실패하면 종료 코드 1.
@@ -28,7 +29,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ref_outline import SURNAME3, UI_WORDS  # noqa: E402  (참고 원본은 읽지 않음: main() 미호출)
 
 # 화면 문구에 흔한 3글자 낱말 중 성씨 글자로 시작하는 것 (이름 아님)
-EXTRA_UI_WORDS = {"사용자", "안내가", "부서가", "오류와", "설계일", "모바일"}
+EXTRA_UI_WORDS = {"사용자", "안내가", "부서가", "오류와", "설계일", "모바일",
+                  # S1 업무 탭 표 머리
+                  "설계명", "주상품",
+                  # S2 접수 패널 고정 응답(js/fixtures/intake.js) 문구
+                  "보여요", "오류가", "오류는", "어떻게", "사례별", "사무실", "인터넷", "지우고", "이름을", "고쳐질",
+                  "고객님", "고객의", "고객을", "고객도", "고객은", "방법을", "연결됨", "보낸다", "보내면", "보인다",
+                  "문제가", "나나요", "모른다", "오른쪽", "주세요", "고른다"}
 
 BROWSERS = [
     Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
@@ -38,6 +45,14 @@ BROWSERS = [
 ]
 STATES = ["role=FC", "role=MANAGER", "role=SALES", "role=FC&popup=alarm", "role=FC&notice=next", "role=FC&demo=1"]
 SIZES = [(1280, 800), (1888, 952), (1920, 1080)]   # 1888×952: 기준 스크린샷 크기(ADR-012)
+# S2 접수 패널: 단계 0~7, 끝 화면, 분기 7종, A/B, 시안 조절 (js/intake-panel.js 주소 키)
+P = "role=FC&panel=intake&"
+PANEL_STATES = [P + "step=0", P + "step=1", P + "case=customer&step=2", P + "case=defect&step=3",
+                P + "case=blocked&step=4&alert=blocked", P + "step=5", P + "llm=slow&step=5", P + "llm=fail&step=5",
+                P + "case=customer&step=6", P + "mode=A&case=customer&step=6", P + "step=7", P + "mode=A&step=7",
+                P + "step=done", P + "step=metoo", P + "case=usage&step=usage", P + "known=off&step=1",
+                P + "step=1&proto=1", "role=MANAGER&panel=intake&step=7"]
+PANEL_SIZES = [(1280, 800), (1888, 952), (1024, 768)]   # 1024: 1280 미만 → 패널 폭 100%
 
 EXTERNAL = re.compile(r"https?://|//cdn", re.I)
 NETWORK = re.compile(r"fetch\s*\(|XMLHttpRequest")
@@ -133,27 +148,27 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     base = index.as_uri()
     profile = tempfile.mkdtemp(prefix="ui-check-", dir=str(OUT))
-    print(f"\n[화면 검사] {browser.name}, {len(STATES)}개 상태 × {len(SIZES)}개 크기")
+    combos = [(st, w, h) for st in STATES for w, h in SIZES] + [(st, w, h) for st in PANEL_STATES for w, h in PANEL_SIZES]
+    print(f"\n[화면 검사] {browser.name}, S1 {len(STATES)}개 상태 × {len(SIZES)}개 크기 + S2 {len(PANEL_STATES)}개 상태 × {len(PANEL_SIZES)}개 크기")
     print(f"  {'상태':<26}{'크기':<11}결과")
     rows = []
     try:
-        for st in STATES:
-            for w, h in SIZES:
-                name = st.replace("=", "-").replace("&", "_") + f"_{w}"
-                png = OUT / f"{name}.png"
-                if png.exists():
-                    png.unlink()
-                run_browser(browser, profile, w, h, [f"--screenshot={png}"], f"{base}#{st}")
-                res = selftest(browser, profile, w, h, f"{base}?selftest=1#{st}")
-                bad = [c for c in res.get("checks", []) if not c.get("pass")]
-                if not png.exists():
-                    bad.append({"name": "screenshot", "detail": "캡처 파일 없음"})
-                ok = res.get("ok") and not bad
-                failed |= not ok
-                rows.append((st, w, h, ok, bad))
-                print(f"  {st:<26}{f'{w}x{h}':<11}{'PASS' if ok else 'FAIL'}")
-                for c in bad:
-                    print(f"      - {c.get('name')}: {c.get('detail')}")
+        for st, w, h in combos:
+            name = st.replace("=", "-").replace("&", "_") + f"_{w}"
+            png = OUT / f"{name}.png"
+            if png.exists():
+                png.unlink()
+            run_browser(browser, profile, w, h, [f"--screenshot={png}"], f"{base}#{st}")
+            res = selftest(browser, profile, w, h, f"{base}?selftest=1#{st}")
+            bad = [c for c in res.get("checks", []) if not c.get("pass")]
+            if not png.exists():
+                bad.append({"name": "screenshot", "detail": "캡처 파일 없음"})
+            ok = res.get("ok") and not bad
+            failed |= not ok
+            rows.append((st, w, h, ok, bad))
+            print(f"  {st:<26}{f'{w}x{h}':<11}{'PASS' if ok else 'FAIL'}")
+            for c in bad:
+                print(f"      - {c.get('name')}: {c.get('detail')}")
     finally:
         shutil.rmtree(profile, ignore_errors=True)
 

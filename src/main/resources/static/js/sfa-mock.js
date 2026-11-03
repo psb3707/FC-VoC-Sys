@@ -50,7 +50,9 @@
   }
 
   function writeHash(st) {
-    var order = ['role', 'user', 'popup', 'notice', 'demo'];
+    // S1 키 다음에 S2 접수 패널 키(js/intake-panel.js), 그 밖의 키는 받은 순서대로 유지
+    var order = ['role', 'user', 'popup', 'notice', 'demo', 'panel', 'mode', 'known', 'llm', 'case', 'step', 'alert', 'proto'];
+    Object.keys(st).forEach(function (k) { if (order.indexOf(k) < 0) order.push(k); });
     var parts = order.filter(function (k) { return st[k]; }).map(function (k) {
       return k + '=' + encodeURIComponent(st[k]);
     });
@@ -205,6 +207,9 @@
   }
 
   if (/[?&]compare=1(&|$)/.test(location.search)) document.documentElement.classList.add('compare');
+
+  // 다른 화면 모듈(접수 패널)도 같은 주소 상태를 쓴다
+  window.SfaHash = { read: readHash, update: update };
 
   window.SFA_READY = Promise.all([window.ApiClient.getUsers(), window.ApiClient.getSfaHome()]).then(function (r) {
     users = r[0];
