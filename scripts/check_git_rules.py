@@ -109,16 +109,23 @@ def read_phase_at(sha: str) -> str:
     return check_phase.read_phase()
 
 
+def has_object(sha: str) -> bool:
+    return sha != ZERO and git("cat-file", "-e", sha).returncode == 0
+
+
 def commit_range(lsha: str, rsha: str) -> list[str]:
-    if rsha == ZERO or git("cat-file", "-e", rsha).returncode != 0:
-        r = git("rev-list", lsha, "--not", "--remotes")
-    else:
-        r = git("rev-list", f"{rsha}..{lsha}")
+    # 원격에 새로 올라가는 커밋만 검사한다. 강제 푸시(rebase 후)에서 'rsha..lsha' 를 쓰면
+    # 이전 끝(rsha)이 조상이 아니라서 이미 main 에 있는 커밋(GitHub squash 머지 제목 등)까지 잡힌다.
+    # 원격 추적 ref 가 오래됐을 때를 대비해 rsha 도 제외 목록에 넣는다.
+    excl = ["--remotes"] + ([rsha] if has_object(rsha) else [])
+    r = git("rev-list", lsha, "--not", *excl)
     return [s for s in r.stdout.split() if s]
 
 
 def changed_files(lsha: str, rsha: str) -> list[str]:
-    if rsha != ZERO and git("cat-file", "-e", rsha).returncode == 0:
+    # fast-forward 만 rsha 와 비교한다. 강제 푸시는 rsha 와 비교하면 main 의 변경까지 섞이므로
+    # 새 브랜치와 같이 merge-base(lsha, origin/main) 기준으로 본다.
+    if has_object(rsha) and is_ancestor(rsha, lsha):
         r = git("diff", "--name-only", rsha, lsha)
     else:
         base = git("merge-base", lsha, "refs/remotes/origin/main")
@@ -195,7 +202,7 @@ def pre_push() -> int:
         elif not BRANCH_RE.match(branch):
             errors.append(f"브랜치 이름 '{branch}' 이(가) 규칙에 맞지 않습니다. 예: feat/req-in-04-intake-form (3절)")
             continue
-        if rsha != ZERO and git("cat-file", "-e", rsha).returncode == 0 and not is_ancestor(rsha, lsha):
+        if has_object(rsha) and not is_ancestor(rsha, lsha):
             notes.append(f"'{branch}' 는 강제 푸시입니다. 본인 기능 브랜치에서 --force-with-lease 로만 허용됩니다 (9절).")
         errors.extend(review_push(branch, lsha, rsha))
 
