@@ -132,7 +132,9 @@ svg { display: block; }
 
 /* ---------- 본문 3열 (원본처럼 한 덩어리가 같이 스크롤) ---------- */
 .sfa-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: grid;
-  grid-template-columns: 31.3% minmax(0, 1fr) 9.2%; grid-template-rows: minmax(100%, max-content); }
+  grid-template-columns: 31.3% minmax(0, 1fr) 9.2%; grid-template-rows: auto; }
+/* 행 높이 auto: 내용이 짧으면 늘어나 보이는 높이를 채우고(align-content 기본 stretch), 길면 내용만큼 커진다.
+   minmax(100%, max-content) 는 스크롤 상자 안에서 남는 공간이 0 이라 보이는 높이에 고정돼 스크롤하면 열 바탕이 끊겼다. */
 .col-left, .col-center, .col-quick { min-width: 0; }
 .col-left { background: #fff; padding: 32px; }
 .col-center { background: var(--sfa-center-bg); padding: 32px; }
