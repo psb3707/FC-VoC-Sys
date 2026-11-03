@@ -176,6 +176,12 @@
       return (hx && el.scrollWidth > el.clientWidth + 1) || (hy && el.scrollHeight > el.clientHeight + 1);
     }).map(function (el) { return label(el) + ' ' + el.scrollWidth + '/' + el.clientWidth; }));
 
+    // 10-1. 화면 안 시안 표시 없음 (ADR-016): 보이는 글자·탭 제목에 "시안" 이 없다
+    var proto = /시안/;
+    var pt = all('body *').filter(function (el) { return proto.test(ownText(el)) || proto.test(el.getAttribute('aria-label') || ''); }).map(label);
+    if (proto.test(document.title)) pt.push('title "' + document.title + '"');
+    add('no-proto-marker', pt);
+
     // 11. S2 접수 패널(열려 있을 때만): 06번 0-2·1·4절
     var pn = document.getElementById('intake-panel');
     if (pn && visible(pn)) {
@@ -207,8 +213,9 @@
       all('#intake-panel .pn-choice .pn-ico').forEach(function (i) {
         if (hex(parseColor(cs(i).backgroundColor)) !== '#0099e6') pf.push('선택 카드 아이콘 원 ' + cs(i).backgroundColor);
       });
-      // 시안 표시
-      if (!/화면 시안/.test((pn.querySelector('.pn-proto') || {}).textContent || '')) pf.push('"화면 시안" 표시 없음');
+      // 맨 아래는 행동 줄(.pn-foot): 패널 바닥에 붙고 그 아래 다른 줄이 없다 (ADR-016)
+      var foot = document.getElementById('pn-foot');
+      if (!foot || !visible(foot) || !near(foot.getBoundingClientRect().bottom, pr.bottom)) pf.push('행동 줄이 패널 맨 아래 아님');
       add('panel-token', pf, wantW + 'px');
     }
 
@@ -270,7 +277,8 @@
       // 주 행동 버튼은 한 화면 하나 이하
       var kp = all('#known-panel .pn-btn');
       if (kp.length > 1) kf.push('주 행동 버튼 ' + kp.length + '개');
-      if (!/화면 시안/.test((kn.querySelector('.pn-proto') || {}).textContent || '')) kf.push('"화면 시안" 표시 없음');
+      // 맨 아래는 본문(행동 줄 없음): 본문이 패널 바닥까지 (ADR-016)
+      if (kb && !near(kb.getBoundingClientRect().bottom, kr.bottom)) kf.push('본문이 패널 맨 아래까지 아님');
       add('s3-panel-token', kf, kW + 'px');
     }
 

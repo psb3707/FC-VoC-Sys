@@ -9,31 +9,8 @@
   --new-ink: #292d33;
   --badge-bg: #d93025;            /* 알림 배지 (흰 글자 대비 약 4.8:1) */
   --badge-min: 18px;
-  --band-bg: #fff3bf;
-  --band-line: #e0c45c;
   --demo-outline: #d93025;
 }
-
-/* 화면 시안 띠 (SFA 화면 밖) */
-.proto-band { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
-  padding: 8px 16px; background: var(--band-bg); border-bottom: 2px solid var(--band-line);
-  font-size: var(--new-text); color: var(--new-ink); flex: none; }
-.proto-band { display: none; }   /* 상단 시안 띠는 숨김(요청). 역할 전환은 주소 #role=… 로 한다 */
-.compare .proto-band { display: none; }   /* ?compare=1: 재현도 비교 캡처에서 SFA 화면만 */
-.proto-band .band-title { font-weight: 700; margin-right: auto; }
-.role-box { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.role-box .lbl { font-weight: 700; }
-.seg { display: flex; }
-.seg button { height: var(--new-btn-h); min-width: 72px; padding: 0 16px; font-size: var(--new-text);
-  border: 1px solid #8a94a6; background: #fff; color: var(--new-ink); cursor: pointer; margin-left: -1px; }
-.seg button:first-child { border-radius: var(--new-radius) 0 0 var(--new-radius); margin-left: 0; }
-.seg button:last-child { border-radius: 0 var(--new-radius) var(--new-radius) 0; }
-.seg button[aria-pressed="true"] { background: var(--new-accent); border-color: var(--new-accent); color: #fff; font-weight: 700; }
-.user-select { height: var(--new-btn-h); font-size: var(--new-text); padding: 0 12px; border-radius: var(--new-radius);
-  border: 1px solid #8a94a6; background: #fff; color: var(--new-ink); font-family: inherit; }
-.ledger-link { height: var(--new-btn-h); padding: 0 20px; font-size: var(--new-text); font-weight: 700;
-  border: 2px solid var(--new-accent); border-radius: var(--new-radius); background: #fff; color: var(--new-accent);
-  text-decoration: underline; cursor: pointer; }
 
 /* 알림 배지: 기존 알림 아이콘 오른쪽 위 */
 .badge { position: absolute; top: 0; right: 0; min-width: var(--badge-min); height: var(--badge-min);

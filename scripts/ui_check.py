@@ -5,6 +5,7 @@
    (a) 외부 주소(http://, https://, //cdn) 0건  (b) fetch( · XMLHttpRequest 0건
    (c) fixtures·HTML 에 주민·휴대폰·카드·긴 숫자 형식 0건
    (d) 성씨로 시작하는 한글 3글자 낱말은 UI 낱말이거나 바로 뒤에 "(가상)"
+   (e) 화면 시안 표시 0건(ADR-016): 주석을 뺀 코드에 "화면 시안"·"시안 조절"·시안 띠/줄 클래스 없음
 2) 상태 주소 × 화면 크기마다 headless Chrome(없으면 Edge)으로
    캡처(target/ui-check/<상태>_<폭>.png)와 자체 검사(index.html?selftest=1#<상태>)
    S1 상태(STATES × SIZES), S2 접수 패널 상태(PANEL_STATES × PANEL_SIZES),
@@ -48,13 +49,13 @@ BROWSERS = [
 ]
 STATES = ["role=FC", "role=MANAGER", "role=SALES", "role=FC&popup=alarm", "role=FC&notice=next", "role=FC&demo=1"]
 SIZES = [(1280, 800), (1888, 952), (1920, 1080)]   # 1888×952: 기준 스크린샷 크기(ADR-012)
-# S2 접수 패널: 단계 0~7, 끝 화면, 분기 7종, A/B, 시안 조절 (js/intake-panel.js 주소 키)
+# S2 접수 패널: 단계 0~7, 끝 화면, 분기 7종, A/B, 대리 접수 (js/intake-panel.js 주소 키, 06번 11절 시연 주소 목록)
 P = "role=FC&panel=intake&"
 PANEL_STATES = [P + "step=0", P + "step=1", P + "case=customer&step=2", P + "case=defect&step=3",
                 P + "case=blocked&step=4&alert=blocked", P + "step=5", P + "llm=slow&step=5", P + "llm=fail&step=5",
                 P + "case=customer&step=6", P + "mode=A&case=customer&step=6", P + "step=7", P + "mode=A&step=7",
                 P + "step=done", P + "step=metoo", P + "case=usage&step=usage", P + "known=off&step=1",
-                P + "step=1&proto=1", "role=MANAGER&panel=intake&step=7"]
+                "role=MANAGER&panel=intake&step=7"]
 PANEL_SIZES = [(1280, 800), (1888, 952), (1024, 768)]   # 1024: 1280 미만 → 패널 폭 100%
 # S3 알려진 오류·내 신고 (js/known-panel.js 주소 키, ADR-015): 공지 카드 요약 줄, 패널 두 탭, 알림→내 신고, 빈 화면
 KNOWN_HOME_STATES = ["role=FC&board=known", "role=SALES&board=known"]
@@ -65,6 +66,8 @@ KNOWN_PANEL_STATES = [K + "tab=known", K + "tab=known&item=D-2026-005", K + "tab
 
 EXTERNAL = re.compile(r"https?://|//cdn", re.I)
 NETWORK = re.compile(r"fetch\s*\(|XMLHttpRequest")
+# 화면 안 시안 표시(ADR-016): 보이는 문구와 시안 띠·줄 클래스. 주소 설명 같은 주석은 허용
+PROTO_MARK = re.compile(r"화면 시안|시안 조절|시안:|proto-band|pn-proto|kn-proto")
 PII = [
     ("주민번호", re.compile(r"(?<!\d)\d{6}\s*-\s*\d{7}(?!\d)")),
     ("휴대폰", re.compile(r"(?<!\d)01[016789]\s*-?\s*\d{3,4}\s*-?\s*\d{4}(?!\d)")),
@@ -90,6 +93,10 @@ def static_checks() -> list[str]:
         text = p.read_text(encoding="utf-8")
         content = p.suffix == ".html" or "fixtures" in p.parts
         words = strip_comments(text).splitlines()
+        for no, plain in enumerate(words, 1):
+            m = PROTO_MARK.search(plain)
+            if m:
+                fails.append(f"{rel}:{no} 시안 표시 '{m.group(0)}' (ADR-016)")
         for no, line in enumerate(text.splitlines(), 1):
             if EXTERNAL.search(line):
                 fails.append(f"{rel}:{no} 외부 주소")

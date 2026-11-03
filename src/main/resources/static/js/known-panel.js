@@ -1,5 +1,5 @@
 /* S3 알려진 오류·내 신고 (docs/06-ui-spec.md 5절, ADR-015, REQ-KN-01·02, REQ-NT-01).
-   기능 없는 화면 시안: 데이터는 ApiClient(=fixtures)만 읽고 저장하지 않는다.
+   기능 없는 화면(프론트 단계): 데이터는 ApiClient(=fixtures)만 읽고 저장하지 않는다.
    상태는 주소 # 뒤에 둔다(06번 11절). S1 키(role, user, popup, notice, demo)에 더해
      board=known          공지 카드에서 "알려진 오류·내 신고" 탭 선택 → 공지 목록 자리에 요약 줄
      panel=known          S3 패널 열림 (panel=intake 인 S2 접수 패널과 동시에 열리지 않음)
@@ -229,7 +229,7 @@
     lastView = null;
     // S2 단계 키는 지운다 (panel 값이 하나라 S2 패널은 닫힌다)
     go({ panel: 'known', tab: tab === 'mine' ? 'mine' : '', item: item || '', popup: '', notice: '',
-      step: '', alert: '', 'case': '', proto: '' });
+      step: '', alert: '', 'case': '' });
   }
   function close() {
     go({ panel: '', tab: '', item: '' });
