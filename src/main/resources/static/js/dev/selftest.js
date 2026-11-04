@@ -70,7 +70,7 @@
 
   function run() {
     var texts = all('body *').filter(function (el) { return ownText(el); });
-    var clickables = all('button, a[href], select, input, textarea, [role="button"]');
+    var clickables = all('button, a[href], select, input, textarea, summary, [role="button"]');
 
     // 1. 모든 보이는 글자에 구분 표시가 있는가
     add('marked', texts.filter(function (el) { return !cat(el); }).map(label), texts.length + '개 글자 요소');
@@ -266,12 +266,12 @@
       if (!kb || !/auto|scroll/.test(cs(kb).overflowY)) kf.push('본문 스크롤 영역 아님');
       // 내 신고: 카드마다 지금 단계 글자 + 단계 이름 줄 + 상태 태그 (색만으로 전하지 않음)
       all('#known-panel .kn-progress').forEach(function (p) {
-        var now = p.querySelector('.kn-now'), names = p.querySelector('.kn-stages');
+        var now = p.querySelector('.kn-now'), names = p.closest('.kn-card').querySelector('.kn-stages');
         if (!now || !now.textContent.trim()) kf.push('단계 글자 없음');
         if (!names || !names.querySelector('[aria-current="step"]')) kf.push('지금 단계 표시(aria-current) 없음');
       });
       all('#known-panel .kn-card').forEach(function (c) {
-        var tag = c.querySelector('.pn-tag');
+        var tag = c.querySelector('.kn-now, .pn-tag');
         if (!tag || !tag.textContent.trim()) kf.push(label(c) + ' 상태 글자 없음');
       });
       // 주 행동 버튼은 한 화면 하나 이하

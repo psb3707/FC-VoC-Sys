@@ -137,15 +137,17 @@
 
   function renderAlarm(st, items) {
     var badge = $('alarm-badge');
-    badge.textContent = String(items.length);
-    badge.hidden = items.length === 0;
-    $('alarm-btn').setAttribute('aria-label', items.length ? '알림 ' + items.length + '건' : '알림');
+    var unread = items.filter(function (n) { return !n.readAt; }).length;
+    badge.textContent = String(unread);
+    badge.hidden = unread === 0;
+    $('alarm-btn').setAttribute('aria-label', unread ? '알림 ' + unread + '건' : '알림');
 
     var ul = $('alarm-list');
     ul.innerHTML = '';
     items.forEach(function (n) {
       var b = el('button', 'alarm-item', [n.bodySnapshot, el('span', 'when', [fmtWhen(n.at)])]);
       b.type = 'button';
+      b.setAttribute('data-notification-id', n.id);
       b.setAttribute('data-kn-defect', n.defectId);   // 누르면 S3 패널 [내 신고] (js/known-panel.js)
       b.setAttribute('aria-haspopup', 'dialog');
       ul.appendChild(el('li', null, [b]));
@@ -196,6 +198,7 @@
       if (e.key === 'Escape') update({ popup: '', notice: '' });
     });
     window.addEventListener('hashchange', render);
+    window.addEventListener('voc-data-change', render);
   }
 
   if (/[?&]compare=1(&|$)/.test(location.search)) document.documentElement.classList.add('compare');

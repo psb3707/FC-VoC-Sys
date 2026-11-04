@@ -52,10 +52,10 @@ SIZES = [(1280, 800), (1888, 952), (1920, 1080)]   # 1888×952: 기준 스크린
 # S2 접수 패널: 단계 0~7, 끝 화면, 분기 7종, A/B, 대리 접수 (js/intake-panel.js 주소 키, 06번 11절 시연 주소 목록)
 P = "role=FC&panel=intake&"
 PANEL_STATES = [P + "step=0", P + "step=1", P + "case=customer&step=2", P + "case=defect&step=3",
-                P + "case=blocked&step=4&alert=blocked", P + "step=5", P + "llm=slow&step=5", P + "llm=fail&step=5",
-                P + "case=customer&step=6", P + "mode=A&case=customer&step=6", P + "step=7", P + "mode=A&step=7",
-                P + "step=done", P + "step=metoo", P + "case=usage&step=usage", P + "known=off&step=1",
-                "role=MANAGER&panel=intake&step=7"]
+                P + "case=blocked&step=4&alert=blocked", P + "case=defect&step=5", P + "case=defect&llm=slow&step=5", P + "case=defect&llm=fail&step=5",
+                P + "case=customer&step=6", P + "mode=A&case=customer&step=6", P + "case=defect&step=7", P + "mode=A&case=defect&step=7",
+                P + "case=defect&step=done", P + "case=defect&step=metoo", P + "case=usage&step=usage", P + "known=off&step=1",
+                "role=MANAGER&panel=intake&case=defect&step=7"]
 PANEL_SIZES = [(1280, 800), (1888, 952), (1024, 768)]   # 1024: 1280 미만 → 패널 폭 100%
 # S3 알려진 오류·내 신고 (js/known-panel.js 주소 키, ADR-015): 공지 카드 요약 줄, 패널 두 탭, 알림→내 신고, 빈 화면
 KNOWN_HOME_STATES = ["role=FC&board=known", "role=SALES&board=known"]

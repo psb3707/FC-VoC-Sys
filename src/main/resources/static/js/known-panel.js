@@ -1,5 +1,5 @@
 /* S3 알려진 오류·내 신고 (docs/06-ui-spec.md 5절, ADR-015, REQ-KN-01·02, REQ-NT-01).
-   기능 없는 화면(프론트 단계): 데이터는 ApiClient(=fixtures)만 읽고 저장하지 않는다.
+   프론트 화면: ApiClient의 가상 신고·읽음 상태를 표시한다(ADR-017).
    상태는 주소 # 뒤에 둔다(06번 11절). S1 키(role, user, popup, notice, demo)에 더해
      board=known          공지 카드에서 "알려진 오류·내 신고" 탭 선택 → 공지 목록 자리에 요약 줄
      panel=known          S3 패널 열림 (panel=intake 인 S2 접수 패널과 동시에 열리지 않음)
@@ -70,17 +70,17 @@
     return users.filter(function (u) { return u.id === st.user && u.role === st.role; })[0] ||
       users.filter(function (u) { return u.role === st.role; })[0] || null;
   }
-  /* 사용자가 바뀌었을 때만 내 신고·알림을 다시 받는다 */
+  /* 접수·공감·읽음 뒤에도 같은 사용자의 화면을 새로 받는다. */
   function load(st) {
     var me = currentUser(st), id = me ? me.id : null;
-    if (id === cache.userId) return Promise.resolve();
-    return Promise.all([A.getMyReports(id), A.getNotifications(id)]).then(function (r) {
+    return Promise.all([A.getMyReports(id), A.getNotifications(id), A.getKnownErrors(null, null, id)]).then(function (r) {
       cache = { userId: id, mine: r[0] || [], alarms: r[1] || [] };
+      known = r[2] || [];
     });
   }
 
   function statusOf(r) { return r.defect ? r.defect.status : 'RECEIVED'; }
-  function titleOf(r) { return r.defect ? r.defect.title : (r.maskedText || '제목 없음'); }
+  function titleOf(r) { return r.title || r.maskedText || r.oneLine || (r.defect ? r.defect.title : '제목 없음'); }
   function stageLabel(code) {
     if (code === WONT_FIX) return WONT_FIX_LABEL;
     var s = STAGES.filter(function (x) { return x[0] === code; })[0];
@@ -93,7 +93,7 @@
   function reasonOf(d) { return d.wontFixReasonText || REASON[d.wontFixReasonCode] || ''; }
   function planOf(d) {
     if (d.status === WONT_FIX) return ['고치지 않는 이유', reasonOf(d)];
-    if (d.plannedFixDate) return ['고칠 예정', fmtDate(d.plannedFixDate)];
+    if (d.status !== 'RESOLVED' && d.plannedFixDate) return ['고칠 예정', fmtDate(d.plannedFixDate)];
     return null;
   }
 
@@ -125,64 +125,94 @@
       return el('li', { cls: 'pn-card kn-card' + (st.item === k.id ? ' is-target' : ''), 'data-id': k.id }, [
         el('div', { cls: 'kn-card-head' }, [el('p', { cls: 'pn-card-title', tabindex: '-1' }, [k.title]),
           el('span', { cls: 'pn-tag' }, [stageLabel(k.status)])]),
-        rows([['임시로 이렇게', k.workaround], planOf(k), ['같은 신고', k.reportCount + '건']])]);
+        rows([['지금은 이렇게', k.workaround], planOf(k), ['같은 신고', k.reportCount + '건']]),
+        el('button', { type: 'button', cls: 'pn-btn-out kn-metoo', 'data-kn-metoo': k.id,
+          disabled: k.alreadyReported, 'aria-label': k.title + ' — ' + (k.alreadyReported ? '이미 알려 주셨어요' : '나도 겪었어요') },
+          [k.alreadyReported ? '이미 알려 주셨어요' : '나도 겪었어요'])]);
     });
     return [el('h3', { tabindex: '-1' }, ['지금 알려진 오류']),
-      el('p', { cls: 'pn-lead' }, ['담당자가 이미 알고 있는 오류예요. 고쳐질 때까지 "임시로 이렇게"를 먼저 해 보세요.']),
+      el('p', { cls: 'pn-lead' }, ['같은 문제라면 다시 설명하지 않아도 돼요. 임시 방법을 확인하고 알려 주세요.']),
       cards.length ? el('ul', { cls: 'pn-plain' }, cards)
-        : el('div', { cls: 'pn-card kn-empty' }, [el('p', null, ['지금 알려진 오류가 없어요'])]),
-      el('div', { cls: 'pn-note' }, [icon('i-info'), el('div', null, [el('b', null, ['같은 문제를 겪고 계신가요?']),
-        '오른쪽 "전산 오류 접수"를 누르면 첫 화면에서 "나도 겪었어요"를 누를 수 있어요.'])])];
+        : el('div', { cls: 'pn-card kn-empty' }, [el('p', null, ['지금 알려진 오류가 없어요'])])];
   }
 
   function progress(r) {
-    var code = statusOf(r), wont = code === WONT_FIX;
-    var at = stageIndex(code);
-    if (wont) {   // 수정하지 않음: 그 직전 단계까지 지나온 것으로 표시
+    var code = statusOf(r), wont = code === WONT_FIX, at = stageIndex(code);
+    if (wont) {
       var h = (r.statusHistory || []).filter(function (x) { return x.to === WONT_FIX; })[0];
       at = h ? stageIndex(h.from) : 0;
     }
-    var now = el('p', { cls: 'kn-now' }, wont
-      ? [el('b', null, [WONT_FIX_LABEL]), ' · ' + STAGES[Math.max(at, 0)][1] + ' 단계에서 끝났어요']
-      : [STAGES.length + '단계 중 ' + (at + 1) + '단계 · ', el('b', null, [stageLabel(code)])]);   // 06번 5절 "6단계 중 4단계 · 임시조치"
-    var track = el('ol', { cls: 'pn-track', 'aria-hidden': 'true' }, STAGES.map(function (s, i) {
+    at = Math.max(at, 0);
+    var now = el('p', { cls: 'kn-now' }, wont ? [el('b', null, [WONT_FIX_LABEL])]
+      : [el('b', null, [stageLabel(code)]), ' · ' + (at + 1) + '/' + STAGES.length + '단계']);
+    var track = el('ol', { cls: 'pn-track', 'aria-hidden': 'true' }, STAGES.map(function (x, i) {
       return el('li', { cls: wont ? (i <= at ? 'is-done' : null) : (i < at ? 'is-done' : i === at ? 'is-now' : null) });
     }));
-    var names = STAGES.map(function (s, i) {
-      var cur = !wont && i === at;
-      return el('li', { cls: cur ? 'is-now' : null, 'aria-current': cur ? 'step' : null }, [s[1] + (cur ? '(지금)' : '')]);
+    return el('div', { cls: 'kn-progress' }, [now, track]);
+  }
+
+  function stageNames(r) {
+    var code = statusOf(r);
+    var names = STAGES.map(function (x) {
+      var on = x[0] === code;
+      return el('li', { cls: on ? 'is-now' : null, 'aria-current': on ? 'step' : null }, [x[1] + (on ? '(지금)' : '')]);
     });
-    names.push(el('li', { cls: 'is-alt' + (wont ? ' is-now' : ''), 'aria-current': wont ? 'step' : null },
-      [WONT_FIX_LABEL + (wont ? '(지금)' : '')]));
-    return el('div', { cls: 'kn-progress' }, [now, track,
-      el('ol', { cls: 'kn-stages', 'aria-label': '처리 단계' }, names)]);
+    names.push(el('li', { cls: 'is-alt' + (code === WONT_FIX ? ' is-now' : ''),
+      'aria-current': code === WONT_FIX ? 'step' : null }, [WONT_FIX_LABEL]));
+    return el('ol', { cls: 'kn-stages', 'aria-label': '처리 단계' }, names);
+  }
+
+  function card(r, st, proxy) {
+    var d = r.defect, notice = r.fcNotice && r.fcNotice.approvedText;
+    var action = d && d.status === 'RESOLVED' ? '문제가 해결됐어요. 다시 업무를 진행해 주세요.'
+      : d && d.workaround || notice || '담당자가 확인하고 있어요. 안내가 정해지면 알려드릴게요.';
+    var who = users.filter(function (u) { return u.id === r.reporterId; })[0];
+    var details = el('details', { cls: 'kn-details', open: st.item === r.id }, [
+      el('summary', null, ['자세히 보기']),
+      el('div', { cls: 'kn-detail-body' }, [
+        el('p', { cls: 'kn-meta' }, ['신고 번호 ' + r.id + ' · ' + fmtDate(r.createdAt) + ' 보냄']),
+        d ? el('p', { cls: 'kn-meta' }, ['담당자가 묶은 문제: ' + d.title]) : null,
+        stageNames(r),
+        r.maskedText && r.maskedText !== titleOf(r) ? rows([['보낸 설명', r.maskedText]]) : null,
+        notice && notice !== action ? el('div', { cls: 'kn-full-notice' }, [el('b', null, ['담당자 안내']), el('p', null, [notice])]) : null,
+        r.stepsToReproduce && r.stepsToReproduce.length ? rows([['보낸 재현 정보', r.stepsToReproduce.join(' / ')]]) : null
+      ])]);
+    return el('li', { cls: 'pn-card kn-card' + (st.item === r.id ? ' is-target' : ''), 'data-id': r.id }, [
+      proxy ? el('p', { cls: 'kn-proxy-name' }, [(who ? who.name : '설계사') + ' 대신 보냄']) : null,
+      el('div', { cls: 'kn-card-head' }, [el('p', { cls: 'pn-card-title', tabindex: '-1' }, [titleOf(r)])]),
+      progress(r),
+      el('div', { cls: 'kn-action' }, [el('b', null, ['지금은 이렇게']), el('p', null, [action])]),
+      d && planOf(d) ? rows([planOf(d)]) : null,
+      details]);
+  }
+
+  function reportGroup(list, st, proxy) {
+    var active = list.filter(function (r) { return ['RESOLVED', WONT_FIX].indexOf(statusOf(r)) < 0; });
+    var done = list.filter(function (r) { return ['RESOLVED', WONT_FIX].indexOf(statusOf(r)) >= 0; });
+    var result = [];
+    if (active.length) result.push(el('ul', { cls: 'pn-plain' }, active.map(function (r) { return card(r, st, proxy); })));
+    if (done.length) result.push(el('details', { cls: 'kn-finished', open: done.some(function (r) { return st.item === r.id; }) }, [
+      el('summary', null, ['끝난 신고 ' + done.length + '건']),
+      el('ul', { cls: 'pn-plain' }, done.map(function (r) { return card(r, st, proxy); }))]));
+    return result;
   }
 
   function mineView(st) {
-    var me = currentUser(st);
-    var list = cache.mine;
-    var cards = list.map(function (r) {
-      var d = r.defect;
-      var meta = '신고 번호 ' + r.id + ' · ' + fmtDate(r.createdAt) + (r.kind === 'ME_TOO' ? ' "나도 겪었어요"로 보냄' : ' 보냄');
-      return el('li', { cls: 'pn-card kn-card' + (st.item === r.id ? ' is-target' : ''), 'data-id': r.id }, [
-        el('div', { cls: 'kn-card-head' }, [el('p', { cls: 'pn-card-title', tabindex: '-1' }, [titleOf(r)]),
-          el('span', { cls: 'pn-tag' }, [stageLabel(statusOf(r))])]),
-        el('p', { cls: 'kn-meta' }, [meta]),
-        progress(r),
-        d ? rows([d.workaround ? ['임시로 이렇게', d.workaround] : null, planOf(d)]) : null,
-        r.fcNotice && r.fcNotice.approvedText
-          ? el('div', { cls: 'pn-note' }, [icon('i-info'), el('div', null, [el('b', null, ['담당자 안내']), r.fcNotice.approvedText])])
-          : el('p', { cls: 'kn-none' }, [d ? '담당자 안내는 아직 없어요' : '담당자가 확인하고 있어요. 안내가 정해지면 알려드릴게요.'])]);
-    });
-    var alarms = cache.alarms.map(function (n) { return [fmtWhen(n.at), n.bodySnapshot]; });
-    return [el('h3', { tabindex: '-1' }, ['내가 보낸 신고']),
-      el('p', { cls: 'pn-lead' }, [me ? me.name + ' 님이 보낸 신고의 진행 단계와 담당자 안내예요.' : '보낸 신고의 진행 단계와 담당자 안내예요.']),
-      cards.length ? el('ul', { cls: 'pn-plain' }, cards)
-        : el('div', { cls: 'pn-card kn-empty' }, [el('p', { cls: 'pn-card-title' }, ['아직 보낸 신고가 없어요']),
-          el('p', { cls: 'pn-lead' }, ['오류가 생기면 오른쪽 "전산 오류 접수"를 눌러 알려 주세요.'])]),
-      el('h4', null, ['받은 알림']),
-      alarms.length ? el('div', { cls: 'pn-card' }, [rows(alarms, 'kn-alarms')])
-        : el('div', { cls: 'pn-card kn-empty' }, [el('p', null, ['받은 알림이 없어요'])])];
+    var own = cache.mine.filter(function (r) { return r.reporterId === cache.userId; });
+    var proxy = cache.mine.filter(function (r) { return r.reporterId !== cache.userId && r.submittedById === cache.userId; });
+    var result = [el('h3', { tabindex: '-1' }, ['내가 보낸 신고']),
+      el('p', { cls: 'pn-lead' }, ['지금 상태와 업무를 이어갈 방법을 확인하세요.'])];
+    if (own.length) result = result.concat(reportGroup(own, st, false));
+    else result.push(el('div', { cls: 'pn-card kn-empty' }, [el('p', { cls: 'pn-card-title' }, ['아직 보낸 신고가 없어요']),
+      el('p', { cls: 'pn-lead' }, ['오류가 생기면 전산 오류 접수에서 알려 주세요.'])]));
+    if (proxy.length) {
+      result.push(el('h4', null, ['내가 대신 보낸 신고']));
+      result = result.concat(reportGroup(proxy, st, true));
+    }
+    if (cache.alarms.length) result.push(el('details', { cls: 'kn-history' }, [
+      el('summary', null, ['지난 알림 보기 · ' + cache.alarms.length + '건']),
+      el('div', { cls: 'pn-card' }, [rows(cache.alarms.map(function (n) { return [fmtWhen(n.at), n.bodySnapshot]; }), 'kn-alarms')])]));
+    return result;
   }
 
   function paintPanel(st) {
@@ -239,7 +269,7 @@
   }
 
   function focusables() {
-    return Array.prototype.filter.call($('known-panel').querySelectorAll('button, [tabindex="0"]'),
+    return Array.prototype.filter.call($('known-panel').querySelectorAll('button, summary, [tabindex="0"]'),
       function (x) { return !x.disabled && x.getClientRects().length; });
   }
   function onKey(e) {
@@ -280,15 +310,29 @@
       if (!b) return;
       var d = b.getAttribute('data-kn-defect');
       var r = cache.mine.filter(function (x) { return x.defectId === d; })[0];
-      open('mine', r ? r.id : '', $('alarm-btn'));
+      A.markNotificationRead(b.getAttribute('data-notification-id'), cache.userId).then(function () {
+        open('mine', r ? r.id : '', $('alarm-btn'));
+      });
     });
     $('known-panel').addEventListener('click', function (e) {
       var t = e.target.closest('.kn-tab');
       if (t) go({ tab: t.getAttribute('data-tab') === 'mine' ? 'mine' : '', item: '' });
+      var b = e.target.closest('[data-kn-metoo]');
+      if (!b || b.disabled) return;
+      b.disabled = true;
+      b.textContent = '알리고 있어요';
+      A.postMeToo(b.getAttribute('data-kn-metoo'), { reporterId: cache.userId, submittedById: cache.userId }).then(function () {
+        lastView = null;
+        return render();
+      }).catch(function () {
+        b.disabled = false;
+        b.textContent = '다시 알려 주세요';
+      });
     });
     $('kn-close').addEventListener('click', close);
     document.addEventListener('keydown', onKey);
     window.addEventListener('hashchange', render);
+    window.addEventListener('voc-data-change', render);
   }
 
   window.SFA_READY = (window.SFA_READY || Promise.resolve()).then(function () {

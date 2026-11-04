@@ -1,5 +1,5 @@
 /* S2 접수 패널 (docs/06-ui-spec.md 4절, REQ-IN-01~09, REQ-MD-01/02, REQ-PV-01).
-   기능 없는 화면(프론트 단계): 데이터는 ApiClient(=fixtures)만 읽고, 저장·타이머·실제 마스킹은 없다.
+   프론트 단계: 가상 데이터의 탭 내 초안과 화면 상태만 보관한다. 실제 서버 저장·AI·마스킹은 없다(ADR-017).
    화면 안에 시안 조절 버튼은 없다(ADR-016). 모든 상태는 주소 # 뒤 키로만 바꾼다(06번 11절, 시연 주소 목록).
    S1 키(role, user, popup, notice, demo)에 더해
      panel=intake          패널 열림
@@ -18,8 +18,8 @@
   var $ = function (id) { return document.getElementById(id); };
 
   var STEP_TITLE = {
-    '0': '알려진 오류 확인', '1': '저절로 붙는 정보', '2': '고객 관련 여부', '3': '업무와 문제 고르기',
-    '4': '한 줄로 적기', '5': 'AI가 몇 가지 여쭤봐요', '6': 'AI에게 전달되는 내용', '7': '확인하고 보내기'
+    '0': '알려진 오류 확인', '2': '고객 확인', '3': '업무와 문제 고르기',
+    '4': '한 줄로 적기', '5': '몇 가지 확인', '7': '확인하고 보내기'
   };
   var END_TITLE = { metoo: '나도 겪었어요 – 끝', usage: '사용 방법 안내', done: '접수 끝' };
   var ICON_BY_CODE = {
@@ -49,18 +49,77 @@
     blocked: { customer: 'no', business: 'CUSTOMER_LOOKUP', symptom: 'NOT_SHOWN',
       oneLine: '주민번호 ○○○○○○-○○○○○○○ 로 찾았는데 안 나와요', answers: {} }
   };
-  var FALLBACK_ANSWERS = { device_path: '휴대폰', steps: '알림톡에서 서명 버튼을 누르면 매번 생겨요' };
+
 
   var meta = null, ctx = null, known = [], users = [];
   var form, res, lastStep = null, opener = null, booted = false, lastKeys = null;
+  var closePending = false, restored = false, editOpen = false, submitting = false;
 
   function blank() {
     form = { customer: null, customerNo: '', business: null, symptom: null, oneLine: '', answers: {},
       onBehalf: '', edit: null, typeOverride: null, err: '' };
+    closePending = false; editOpen = false; submitting = false;
     res = { preview: null, session: null, refined: null, report: null, meToo: null };
   }
   blank();
   function invalidate() { res.preview = res.session = res.refined = res.report = null; form.edit = null; }
+
+  /* 이 탭의 가상 입력만 복원. 명시적인 시연 주소와 자동 캡처에는 섞지 않는다. */
+  function draftKey(st) {
+    return 'fc-voc-draft-v1:' + st.role + ':' + (st.user || '') + ':' + st.mode;
+  }
+  function useDraft(st) { return !st['case'] && !/[?&](selftest|compare)=1/.test(location.search); }
+  function saveDraft(st) {
+    if (!useDraft(st)) return;
+    try { sessionStorage.setItem(draftKey(st), JSON.stringify({ form: form, res: res, step: st.step })); } catch (e) { /* 저장 불가해도 접수 가능 */ }
+  }
+  function clearDraft(st) {
+    try { sessionStorage.removeItem(draftKey(st)); } catch (e) { /* 저장소 사용 불가 */ }
+  }
+  function restoreDraft(st) {
+    if (restored) return;
+    restored = true;
+    if (!useDraft(st)) return;
+    try {
+      var d = JSON.parse(sessionStorage.getItem(draftKey(st)) || 'null');
+      if (d && d.form && d.form.answers && d.res) {
+        form = d.form; res = d.res;
+        if (!st.step || st.step === '0') { go({ step: d.step }); return true; }
+      }
+    } catch (e) { clearDraft(st); }
+  }
+  function firstMissing() {
+    if (!form.customer) return '2';
+    if (!form.business || !form.symptom) return '3';
+    if (!form.oneLine.trim()) return '4';
+    return null;
+  }
+  function hasInput() { return !!(form.customer || form.business || form.symptom || form.oneLine || form.onBehalf); }
+  function autoInfo() {
+    var c = ctx || {}, from = c.reportedFrom || {};
+    return el('details', { cls: 'pn-details pn-auto' }, [
+      el('summary', null, ['자동으로 붙는 정보']),
+      rows([['화면', c.screenName || '메인 화면'], ['기기·브라우저', (from.device || '') + ' · ' + (from.browser || '')],
+        ['시각', c.occurredAt ? fmtWhen(c.occurredAt) : '']])]);
+  }
+  function previewDetails(st) {
+    var p = res.preview || {}, attrs = (p.aiPayload && p.aiPayload.attributes) || {};
+    var masked = (p.refKeys || []).length > 0 || /\[[^\]]+\]/.test(p.maskedText || '');
+    var list = [['고른 것', labelOf(meta.businesses, form.business) + ' · ' + labelOf(meta.symptoms, form.symptom)],
+      ['한 줄 설명', maskSpan(p.maskedText || form.oneLine)]];
+    if (attrs.ref) list.push(['고객', maskSpan(attrs.ref + ' (번호 대신 쓰는 표시)')]);
+    Object.keys(attrs).filter(function (k) { return k !== 'ref'; }).forEach(function (k) {
+      var v = attrs[k];
+      list.push([ATTR_LABEL[k] || k, typeof v === 'object' ? v.type + ' (' + v.month.replace('-', '년 ') + '월)' : v]);
+    });
+    (res.session && res.session.questions || []).forEach(function (q) {
+      list.push([q.text, form.answers[q.slot] || '답하지 않음']);
+    });
+    return el('details', { cls: 'pn-details', open: masked ? true : null }, [
+      el('summary', { 'data-fk': 'preview' }, [st.mode === 'A' ? '저장되는 내용' : 'AI에 전달한 내용']),
+      masked ? note('', 'i-shield', '가려진 부분이 있어요', '고객번호 대신 표시를 써요. 원래 번호는 AI에 보내지 않아요.') : null,
+      rows(list)]);
+  }
 
   /* ---- 작은 도우미 ---- */
   function el(tag, attrs, kids) {
@@ -126,7 +185,7 @@
     if (location.hash === before) render();
   }
   function seqOf(st) {
-    return ['0', '1', '2', '3', '4', '5', '6', '7'].filter(function (s) {
+    return ['0', '2', '3', '4', '5', '7'].filter(function (s) {
       return !(s === '0' && st.known === 'off') && !(s === '5' && st.mode === 'A');
     });
   }
@@ -158,12 +217,13 @@
     // 4단계 이후는 3단계 검사를 거쳐야 오므로 업무가 비어 있으면 주소로 건너뛴 것: 첫 화면이 아니어도 채운다.
     if (!form.business) {
       var deep = isAfter(step, '3') || step === 'done' || step === 'usage';
-      if (deep || (!booted && st['case'] && (step === '2' || step === '3'))) {
+      if (st['case'] && (deep || step === '2' || step === '3')) {
         prefill(caseOf(st));
         if (booted) invalidate();   // 빈 값으로 받아 둔 응답은 버린다
       }
     }
     syncFixture(st);
+    chain = chain.then(function () { return A.getKnownErrors('MAIN', '', reporterId(st)).then(function (list) { known = list || []; }); });
     var needPreview = isAfter(step, '4') || step === 'done' || step === 'usage';
     if (needPreview && !res.preview) chain = chain.then(function () { return A.postIntakePreview(req(st)).then(function (p) { res.preview = p; }); });
     var aiStep = st.mode === 'B' && (isAfter(step, '4') || step === 'done' || step === 'usage');
@@ -175,12 +235,11 @@
     chain = chain.then(function () {
       var s = res.session;
       if (!s || !(isAfter(step, '5') || step === 'done') || res.refined || !(s.questions || []).length) return;
-      if (s.llmOutcome === 'FALLBACK') Object.keys(FALLBACK_ANSWERS).forEach(function (k) { if (!form.answers[k]) form.answers[k] = FALLBACK_ANSWERS[k]; });
       return A.postAnswers(s.sessionId, { answers: answersList(s) }).then(function (r) { res.refined = r; });
     });
     chain = chain.then(function () {
-      if (step === 'done' && !res.report) return A.postReport(reportReq(st)).then(function (r) { res.report = r; });
-      if (step === 'metoo' && !res.meToo && known.length) return A.postMeToo(known[0].id, { reporterId: reporterId(st) }).then(function (r) { res.meToo = r; });
+      if (step === 'done' && st['case'] && !res.report) return A.postReport(reportReq(st)).then(function (r) { res.report = r; });
+      if (step === 'metoo' && st['case'] && !res.meToo && known.length) return A.postMeToo(known[0].id, { reporterId: reporterId(st), submittedById: proxyUser(st) ? proxyUser(st).id : null }).then(function (r) { res.meToo = r; });
     });
     return chain;
   }
@@ -203,7 +262,7 @@
     var t = st.mode === 'B' ? aiTicket() : null, c = st.mode === 'B' ? aiClass() : null;
     var masked = res.preview && res.preview.maskedText || form.oneLine;
     form.edit = {
-      title: t ? t.title : labelOf(meta.businesses, form.business) + ' · ' + labelOf(meta.symptoms, form.symptom),
+      title: t ? t.title : masked.slice(0, 90) || (labelOf(meta.businesses, form.business) + ' · ' + labelOf(meta.symptoms, form.symptom)),
       summary: t ? t.symptomSummary : masked,
       steps: t ? (t.stepsToReproduce || []).join('\n') : '',
       type: form.typeOverride || (c ? c.type : 'UNCLASSIFIED')
@@ -213,7 +272,9 @@
   function reportReq(st) {
     var e = editOf(st), me = proxyUser(st);
     return { mode: st.mode, reporterId: reporterId(st), submittedById: me ? me.id : null, kind: 'FULL',
-      business: form.business, symptom: form.symptom, finalType: e.type, title: e.title, llmOutcome: llmOutcome() };
+      business: form.business, symptom: form.symptom, finalType: e.type, title: e.title, summary: e.summary,
+      stepsToReproduce: e.steps ? e.steps.split('\n') : [], oneLine: form.oneLine, answers: form.answers,
+      autoContext: ctx, llmOutcome: llmOutcome() };
   }
 
   /* ---- 화면 그리기 ---- */
@@ -225,7 +286,16 @@
     $('pn-scrim').hidden = !open;
     document.querySelector('[data-panel="intake"]').setAttribute('aria-expanded', String(open));
     if (!open) { lastStep = null; lastKeys = null; return Promise.resolve(); }
+    if (restoreDraft(st)) return Promise.resolve();
     syncKeys(st);
+    if (st.step === '1' || st.step === '6') { go({ step: st.step === '1' ? '2' : '7' }); return Promise.resolve(); }
+    if (!st['case']) {
+      var missing = firstMissing();
+      if (missing && (isAfter(st.step, missing) || st.step === 'usage' || (st.step === 'done' && !res.report))) {
+        go({ step: missing }); return Promise.resolve();
+      }
+      if (st.step === 'metoo' && !res.meToo) { go({ step: '0' }); return Promise.resolve(); }
+    }
     var q = seqOf(st);
     if (!st.step || (/^\d$/.test(st.step) && q.indexOf(st.step) < 0)) {
       var fix = !st.step ? q[0] : (q.filter(function (s) { return s > st.step; })[0] || q[q.length - 1]);
@@ -241,6 +311,7 @@
         return;
       }
       paint(st);
+      saveDraft(st);
     });
   }
 
@@ -260,14 +331,21 @@
     var fk = document.activeElement && document.activeElement.getAttribute && document.activeElement.getAttribute('data-fk');
     var caret = fk && document.activeElement.selectionStart;
     paintProxy(st);
+    $('pn-close').disabled = submitting;
     paintSteps(st);
-    var view = VIEWS[st.step] ? VIEWS[st.step](st) : { body: [el('p', null, ['알 수 없는 단계예요.'])], foot: [] };
+    var view = closePending ? {
+      body: [el('h3', { tabindex: '-1' }, ['접수를 닫을까요?']),
+        el('p', { cls: 'pn-lead' }, ['아직 보내지 않은 내용이 있어요. 닫으면 적은 내용이 지워져요.'])],
+      foot: [btn('pn-btn-2', '지우고 닫기', 'discard'), btn('pn-btn', '계속 작성하기', 'keep')]
+    } : VIEWS[st.step] ? VIEWS[st.step](st) : { body: [el('p', null, ['알 수 없는 단계예요.'])], foot: [] };
     var body = $('pn-body');
     body.innerHTML = '';
     view.body.forEach(function (n) { if (n) body.appendChild(n); });
     var foot = $('pn-foot');
     foot.innerHTML = '';
     view.foot.forEach(function (n) { if (n) foot.appendChild(n); });
+    if (submitting) Array.prototype.forEach.call($('intake-panel').querySelectorAll('button, input, textarea, select'),
+      function (control) { control.disabled = true; });
     if (st.step !== lastStep) {
       body.scrollTop = 0;
       var h = body.querySelector('h3');
@@ -282,7 +360,7 @@
   function paintProxy(st) {
     var box = $('pn-proxy');
     var ended = ['metoo', 'usage', 'done'].indexOf(st.step) >= 0;
-    box.hidden = st.role !== 'MANAGER' || ended;
+    box.hidden = st.role !== 'MANAGER' || ended || closePending;
     if (box.hidden) return;
     var me = proxyUser(st);
     var sel = $('pn-proxy-select');
@@ -292,6 +370,7 @@
       sel.appendChild(el('option', { value: u.id }, [u.name + ' 대신 접수']));
     });
     sel.value = form.onBehalf;
+    sel.disabled = submitting;
   }
 
   function paintSteps(st) {
@@ -302,7 +381,7 @@
       text.appendChild(el('b', null, [end]));
     } else {
       text.appendChild(el('b', null, [(i + 1) + '단계']));
-      text.appendChild(document.createTextNode(' / 전체 ' + q.length + '단계 · ' + (st.step === '6' && st.mode === 'A' ? '저장되는 내용' : STEP_TITLE[st.step])));
+      text.appendChild(document.createTextNode(' / 전체 ' + q.length + '단계 · ' + (STEP_TITLE[st.step])));
     }
     var track = $('pn-track');
     track.innerHTML = '';
@@ -328,7 +407,7 @@
         return el('li', { cls: 'pn-card' }, [
           el('p', { cls: 'pn-card-title' }, [k.title]),
           rows([['임시로 이렇게', k.workaround], plan, ['같은 신고', k.reportCount + '건']]),
-          btn('pn-btn-out', '나도 겪었어요', 'metoo', { 'data-id': k.id, 'data-fk': 'metoo:' + k.id })
+          btn('pn-btn-out', k.alreadyReported ? '이미 알려 주셨어요' : '나도 겪었어요', 'metoo', { 'data-id': k.id, 'data-fk': 'metoo:' + k.id, disabled: k.alreadyReported })
         ]);
       });
       return {
@@ -338,25 +417,14 @@
         foot: [btn('pn-btn', '다른 문제예요', 'next')]
       };
     },
-    '1': function (st) {
-      var c = ctx || {};
-      var from = c.reportedFrom || {};
-      return {
-        body: [el('h3', { tabindex: '-1' }, ['이 정보는 묻지 않아도 함께 보내져요']),
-          el('p', { cls: 'pn-lead' }, ['따로 적지 않으셔도 돼요.']),
-          el('div', { cls: 'pn-card' }, [rows([['화면', c.screenName || ''], ['기기·브라우저', from.device + ' · ' + from.browser],
-            ['시각', c.occurredAt ? fmtWhen(c.occurredAt) : '']])]),
-          st.mode === 'B' ? note('', 'i-info', null, '오류가 이 기기가 아닌 곳(예: 휴대폰)에서 났다면 뒤에서 여쭤볼게요.') : null],
-        foot: footNav(st, '다음', 'next')
-      };
-    },
     '2': function (st) {
       var yes = form.customer === 'yes';
       return {
-        body: [el('h3', { tabindex: '-1' }, ['고객과 관련된 오류인가요?']),
-          el('p', { cls: 'pn-lead' }, ['특정 고객을 조회하거나 처리하다가 생겼으면 "예"를 눌러 주세요.']),
+        body: [el('h3', { tabindex: '-1' }, ['특정 고객에게만 생기는 문제인가요?']),
+          el('p', { cls: 'pn-lead' }, ['특정 고객의 정보를 확인해야 하는 문제라면 "예"를 골라 주세요.']),
+          autoInfo(),
           el('ul', { cls: 'pn-choices is-two' }, [
-            choice('pn-choice', 'yes', '예, 고객 관련이에요', yes, 'customer', 'i-user'),
+            choice('pn-choice', 'yes', '예, 특정 고객이에요', yes, 'customer', 'i-user'),
             choice('pn-choice', 'no', '아니요', form.customer === 'no', 'customer', 'i-doc')]),
           yes ? el('div', { cls: 'pn-field' }, [
             el('label', { 'for': 'pn-cust-no' }, ['고객번호']),
@@ -441,40 +509,6 @@
         foot: footNav(st, '다음', 'next')
       };
     },
-    '6': function (st) {
-      var p = res.preview || {};
-      var attrs = (p.aiPayload && p.aiPayload.attributes) || {};
-      var masked = (p.refKeys || []).length > 0 || /\[[^\]]+\]/.test(p.maskedText || '');
-      var picked = labelOf(meta.businesses, form.business) + ' · ' + labelOf(meta.symptoms, form.symptom);
-      if (st.mode === 'A') {
-        return {
-          body: [el('h3', { tabindex: '-1' }, ['이렇게 저장돼요']),
-            el('p', { cls: 'pn-lead' }, ['이름·번호는 가려서 저장해요.']),
-            masked ? note('', 'i-shield', '가려진 부분이 있어요', '이름은 [고객], 고객번호는 K-01 같은 표시로 바꿨어요.') : null,
-            el('div', { cls: 'pn-card' }, [rows([['고른 것', picked], ['한 줄 설명', maskSpan(p.maskedText)],
-              form.customer === 'yes' ? ['고객번호', maskSpan((p.refKeys || [])[0] || 'K-01')] : null])])],
-          foot: footNav(st, '다음', 'next')
-        };
-      }
-      var s = res.session || {};
-      var qa = (s.questions || []).map(function (qq) { return [qq.text, form.answers[qq.slot] || '(답하지 않음)']; });
-      var attrRows = Object.keys(attrs).filter(function (k) { return k !== 'ref'; }).map(function (k) {
-        var v = attrs[k];
-        return [ATTR_LABEL[k] || k, typeof v === 'object' ? v.type + ' (' + v.month.replace('-', '년 ') + '월)' : v];
-      });
-      var det = el('details', { cls: 'pn-details', open: masked ? true : null }, [
-        el('summary', { 'data-fk': 'summary' }, [masked ? '전달되는 내용 (가려진 부분 있음)' : '전달되는 내용 보기']),
-        rows([['고른 것', picked], ['한 줄 설명', maskSpan(p.aiPayload ? p.aiPayload.text : p.maskedText)]]
-          .concat(attrs.ref ? [['고객', maskSpan(attrs.ref + ' (번호 대신 쓰는 표시)')]] : [])
-          .concat(attrRows).concat(qa))]);
-      return {
-        body: [el('h3', { tabindex: '-1' }, ['AI에게는 이 내용만 전달돼요']),
-          el('p', { cls: 'pn-lead' }, ['이름·번호는 가리고, 화면 사진은 보내지 않아요.']),
-          masked ? note('', 'i-shield', '가려진 부분이 있어요', '이름은 [고객]으로, 고객번호는 K-01로 바꿔서 보내요. 고객번호 원래 값은 AI에 보내지 않아요.') : null,
-          det],
-        foot: footNav(st, '다음', 'next')
-      };
-    },
     '7': function (st) {
       var e = editOf(st), c = st.mode === 'B' ? aiClass() : null;
       var me = proxyUser(st);
@@ -489,20 +523,31 @@
       } else {
         typeBox = el('div', { cls: 'pn-card' }, [rows([['종류', '아직 정하지 않음 – 담당자가 정해요']])]);
       }
-      return {
-        body: [el('h3', { tabindex: '-1' }, ['내용을 확인하고 보내 주세요']),
-          el('p', { cls: 'pn-lead' }, ['고칠 곳이 있으면 바로 고쳐 주세요.']),
-          llmOutcome() === 'FALLBACK' ? note('', 'i-info', null, 'AI 정리 없이 고른 내용으로 만들었어요. 담당자가 한 번 더 확인해요.') : null,
+      var edit = el('details', { cls: 'pn-details', open: editOpen ? true : null }, [
+        el('summary', { 'data-fk': 'edit-toggle' }, ['내용 수정']),
+        el('div', { cls: 'pn-edit-body' }, [
           el('div', { cls: 'pn-field' }, [el('label', { 'for': 'pn-t' }, ['제목']),
             el('input', { cls: 'pn-input', id: 'pn-t', type: 'text', value: e.title, 'data-fk': 'title', 'data-in': 'title' })]),
           el('div', { cls: 'pn-field' }, [el('label', { 'for': 'pn-s' }, ['무슨 일인지']),
             el('textarea', { id: 'pn-s', 'data-fk': 'summary', 'data-in': 'summary' }, [e.summary])]),
-          e.steps ? el('div', { cls: 'pn-field' }, [el('label', { 'for': 'pn-r' }, ['다시 생기게 하는 순서']),
+          st.mode === 'B' ? el('div', { cls: 'pn-field' }, [el('label', { 'for': 'pn-r' }, ['문제가 생긴 순서']),
             el('textarea', { id: 'pn-r', 'data-fk': 'steps', 'data-in': 'steps' }, [e.steps])]) : null,
-          typeBox,
+          typeBox])]);
+      edit.addEventListener('toggle', function () { if (edit.isConnected) { editOpen = edit.open; if (!edit.open) paint(st); } });
+      return {
+        body: [el('h3', { tabindex: '-1' }, ['이 내용으로 접수할게요']),
+          el('p', { cls: 'pn-lead' }, ['맞으면 보내 주세요. 바꿀 내용만 "내용 수정"에서 고칠 수 있어요.']),
+          llmOutcome() === 'FALLBACK' ? note('', 'i-info', null, '고른 내용으로 정리했어요. 담당자가 한 번 더 확인해요.') : null,
+          el('div', { cls: 'pn-card pn-review' }, [
+            el('p', { cls: 'pn-card-title' }, [e.summary || e.title]),
+            rows([['업무·문제', labelOf(meta.businesses, form.business) + ' · ' + labelOf(meta.symptoms, form.symptom)]])
+          ]),
+          edit,
+          previewDetails(st),
           st.role === 'MANAGER' ? el('div', { cls: 'pn-card' }, [rows([['누구의 신고', who ? who.name : (me ? me.name : '')],
-            ['접수한 사람', me ? me.name : '']])]) : null],
-        foot: footNav(st, '이대로 보내기', 'submit')
+            ['접수한 사람', me ? me.name : '']])]) : null,
+          err()],
+        foot: footNav(st, submitting ? '보내는 중…' : '이대로 보내기', 'submit', { disabled: submitting })
       };
     },
     metoo: function () {
@@ -540,7 +585,7 @@
             ['처리 등급', g ? g[0] + ' – ' + g[1] : '없음'], ['담당 부서', DEPT[r.departmentCode] || ''],
             st.role === 'MANAGER' ? ['누구의 신고', who ? who.name : (me ? me.name : '')] : null])]),
           note('', 'i-bell', null, '진행 상황은 알림(종 모양)과 "알려진 오류·내 신고" 탭에서 볼 수 있어요.')])],
-        foot: [btn('pn-btn', '닫기', 'close')]
+        foot: [btn('pn-btn-2', '닫기', 'close'), btn('pn-btn', '내 신고에서 보기', 'view-report')]
       };
     }
   };
@@ -569,35 +614,65 @@
     go({ step: q[i + 1] });
   }
 
-  function close() {
+  function closeNow() {
+    clearDraft(read());
     blank();
     go({ panel: '', step: '', alert: '', 'case': '', tab: '', item: '' });
     var t = opener || document.querySelector('[data-panel="intake"]');
     if (t) t.focus();
   }
 
+  function requestClose() {
+    var st = read();
+    if (submitting) return;
+    if (closePending) { closePending = false; paint(st); return; }
+    if (END_TITLE[st.step] || !hasInput()) return closeNow();
+    closePending = true;
+    paint(st);
+    var h = $('pn-body').querySelector('h3'); if (h) h.focus();
+  }
+
   function onClick(e) {
     var b = e.target.closest('[data-act]');
-    if (!b) return;
+    if (!b || submitting) return;
     var st = read(), act = b.getAttribute('data-act'), code = b.getAttribute('data-code');
     var q = seqOf(st);
     switch (act) {
       case 'next': return next(st);
       case 'back': form.err = ''; return go({ step: q[Math.max(0, q.indexOf(st.step) - 1)], alert: '' });
-      case 'close': return close();
+      case 'close': return requestClose();
+      case 'discard': return closeNow();
+      case 'keep': closePending = false; paint(st); var heading = $('pn-body').querySelector('h3'); if (heading) heading.focus(); return;
+      case 'view-report':
+        var id = res.report && res.report.reportId;
+        clearDraft(st); blank();
+        return go({ panel: 'known', tab: 'mine', item: id || '', step: '', alert: '', 'case': '', board: 'known' });
       case 'close-usage':
-        return A.postReport({ mode: st.mode, finalType: 'USAGE', closedAsGuidance: true, reporterId: reporterId(st) }).then(close);
+        return A.postReport({ mode: st.mode, finalType: 'USAGE', closedAsGuidance: true, reporterId: reporterId(st) }).then(closeNow);
       case 'metoo':
-        return A.postMeToo(b.getAttribute('data-id'), { reporterId: reporterId(st) }).then(function (r) { res.meToo = r; go({ step: 'metoo' }); });
+        return A.postMeToo(b.getAttribute('data-id'), { reporterId: reporterId(st), submittedById: proxyUser(st) ? proxyUser(st).id : null }).then(function (r) { res.meToo = r; go({ step: 'metoo' }); });
       case 'customer': form.customer = code; form.err = ''; invalidate(); return render();
       case 'business': form.business = code; form.err = ''; invalidate(); return render();
       case 'symptom': form.symptom = code; form.err = ''; invalidate(); return render();
       case 'answer': form.answers[b.getAttribute('data-slot')] = code; res.refined = null; form.edit = null; return render();
       case 'type': editOf(st).type = code; return render();
       case 'usage': return go({ step: 'usage' });
-      case 'not-usage': form.typeOverride = 'DEFECT'; form.edit = null; return go({ step: '6' });
+      case 'not-usage': form.typeOverride = 'DEFECT'; form.edit = null; return go({ step: '7' });
       case 'submit':
-        return A.postReport(reportReq(st)).then(function (r) { res.report = r; go({ step: r.closedAsGuidance ? 'usage' : 'done' }); });
+        var edited = editOf(st);
+        if (!edited.title.trim() || !edited.summary.trim()) { form.err = '제목과 설명을 적어 주세요.'; editOpen = true; return paint(st); }
+        form.err = '';
+        submitting = true;
+        paint(st);
+        return Promise.resolve().then(function () { return A.postReport(reportReq(st)); }).then(function (r) {
+          submitting = false;
+          res.report = r;
+          go({ step: r.closedAsGuidance ? 'usage' : 'done' });
+        }, function () {
+          submitting = false;
+          form.err = '접수를 보내지 못했어요. 잠시 뒤 다시 눌러 주세요.';
+          paint(st);
+        });
     }
   }
 
@@ -605,15 +680,16 @@
     var t = e.target, k = t.getAttribute && t.getAttribute('data-in');
     if (!k) return;
     var st = read();
-    if (k === 'customerNo') { form.customerNo = t.value; return; }
+    if (k === 'customerNo') { form.customerNo = t.value; invalidate(); saveDraft(st); return; }
     if (k === 'oneLine') {
       form.oneLine = t.value;
       invalidate();
+      saveDraft(st);
       if (st.alert === 'blocked') go({ alert: '', 'case': st['case'] === 'blocked' ? '' : st['case'] });
       return;
     }
-    if (k === 'answer') { form.answers[t.getAttribute('data-slot')] = t.value; res.refined = null; return; }
-    if (k === 'title' || k === 'summary' || k === 'steps') { editOf(st)[k] = t.value; }
+    if (k === 'answer') { form.answers[t.getAttribute('data-slot')] = t.value; res.refined = null; form.edit = null; saveDraft(st); return; }
+    if (k === 'title' || k === 'summary' || k === 'steps') { editOf(st)[k] = t.value; saveDraft(st); }
   }
 
   function focusables() {
@@ -625,7 +701,7 @@
     if (e.key === 'Escape') {
       if (!$('notice-box').hidden || !$('alarm-pop').hidden) return;   // 위에 뜬 안내 상자가 먼저 닫힌다
       e.preventDefault();
-      close();
+      requestClose();
       return;
     }
     if (e.key === 'Tab') {   // 패널 안에서만 이동 (aria-modal)
@@ -642,14 +718,15 @@
     document.querySelector('[data-panel="intake"]').addEventListener('click', function () {
       opener = this;
       blank();
+      restored = false;
       lastStep = null;
       go({ panel: 'intake', step: '', alert: '', 'case': '', popup: '', notice: '', tab: '', item: '' });   // S3 키(tab, item)도 지운다
     });
     var panel = $('intake-panel');
     panel.addEventListener('click', onClick);
     panel.addEventListener('input', onInput);
-    $('pn-close').addEventListener('click', close);
-    $('pn-proxy-select').addEventListener('change', function (e) { form.onBehalf = e.target.value; form.edit = null; });
+    $('pn-close').addEventListener('click', requestClose);
+    $('pn-proxy-select').addEventListener('change', function (e) { form.onBehalf = e.target.value; form.edit = null; saveDraft(read()); render(); });
     document.addEventListener('keydown', onKey);
     window.addEventListener('hashchange', render);
   }

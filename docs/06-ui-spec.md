@@ -191,8 +191,8 @@ S6 → S5 (반복) → S6
 |---|---|---|
 | 1 | S1 홈 (FC) | `#role=FC` |
 | 2 | 진입점 3개 강조(선택) | `#role=FC&demo=1` |
-| 3 | S2 0단계 알려진 오류 | `#role=FC&panel=intake&step=0` |
-| 4 | 분기: 알려진 오류로 종료("나도 겪었어요") | `#role=FC&panel=intake&step=metoo` |
+| 3 | S2 알려진 오류 | `#role=FC&panel=intake&step=0` |
+| 4 | 분기: 알려진 오류로 종료("나도 겪었어요") | `#role=FC&panel=intake&case=defect&step=metoo` |
 | 5 | S2 고객 여부와 자동 정보(1→2) | `#role=FC&panel=intake&case=defect&step=1` |
 | 6 | 분기: 고객 관련 경로(2단계 "예" + 고객번호) | `#role=FC&panel=intake&case=customer&step=2` |
 | 7 | 고객 관련 경로: AI 전달 내용(가린 부분 펼침) | `#role=FC&panel=intake&case=customer&step=6` |
@@ -203,7 +203,7 @@ S6 → S5 (반복) → S6
 | 12 | S2 5단계 AI 되묻기(응답 받음) | `#role=FC&panel=intake&case=defect&step=5` |
 | 13 | 분기: LLM 실패 → 규칙 되묻기 | `#role=FC&panel=intake&case=defect&llm=fail&step=5` |
 | 14 | S2 최종 확인 전달 내용(6→7) | `#role=FC&panel=intake&case=defect&step=6` |
-| 15 | S2 7단계 확인하고 보내기 | `#role=FC&panel=intake&case=defect&step=7` |
+| 15 | S2 요약 확인하고 보내기 | `#role=FC&panel=intake&case=defect&step=7` |
 | 16 | 접수 끝 | `#role=FC&panel=intake&case=defect&step=done` |
 | 17 | 분기: 사용법 안내로 종료 | `#role=FC&panel=intake&case=usage&step=usage` |
 | 18 | A 모드(AI 끔): 저장용 마스킹 결과 | `#role=FC&panel=intake&mode=A&case=customer&step=6` |
@@ -251,3 +251,6 @@ python scripts/ui_compare.py "<스크린샷>" [--blur 6] [--offset-y N]
 - `ref_blur.py`: 흐림 사본을 만든다(기본 `target/ref-blur/`). blur 6 미만은 거부. 확대는 흐림 **뒤**에 해서 글자가 읽히지 않는다. Claude는 이 사본만 본다.
 - `ui_compare.py`: `index.html?compare=1` 을 원본 크기로 headless Chrome 캡처하고, 두 이미지에 같은 흐림을 적용해 전체 유사도(%)와 8×6 격자별 유사도를 표로 출력한다. `target/ui-compare/` 에 흐림 원본·흐림 재현을 **반반 겹친 PNG**(`overlay.png`)와 **나란히 놓은 PNG**(`side.png`)를 저장한다. 원본을 흐림 없이 출력·저장하지 않는다. `--offset-y` 는 스크린샷 맨 위가 잘린 만큼 우리 캡처를 위로 당긴다.
 - 숫자보다 겹친 이미지에서 상자 위치·크기·색이 맞는지를 우선 본다. 가상 데이터 글자 차이는 허용.
+
+### ADR-017 디자인 리뷰 보완
+S2의 독립 펼침 영역은 정보 카드(24px·카드 그림자), S3 카드 내부의 펼침은 보조 버튼(12px·연한 테두리·그림자 없음)을 따른다. 같은 카드 안에 그림자를 중첩하지 않는다. 최종 수정 제목은 내 신고에서도 사용하고, 제목과 다른 설명은 상세에서 확인한다. 해결된 신고는 이전 우회법과 지난 수정 예정일 대신 업무 재개 안내를 표시한다.

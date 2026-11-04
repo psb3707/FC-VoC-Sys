@@ -56,3 +56,24 @@
 .kn .kn-none { margin: 16px 0 0; color: var(--pn-sub); }
 .kn-empty { text-align: center; }
 .kn-alarms dt { flex-basis: var(--kn-stage-dt); }
+
+/* 기본은 상태·행동 한 번씩, 상세는 보조 버튼 토큰의 펼침 영역. */
+.kn-action { margin: 12px 0; }
+.kn-action > b { color: var(--pn-ink); }
+.kn-action > p { margin: 6px 0 0; }
+.kn-details, .kn-history, .kn-finished { margin-top: 16px; }
+.kn details > summary { display: flex; min-height: var(--pn-btn-h); align-items: center;
+  justify-content: space-between; gap: 12px; padding: 12px 16px; border: 1px solid var(--kn-tab-line);
+  border-radius: var(--pn-btn-radius); color: var(--pn-ink); background: var(--pn-bg);
+  font-weight: 500; cursor: pointer; list-style: none; }
+.kn details > summary::-webkit-details-marker { display: none; }
+.kn details > summary::after { content: "＋"; flex: none; color: var(--pn-accent); }
+.kn details[open] > summary::after { content: "−"; }
+.kn details > summary:focus-visible { outline: 3px solid var(--pn-accent); outline-offset: 2px; }
+.kn-detail-body { padding-top: 16px; }
+.kn-full-notice { margin-top: 16px; }
+.kn-full-notice > p { margin: 6px 0 0; }
+.kn-metoo { width: 100%; margin-top: 16px; }
+.kn .kn-proxy-name { margin: 0 0 8px; color: var(--pn-sub); }
+.kn-finished > ul { margin-top: 16px; }
+.kn-history > .pn-card { margin-top: 16px; }

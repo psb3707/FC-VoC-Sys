@@ -183,3 +183,10 @@
   border-radius: var(--pn-btn-radius); background: var(--pn-bg); color: var(--pn-accent) !important; font-weight: 700; }
 .pn-btn-out:hover { background: var(--pn-selected-bg); }
 
+
+/* ADR-017: 자동 정보와 상세 편집은 기존 펼침 카드 안으로 통합한다. */
+.pn-auto { margin-bottom: 20px; }
+.pn-auto + .pn-choices { margin-top: 16px; }
+.pn-edit-body { padding: 0 24px 24px; }
+.pn-review .pn-card-title { font-weight: 500; }
+.pn button:disabled { cursor: default; color: var(--pn-sub) !important; background: var(--pn-surface); border-color: var(--pn-line); }
