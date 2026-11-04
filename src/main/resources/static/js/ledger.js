@@ -450,10 +450,13 @@
     var r = linkReport(st);
     var err = st.err === '1' && !st.link ? '묶을 대표 결함을 골라 주세요' : '';
     var who = r && r.reporter ? r.reporter.name + ' · ' + r.reporter.branchName + ' · ' + fmtDate(r.createdAt) : '';
+    // 묶을 신고(정보 카드)와 고를 대표 결함(선택 버튼)은 소제목으로 나눠 카드끼리 붙어 보이지 않게 한다
     return [el('h3', { tabindex: '-1' }, ['어느 대표 결함에 묶을까요?']),
+      r ? el('h4', null, ['묶을 신고']) : null,
       r ? el('div', { cls: 'pn-card' }, [el('p', { cls: 'pn-card-title' }, [r.id + ' · ' + (BUSINESS[r.business] || '')]),
-        el('p', null, [r.maskedText || '"나도 겪었어요" 신고']), el('p', { cls: 'kn-meta' }, [who])]) : null,
-      el('ul', { cls: 'pn-choices ld-one', role: 'group', 'aria-label': '대표 결함' }, sorted(defects).map(function (d) {
+        el('p', null, [r.maskedText || '"나도 겪었어요" 신고']), el('p', { cls: 'ld-meta' }, [who])]) : null,
+      el('h4', { id: 'ld-link-list' }, ['대표 결함 ' + defects.length + '건 중 고르기']),
+      el('ul', { cls: 'pn-choices ld-one', role: 'group', 'aria-labelledby': 'ld-link-list' }, sorted(defects).map(function (d) {
         return el('li', null, [el('button', { type: 'button', cls: 'pn-choice', 'data-link': d.id, 'aria-pressed': String(st.link === d.id) }, [
           el('span', null, [d.title]), el('span', { cls: 'ld-choice-sub' }, [d.id + ' · ' + stageLabel(d.status)]),
           el('span', { cls: 'pn-tick' }, [icon('i-check')])])]);

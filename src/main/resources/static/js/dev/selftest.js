@@ -350,6 +350,27 @@
         lf.push('목록 주 버튼 ' + all('.ld-main .pn-btn').length + '개');
       }
       add('s4-ledger-token', lf, lvw + 'px');
+
+      // 패널·대화상자 본문의 덩어리끼리 겹치거나 붙지 않는가: 이어지는 두 덩어리 사이가 겹치면 실패,
+      // 둘 다 그림자 있는 카드(또는 그림자 카드 목록)이면 12px 이상 떨어져야 한다 (06번 0-3 콘텐츠 카드, 신고 묶기 겹침 재발 방지)
+      var gf = [];
+      function shadowy(el) {
+        if (cs(el).boxShadow !== 'none') return true;
+        var inner = el.querySelector(':scope > li > *');
+        return !!inner && cs(inner).boxShadow !== 'none';
+      }
+      ['ld-body', 'ld-dlg-body'].forEach(function (id) {
+        var box = document.getElementById(id);
+        if (!box || !visible(box)) return;
+        var kids = Array.prototype.filter.call(box.children, visible);
+        for (var i = 1; i < kids.length; i++) {
+          var a = kids[i - 1], b = kids[i];
+          var gap = b.getBoundingClientRect().top - a.getBoundingClientRect().bottom;
+          if (gap < -EPS) gf.push(label(a) + ' ↔ ' + label(b) + ' 겹침 ' + gap.toFixed(1));
+          else if (shadowy(a) && shadowy(b) && gap < 12 - EPS) gf.push(label(a) + ' ↔ ' + label(b) + ' 간격 ' + gap.toFixed(1));
+        }
+      });
+      add('s4-block-gap', gf);
     }
 
     var result = { ok: checks.every(function (c) { return c.pass; }), url: location.hash, checks: checks };
