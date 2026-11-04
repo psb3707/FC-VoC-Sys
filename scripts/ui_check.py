@@ -9,9 +9,10 @@
 2) headless Chrome(없으면 Edge)을 한 번만 띄워 DevTools 프로토콜로, 상태 주소 × 화면 크기마다
    캡처(target/ui-check/<상태>_<폭>.png)와 자체 검사(index.html?selftest=1#<상태>)
    S1 상태(STATES × SIZES), S2 접수 패널 상태(PANEL_STATES × PANEL_SIZES),
-   S3 공지 카드 요약(KNOWN_HOME_STATES × SIZES)과 S3 패널(KNOWN_PANEL_STATES × PANEL_SIZES)을 함께 본다.
+   S3 공지 카드 요약(KNOWN_HOME_STATES × SIZES)과 S3 패널(KNOWN_PANEL_STATES × PANEL_SIZES),
+   S4 결함 대장(ledger.html, LEDGER_STATES × SIZES)을 함께 본다.
 
-사용: 작업 트리 루트에서  python scripts/ui_check.py
+사용: 작업 트리 루트에서  python scripts/ui_check.py [ledger]   (인자를 주면 주소에 그 글자가 든 화면만)
 표준 라이브러리만 쓴다. 하나라도 실패하면 종료 코드 1.
 """
 import base64
@@ -44,7 +45,9 @@ EXTRA_UI_WORDS = {"사용자", "안내가", "부서가", "오류와", "설계일
                   "고객님", "고객의", "고객을", "고객도", "고객은", "방법을", "연결됨", "보낸다", "보내면", "보인다",
                   "문제가", "나나요", "모른다", "오른쪽", "주세요", "고른다",
                   # S3 알려진 오류·내 신고(index.html, js/fixtures/reports.js·notifications.js) 문구
-                  "고르기", "고치지", "문자로", "문제를", "이어서", "원인을", "전에는", "반응이"}
+                  "고르기", "고치지", "문자로", "문제를", "이어서", "원인을", "전에는", "반응이",
+                  # S4 결함 대장(ledger.html, js/fixtures/defects.js) 문구
+                  "원인의", "신고를", "보험료", "나와요", "고객이", "이력이"}
 
 BROWSERS = [
     Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
@@ -70,6 +73,23 @@ K = "role=FC&board=known&panel=known&"
 KNOWN_PANEL_STATES = [K + "tab=known", K + "tab=known&item=D-2026-005", K + "tab=mine",
                       "role=FC&panel=known&tab=mine&item=R-013",   # 알림 팝업 항목에서 연 상태
                       "role=MANAGER&panel=known&tab=mine", "role=SALES&panel=known&tab=mine"]   # 빈 화면
+# S4 결함 대장 (ledger.html, js/ledger.js 주소 키, 06번 11절): 목록·필터·빈 결과·안 묶인 신고·상세 패널·
+# 상태 바꾸기 대화상자 단계별(고르기·예정일·사유·되돌림·막힘·알림 미리보기·기록만·끝)·신고 묶기
+LD = "role=SALES&item=D-2026-001&dialog=status&"
+LEDGER_STATES = ["role=SALES", "role=IT&grade=IMMEDIATE", "role=SALES&status=RESOLVED",
+                 "role=SALES&tab=unlinked", "role=SALES&tab=unlinked&for=D-2026-001",
+                 "role=SALES&item=D-2026-001", "role=SALES&item=D-2026-005", "role=SALES&item=D-2026-006",
+                 LD + "dstep=pick", LD + "to=FIX_PLANNED&dstep=pick",
+                 LD + "to=FIX_PLANNED&dstep=detail", LD + "to=FIX_PLANNED&dstep=detail&err=1",
+                 LD + "to=FIX_PLANNED&dstep=preview&date=2026-11-25",
+                 LD + "to=WONT_FIX&dstep=detail&reason=ETC&memo=" + "%EC%83%81%ED%92%88%20%EB%8B%A8%EC%A2%85",
+                 LD + "to=WONT_FIX&dstep=preview&reason=NEW_SFA",
+                 LD + "to=CAUSE_FOUND&dstep=detail&memo=" + "%EC%9E%AC%ED%99%95%EC%9D%B8",
+                 "role=SALES&item=D-2026-006&dialog=status&to=REPRODUCED&dstep=preview",
+                 LD + "to=FIX_PLANNED&dstep=done&date=2026-11-25",
+                 "role=SALES&item=D-2026-006&dialog=status&to=REPRODUCED&dstep=done",
+                 "role=SALES&tab=unlinked&dialog=link&report=R-061&link=D-2026-001",
+                 "role=SALES&tab=unlinked&dialog=link&report=R-061&link=D-2026-001&dstep=done"]
 
 VIRTUAL_TIME_MS = 3000   # 화면마다 흘리는 가상 시간 (예전 --virtual-time-budget=3000)
 CMD_TIMEOUT = 90         # DevTools 명령·기다림 하나의 최대 초
@@ -323,28 +343,37 @@ def main() -> int:
         print("FAIL: index.html 없음")
         return 1
     OUT.mkdir(parents=True, exist_ok=True)
-    base = index.as_uri()
+    ledger = STATIC / "ledger.html"
+    if not ledger.exists():
+        print("FAIL: ledger.html 없음")
+        return 1
+    base, lbase = index.as_uri(), ledger.as_uri()
+    only = sys.argv[1] if len(sys.argv) > 1 else ""   # 예: python scripts/ui_check.py ledger  (그 화면 파일만)
     profile = tempfile.mkdtemp(prefix="ui-check-", dir=str(OUT))
-    combos = ([(st, w, h) for st in STATES + KNOWN_HOME_STATES for w, h in SIZES]
-              + [(st, w, h) for st in PANEL_STATES + KNOWN_PANEL_STATES for w, h in PANEL_SIZES])
+    combos = ([(base, st, w, h) for st in STATES + KNOWN_HOME_STATES for w, h in SIZES]
+              + [(base, st, w, h) for st in PANEL_STATES + KNOWN_PANEL_STATES for w, h in PANEL_SIZES]
+              + [(lbase, st, w, h) for st in LEDGER_STATES for w, h in SIZES])
+    combos = [c for c in combos if only in c[0].rsplit("/", 1)[-1]]
     print(f"\n[화면 검사] {browser.name}, S1·S3 요약 {len(STATES) + len(KNOWN_HOME_STATES)}개 상태 × {len(SIZES)}개 크기"
-          f" + S2·S3 패널 {len(PANEL_STATES) + len(KNOWN_PANEL_STATES)}개 상태 × {len(PANEL_SIZES)}개 크기")
+          f" + S2·S3 패널 {len(PANEL_STATES) + len(KNOWN_PANEL_STATES)}개 상태 × {len(PANEL_SIZES)}개 크기"
+          f" + S4 결함 대장 {len(LEDGER_STATES)}개 상태 × {len(SIZES)}개 크기" + (f" (그중 '{only}' 화면만)" if only else ""))
     print(f"  {'상태':<26}{'크기':<11}결과")
     rows = []
     started = time.monotonic()
     chrome = None
     try:
         chrome = Chrome(browser, profile)   # 브라우저는 한 번만 띄워 모든 조합에 쓴다
-        for st, w, h in combos:
-            name = st.replace("=", "-").replace("&", "_") + f"_{w}"
+        for page, st, w, h in combos:
+            prefix = "ledger_" if page == lbase else ""
+            name = prefix + st.replace("=", "-").replace("&", "_").replace("%", "") + f"_{w}"
             png = OUT / f"{name}.png"
             if png.exists():
                 png.unlink()
             bad = []
             try:
-                chrome.open(f"{base}#{st}", w, h)
+                chrome.open(f"{page}#{st}", w, h)
                 chrome.screenshot(png)
-                res = selftest(chrome, w, h, f"{base}?selftest=1#{st}")
+                res = selftest(chrome, w, h, f"{page}?selftest=1#{st}")
             except (RuntimeError, OSError) as e:
                 res = {"ok": False, "checks": [{"name": "browser", "pass": False, "detail": str(e)}]}
             bad += [c for c in res.get("checks", []) if not c.get("pass")]

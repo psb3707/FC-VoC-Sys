@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>결함 대장</title>
+<link rel="stylesheet" href="css/sfa-tokens.css">
+<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/panel.css">
+<link rel="stylesheet" href="css/known.css">
+<link rel="stylesheet" href="css/ledger.css">
+</head>
+<body class="ld-page" data-screen="ledger">
+<!-- 아이콘 모음 (외부 이미지 없이 인라인 SVG) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-ledger" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2" fill="currentColor"/><path d="M8 8h8M8 12h8M8 16h5" stroke="#0099e6" stroke-width="2"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.4"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 11v6" stroke="currentColor" stroke-width="2.4"/><circle cx="12" cy="7.5" r="1.4" fill="currentColor"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5 9-10" fill="none" stroke="currentColor" stroke-width="3"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 17V11a6 6 0 0 1 12 0v6l2 2H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M10 21h4" stroke="currentColor" stroke-width="2"/></symbol>
+  <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4 8h14l-4-4M20 16H6l4 4" fill="none" stroke="currentColor" stroke-width="2.2"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" fill="none" stroke="currentColor" stroke-width="2.2"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M9 7L4 12l5 5M4 12h12a4 4 0 0 1 0 8h-2" fill="none" stroke="currentColor" stroke-width="2.2"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" fill="currentColor"/><path d="M4 21a8 8 0 0 1 16 0z" fill="currentColor"/></symbol>
+</svg>
+
+<!-- ① 페이지 머리 (SFA 밖 화면: SFA 헤더·파란 탭 바를 흉내 내지 않는다, 06번 0절 3항) -->
+<header class="ld-top" data-a11y="new">
+  <span class="pn-ico"><svg aria-hidden="true"><use href="#i-ledger"/></svg></span>
+  <h1 class="ld-brand">결함 대장</h1>
+  <p class="ld-viewer"><svg aria-hidden="true"><use href="#i-user"/></svg><span id="ld-viewer"></span></p>
+</header>
+
+<!-- ② 목록 (탭 → 필터 → 표 카드 → 총 건수). 내용은 js/ledger.js 가 그린다 -->
+<main class="ld-main" data-a11y="new">
+  <p class="ld-lead">같은 원인의 신고를 묶어 상태를 관리해요. 상태를 바꾸면 묶인 신고자에게 알림이 가요.</p>
+  <div class="ld-tabs" role="tablist" aria-label="목록 고르기">
+    <button type="button" role="tab" class="ld-tab" id="ld-tab-defects" data-tab="defects" aria-controls="ld-view">대표 결함 <span class="ld-count" id="ld-count-defects"></span></button>
+    <button type="button" role="tab" class="ld-tab" id="ld-tab-unlinked" data-tab="unlinked" aria-controls="ld-view">아직 안 묶인 신고 <span class="ld-count" id="ld-count-unlinked"></span></button>
+  </div>
+  <section class="ld-view" id="ld-view" role="tabpanel"></section>
+</main>
+
+<!-- ③ 상세 패널 (S2·S3와 같은 틀: 오른쪽 520px) -->
+<div class="pn-scrim" id="ld-scrim" hidden></div>
+<section class="pn kn ld-panel" id="ledger-panel" role="dialog" aria-modal="true" aria-labelledby="ld-panel-title" data-a11y="new" hidden>
+  <header class="pn-head">
+    <span class="pn-ico"><svg aria-hidden="true"><use href="#i-ledger"/></svg></span>
+    <h2 id="ld-panel-title"></h2>
+    <button type="button" class="pn-close" id="ld-close"><svg aria-hidden="true"><use href="#i-close"/></svg>닫기</button>
+  </header>
+  <div class="pn-body" id="ld-body"></div>
+  <div class="pn-foot" id="ld-foot"></div>
+</section>
+
+<!-- ④ 가운데 대화상자 (상태 바꾸기·신고 묶기) -->
+<div class="pn-scrim ld-dlg-scrim" id="ld-dlg-scrim" hidden></div>
+<section class="pn ld-dlg" id="ledger-dialog" role="dialog" aria-modal="true" aria-labelledby="ld-dlg-title" data-a11y="new" hidden>
+  <header class="pn-head">
+    <span class="pn-ico"><svg aria-hidden="true"><use href="#i-swap"/></svg></span>
+    <h2 id="ld-dlg-title"></h2>
+    <button type="button" class="pn-close" id="ld-dlg-close"><svg aria-hidden="true"><use href="#i-close"/></svg>닫기</button>
+  </header>
+  <div class="pn-steps" id="ld-dlg-steps">
+    <p class="pn-steps-text" id="ld-dlg-steps-text" aria-live="polite"></p>
+    <ol class="pn-track" id="ld-dlg-track" aria-hidden="true"></ol>
+  </div>
+  <div class="pn-body" id="ld-dlg-body"></div>
+  <div class="pn-foot" id="ld-dlg-foot"></div>
+</section>
+
+<script src="js/fixtures/users.js"></script>
+<script src="js/fixtures/defects.js"></script>
+<script src="js/api-client.js"></script>
+<script src="js/ledger.js"></script>
+<script>
+  // ?selftest=1 일 때만 화면 자체 검사를 불러온다 (docs/06-ui-spec.md 11절)
+  if (/[?&]selftest=1(&|$)/.test(location.search)) {
+    var s = document.createElement('script');
+    s.src = 'js/dev/selftest.js';
+    document.body.appendChild(s);
+  }
+</script>
+</body>
+</html>

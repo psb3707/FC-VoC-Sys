@@ -85,6 +85,84 @@
       var res = copy(r[key] || {});
       if (req.mode === 'B' && req.finalType && res.type !== 'UNCLASSIFIED') res.type = req.finalType;
       return Promise.resolve(res);
+    },
+
+    /* ---- S4 결함 대장 (fixtures/defects.js). 영향 지점 수·신고 수는 내려주지 않고 화면이 센다(REQ-LG-01) ---- */
+    /* GET /api/defects?status=&grade=&type=  -> Defect[] + reports(묶인 신고, 신고자 지점 포함) */
+    getDefects: function (q) {
+      q = q || {};
+      var list = (L.defects || []).filter(function (d) {
+        return (!q.status || d.status === q.status) && (!q.grade || d.grade === q.grade) && (!q.type || d.type === q.type);
+      }).map(function (d) {
+        var x = copy(d);
+        x.reports = linkedReports(d.id);
+        return x;
+      });
+      return Promise.resolve(list);
+    },
+    /* GET /api/defects/{id}  -> Defect + reports(묶인 신고) + statusHistory(관리자용: 사유·처리자 포함) + fcNotice */
+    getDefect: function (id) {
+      var d = (L.defects || []).filter(function (x) { return x.id === id; })[0];
+      if (!d) return Promise.resolve(null);
+      var x = copy(d);
+      x.reports = linkedReports(id);
+      x.statusHistory = copy((L.statusHistory || []).filter(function (h) { return h.defectId === id; })
+        .sort(function (a, b) { return a.at < b.at ? -1 : 1; }));
+      x.fcNotice = copy((L.fcNotices || []).filter(function (n) { return n.defectId === id; })[0] || null);
+      return Promise.resolve(x);
+    },
+    /* 아직 대표 결함에 안 묶인 신고(defectId 없음), 최신 순. 05번 3절에 대응 경로 없음(목록용 조회 경로 추가 필요) */
+    getUnlinkedReports: function () {
+      var list = (L.reports || []).filter(function (r) { return !r.defectId; }).map(withReporter);
+      list.sort(function (a, b) { return a.createdAt < b.createdAt ? 1 : -1; });
+      return Promise.resolve(list);
+    },
+    /* POST /api/defects/{id}/reports  -> 신고 연결 (프론트 단계: 저장하지 않고 결과 모양만 돌려준다) */
+    postLinkReport: function (defectId, reportId) {
+      return Promise.resolve({ defectId: defectId, reportId: reportId });
+    },
+    /* POST /api/defects/{id}/status/preview  -> {notifiable, recipientCount, body, recipients:[{userId, name}]}
+       req: {from, to, plannedFixDate, wontFixReasonText}. 알림 규칙(02번 4절): 임시조치·수정 예정·해결·수정하지 않음만 알리고,
+       되돌림(앞 단계로)·재현 확인·원인 파악은 기록만. 받는 사람은 묶인 신고자 전원(중복 1회). */
+    postStatusPreview: function (id, req) {
+      req = req || {};
+      var d = (L.defects || []).filter(function (x) { return x.id === id; })[0] || {};
+      var back = req.from === 'WONT_FIX' || ORDER.indexOf(req.to) < ORDER.indexOf(req.from);
+      var notifiable = !back && NOTIFY.indexOf(req.to) >= 0;
+      var seen = {}, recipients = [];
+      linkedReports(id).forEach(function (r) {
+        if (seen[r.reporterId]) return;
+        seen[r.reporterId] = true;
+        recipients.push({ userId: r.reporterId, name: r.reporter ? r.reporter.name : '',
+          branchName: r.reporter ? r.reporter.branchName : '' });
+      });
+      var date = req.plannedFixDate ? parseInt(req.plannedFixDate.slice(5, 7), 10) + '월 ' + parseInt(req.plannedFixDate.slice(8, 10), 10) + '일' : '';
+      var body = notifiable ? (L.statusTemplates || {})[req.to] || '' : '';
+      body = body.replace('{title}', d.title || '').replace('{date}', date).replace('{reason}', req.wontFixReasonText || '');
+      return Promise.resolve({ notifiable: notifiable, recipientCount: notifiable ? recipients.length : 0,
+        body: notifiable ? body : null, recipients: notifiable ? recipients : [] });
+    },
+    /* POST /api/defects/{id}/status  -> 상태 변경 확정, 알림 기록 (프론트 단계: 저장하지 않음) */
+    postStatus: function (id, req) {
+      return window.ApiClient.postStatusPreview(id, req).then(function (p) {
+        return { defectId: id, historyId: 'H-100', status: (req || {}).to, notificationCount: p.recipientCount };
+      });
     }
   };
+
+  /* S4 도우미: 신고에 신고자(이름·지점)를 붙인다. 내 신고(getMyReports)에 defect 를 붙여 내리는 것과 같은 방식 */
+  var L = F.ledger || {};
+  var ORDER = ['RECEIVED', 'REPRODUCED', 'CAUSE_FOUND', 'WORKAROUND', 'FIX_PLANNED', 'RESOLVED', 'WONT_FIX'];
+  var NOTIFY = ['WORKAROUND', 'FIX_PLANNED', 'RESOLVED', 'WONT_FIX'];
+  function withReporter(r) {
+    var x = copy(r);
+    var u = (F.users || []).filter(function (v) { return v.id === r.reporterId; })[0];
+    var b = u && (L.branches || []).filter(function (v) { return v.id === u.branchId; })[0];
+    x.reporter = u ? { id: u.id, name: u.name, branchId: u.branchId, branchName: b ? b.name : '' } : null;
+    return x;
+  }
+  function linkedReports(defectId) {
+    return (L.reports || []).filter(function (r) { return r.defectId === defectId; }).map(withReporter)
+      .sort(function (a, b) { return a.createdAt < b.createdAt ? -1 : 1; });
+  }
 })();
