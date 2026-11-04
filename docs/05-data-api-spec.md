@@ -41,10 +41,10 @@
 | POST | `/api/intake/sessions/{id}/answers` | 되묻기 답변 제출, 정제 결과 반환 |
 | POST | `/api/reports` | 신고 최종 제출(A/B 공통, 사람 확인값 포함) |
 | GET | `/api/reports/mine?userId=` | 내 신고와 진행 단계 |
-| GET | `/api/reports/unlinked?userId=` | 아직 대표 결함에 안 묶인 신고(최신 순, 신고자 지점, 그 담당자 기준 `isNew`) (REQ-LG-02·07) |
+| GET | `/api/reports/unlinked?userId=&q=` | 아직 대표 결함에 안 묶인 신고(최신 순, 신고자 지점, 그 담당자 기준 `isNew`). `q`가 있으면 글자 찾기 (REQ-LG-02·07·08) |
 | POST | `/api/reports/unlinked/seen` | 담당자가 [아직 안 묶인 신고]를 본 시각(`AppUser.unlinkedSeenAt`) 기록 (REQ-LG-07) |
 | POST | `/api/reports/{id}/similar-defects` | AI 비슷한 대표 결함 후보 1~3개(07번 ⑤, 실패 시 규칙 후보) (REQ-LG-06) |
-| GET | `/api/defects?status=&grade=&type=` | 대표 결함 목록 |
+| GET | `/api/defects?status=&grade=&type=&q=` | 대표 결함 목록. `q`가 있으면 글자 찾기(필터와 AND) (REQ-LG-05·08) |
 | POST | `/api/defects` | 신고에서 대표 결함 생성 |
 | GET | `/api/defects/{id}` | 상세, 연결 신고, 이력 |
 | POST | `/api/defects/{id}/reports` | 신고 연결 |
@@ -117,6 +117,16 @@
   "reporter":{"id":"U-010","name":"(가상)","branchId":"B-05","branchName":"(가상)"},"isNew":true}]
 ```
 - 프론트 단계에서는 `unlinkedSeenAt`을 고정값으로 두고 `seen` 기록은 하지 않는다(배지가 줄지 않음).
+
+### 글자 찾기 `q` (S4, REQ-LG-08)
+`GET /api/defects`와 `GET /api/reports/unlinked`의 선택 매개변수. AI·LLM을 거치지 않는 단순 글자 포함 검사다.
+- 앞뒤 빈칸을 없애고 대소문자를 무시한다. 비었으면 매개변수가 없는 것과 같다. 40자를 넘으면 앞 40자만 쓴다.
+- `/api/defects`: `id`·`title`·`workaround`·묶인 신고의 `maskedText` 중 하나에 들어가면 남긴다. `status`·`grade`·`type`과 모두 만족(AND). `q`가 있을 때만 각 건에 `matchedIn`(`ID` `TITLE` `WORKAROUND` `REPORT` 중 찾은 곳)과 `matchedReportIds`(문장에서 찾은 묶인 신고 ID)를 붙인다.
+- `/api/reports/unlinked`: `id`·`maskedText`에서 찾는다. `isNew`는 찾기와 관계없이 그 담당자 기준.
+- 신고자 이름·지점, 고객 참조키, 담당 부서 이름은 찾지 않는다(부서 이름은 화면 문구).
+```json
+[{"id":"D-2026-004","title":"로그인할 때 글자가 다르게 들어가요","matchedIn":["REPORT"],"matchedReportIds":["R-…"], "...":"Defect 키"}]
+```
 
 ### POST `/api/reports/{id}/similar-defects` 응답 (07번 ⑤, ADR-017)
 요청 본문 없음(서버가 신고·대장을 읽어 마스킹본만 LLM에 보낸다). 후보는 최대 3개, 대장에 있는 결함만, 비슷함 순. 화면 표시용 `title`·`status`는 서버가 대장에서 붙인다(LLM 응답에서 받지 않음).

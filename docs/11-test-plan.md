@@ -52,6 +52,7 @@
 | LG-05, NT-01 | S4 | notices/* | 승인 노출 |
 | LG-06 | S4 안 묶인 신고 패널·신고 묶기 | reports/{id}/similar-defects | 후처리·LLM 계약(similar 스키마), 규칙 대체, 감사(고객번호 미전송), 화면 자동 검사(`llm=ok/slow/fail`·후보 없음) |
 | LG-07 | S4 머리 알림·탭 배지 | reports/unlinked, reports/unlinked/seen | `isNew` 계산 단위, 화면 자동 검사(배지·팝업) |
+| LG-08 | S4 필터 줄 찾기 | defects?q=, reports/unlinked?q= | 찾기 단위(대소문자·빈칸·필터 AND·묶인 신고 문장), 화면 자동 검사(`q=` 찾음·묶인 신고에서만 찾음·없음·필터와 함께·안 묶인 신고 탭) |
 | KN-01/02 | S3 | reports/mine, notifications | 화면 검토 |
 | AI-01~07 | - | - | LLM 계약, 등급 비의존 |
 | PV-01~06 | S2-4,6 | intake/preview | 마스킹 전 항목 |
