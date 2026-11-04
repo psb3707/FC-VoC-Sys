@@ -117,3 +117,11 @@
 ## 5. 프론트 fixtures 규칙
 `js/fixtures/*.js`는 `window.FIXTURES.<이름> = {...}` 형태로, 위 응답 형식과 동일한 키를 쓴다(더블클릭 `file://` 실행에서는 JSON 파일을 읽을 수 없으므로 .js, 2026-11-02 사용자 결정). 화면은 `api-client.js`를 거쳐서만 읽는다. 키 불일치는 M2 점검 항목.
 - 예외: `js/fixtures/sfa-home.js`(`window.FIXTURES.sfaHome`)는 S1에서 실제 SFA 화면의 실데이터 자리를 채우는 **화면 시안 전용 가상 데이터**다(ADR-012). 대응하는 백엔드 API는 없고, 키는 같은 규약(camelCase, 날짜 ISO-8601)을 따른다. 화면은 `ApiClient.getSfaHome()`으로만 읽는다.
+
+## 5. FRONTEND 가상 상태 (ADR-017)
+fixtures 초기값과 브라우저 탭 sessionStorage 변경을 ApiClient에서 합친다. 실제 서버·AI·마스킹·발송을 대체하지 않으며 가상 데이터만 사용.
+- postReport: 편집한 제목·summary·stepsToReproduce, oneLine·answers·autoContext, reporterId/submittedById를 보존하고 고유 가상 reportId 반환. 새 신고는 defect=null, 접수 상태.
+- getMyReports: reporterId 또는 submittedById 일치 반환, 화면이 본인/대리 묶음 구분.
+- postMeToo(defectId,body): reporterId/submittedById 사용, 동일 사용자·결함 재사용. 완료/목록 같은 건수.
+- NotificationLog.readAt: null=미확인. markNotificationRead(id,userId)는 로컬 창구. 실제 API 추가 계약은 백엔드 연결 시 확정.
+- S2 별도 세션 초안은 가상 입력만 보관. 실제 개인정보 저장 금지.
