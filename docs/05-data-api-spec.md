@@ -5,7 +5,7 @@
 ## 1. 엔티티
 | 엔티티 | 주요 필드 | 관계·비고 |
 |---|---|---|
-| `AppUser` | id, name(가상), role(FC/MANAGER/SALES/IT), branchId | 역할 전환 상자의 원본 |
+| `AppUser` | id, name(가상), role(FC/MANAGER/SALES/IT), branchId, unlinkedSeenAt? | 역할 전환 상자의 원본. `unlinkedSeenAt`: 담당자(SALES/IT)가 대장의 [아직 안 묶인 신고]를 마지막으로 본 시각. 이보다 뒤에 들어온 안 묶인 신고가 "새로 들어옴"(REQ-LG-07, ADR-017) |
 | `Branch` | id, name(가상), regionGroup | 영향 지점 수 계산 |
 | `Report` | id, reporterId, submittedById, kind(FULL/ME_TOO), mode(A/B), business, symptom, maskedText, autoContext(JSON), slots(JSON), aiResult(JSON), aiType, finalType, grade, departmentCode, closedAsGuidance, defectId?, trialId?, createdAt | Defect N:1. **원문은 저장하지 않고 마스킹본만** |
 | `autoContext` 내용 | reportedFrom(접수 화면·기기), screenCode, errorCode, occurredAt | 오류가 난 기기·경로는 슬롯으로 별도 |
@@ -17,7 +17,7 @@
 | `NotificationLog` | id, defectId, historyId, recipientId, bodySnapshot, channel=PREVIEW, at | 실발송 없음 |
 | `VirtualContract` | id, customerNo, policyNo, proposalNo, statusCat, productGroup, lastChangeType, lastChangeAt, channel | 가상 데이터 |
 | `RefKeyMap` | refKey, reportScope, kind, originalValue | **서버 전용**. 신고별로 K-01부터 새로 시작. API로 노출 금지 |
-| `LlmCall` | id, task, provider, model, promptVersion, requestHash, latencyMs, retries, outcome(OK/RETRIED/FALLBACK), trialId? | 전문은 JSONL(마스킹본)에 |
+| `LlmCall` | id, task(TRIAGE/REFINE/NOTICE/SIMILAR), provider, model, promptVersion, requestHash, latencyMs, retries, outcome(OK/RETRIED/FALLBACK), trialId? | 전문은 JSONL(마스킹본)에 |
 | `Participant` | code(P01), roleGroup(MANAGER/HQ), cell, consentChecked | 실명 없음 |
 | `Scenario` | id, set(S1/S2), pairNo, cardText, simulatedContext(JSON), customerNo?, answerKey(JSON), practice | YAML에서 적재 |
 | `Trial` | id, participantCode, scenarioId, mode, seq, startedAt, submittedAt, durationMs, llmWaitMs, followUpCount, usabilityScore, llmOutcome, reportId, status(DONE/INVALID), invalidReason | 측정 원자료 |
@@ -41,6 +41,9 @@
 | POST | `/api/intake/sessions/{id}/answers` | 되묻기 답변 제출, 정제 결과 반환 |
 | POST | `/api/reports` | 신고 최종 제출(A/B 공통, 사람 확인값 포함) |
 | GET | `/api/reports/mine?userId=` | 내 신고와 진행 단계 |
+| GET | `/api/reports/unlinked?userId=` | 아직 대표 결함에 안 묶인 신고(최신 순, 신고자 지점, 그 담당자 기준 `isNew`) (REQ-LG-02·07) |
+| POST | `/api/reports/unlinked/seen` | 담당자가 [아직 안 묶인 신고]를 본 시각(`AppUser.unlinkedSeenAt`) 기록 (REQ-LG-07) |
+| POST | `/api/reports/{id}/similar-defects` | AI 비슷한 대표 결함 후보 1~3개(07번 ⑤, 실패 시 규칙 후보) (REQ-LG-06) |
 | GET | `/api/defects?status=&grade=&type=` | 대표 결함 목록 |
 | POST | `/api/defects` | 신고에서 대표 결함 생성 |
 | GET | `/api/defects/{id}` | 상세, 연결 신고, 이력 |
@@ -105,6 +108,27 @@
 - `statusHistory`는 `DefectStatusHistory`에서 FC에 필요한 `from`·`to`·`at`만 내린다(`actorId`·`reason` 제외).
 - 단계는 건너뛸 수 있다(예: `RECEIVED → CAUSE_FOUND`). 화면은 지금 상태 기준으로 지난 단계를 채운다.
 - `WONT_FIX`이면 화면은 직전 상태(`statusHistory` 마지막 항목의 `from`)까지 막대를 채우고 "수정하지 않음 · ○○ 단계에서 끝났어요"로 표시한다(06번 5절).
+
+### GET `/api/reports/unlinked?userId=` 응답 (S4 아직 안 묶인 신고, ADR-017)
+`defectId`가 `null`인 신고, 최신 순. `reporter`는 화면 표시용(이름(가상)·지점). `isNew`는 `createdAt`이 그 담당자의 `unlinkedSeenAt`보다 뒤면 `true`. 이 목록은 LLM에 보내지 않는다.
+```json
+[{"id":"R-062","reporterId":"U-010","kind":"FULL","business":"ETC","symptom":"NOT_SHOWN","finalType":"UNCLASSIFIED",
+  "maskedText":"첨부 메뉴 글자가 겹쳐 보여요","defectId":null,"createdAt":"2026-11-04T09:30:00+09:00",
+  "reporter":{"id":"U-010","name":"(가상)","branchId":"B-05","branchName":"(가상)"},"isNew":true}]
+```
+- 프론트 단계에서는 `unlinkedSeenAt`을 고정값으로 두고 `seen` 기록은 하지 않는다(배지가 줄지 않음).
+
+### POST `/api/reports/{id}/similar-defects` 응답 (07번 ⑤, ADR-017)
+요청 본문 없음(서버가 신고·대장을 읽어 마스킹본만 LLM에 보낸다). 후보는 최대 3개, 대장에 있는 결함만, 비슷함 순. 화면 표시용 `title`·`status`는 서버가 대장에서 붙인다(LLM 응답에서 받지 않음).
+```json
+{"reportId":"R-061","llmOutcome":"OK","needsHumanReview":true,
+ "candidates":[{"defectId":"D-2026-001","title":"...","status":"WORKAROUND","similarity":"HIGH",
+                "reason":"같은 업무(청약·서명)에서 서명 알림톡을 열면 다른 안내 화면이 뜬다는 내용이 같아요",
+                "matched":["BUSINESS","SYMPTOM","WORDING"]}]}
+```
+- 후보가 없으면 `"candidates":[]`. 화면은 "비슷한 결함을 찾지 못했어요"와 새 대표 결함 만들기 안내.
+- LLM 실패 시 `"llmOutcome":"FALLBACK"`, 규칙 후보는 `"similarity":null`, `"reason":"같은 업무·같은 문제 유형이에요"`.
+- 연결은 이 API가 하지 않는다. 담당자가 고른 뒤 `POST /api/defects/{id}/reports`.
 
 ### POST `/api/defects/{id}/status/preview` 응답
 ```json
