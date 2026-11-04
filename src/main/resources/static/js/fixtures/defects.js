@@ -5,6 +5,9 @@
    - statusHistory: DefectStatusHistory. H-003·H-005·H-008 은 notifications.js 의 historyId 와 같다.
    - fcNotices: FcNotice. 승인본(APPROVED)만 FC 화면에 나온다(REQ-NT-01).
    - branches: Branch. 영향 지점 수 계산과 화면 표시용.
+   - similar: POST /api/reports/{id}/similar-defects 의 AI 고정 응답(신고 ID별, 07번 ⑤, ADR-017). 실제 LLM 호출은 없다.
+     후보의 title·status 는 서버가 대장에서 붙이므로 여기에는 두지 않는다(api-client 가 붙임). candidates 가 [] 이면 "찾지 못함".
+     AI 실패(llm=fail)는 api-client 가 규칙 후보(같은 업무·같은 증상 유형의 신고가 묶인 결함)로 대신 만든다.
    - statusTemplates: 상태 변경 알림의 고정 문구(02번 4절 "없으면 고정 템플릿"). {title} {date} {reason} 을 채운다.
    업무 코드는 intake.js metaForm, 등급·부서 코드는 intake-panel.js 와 같다. 모든 값은 가상이다. */
 window.FIXTURES = window.FIXTURES || {};
@@ -157,6 +160,18 @@ window.FIXTURES.ledger = {
       "draftText": "로그인할 때 글자가 다르게 들어가는 문제를 알고 있어요. 인터넷 기록(쿠키)을 지우고 다시 접속하면 잠시 괜찮아져요.",
       "approvedText": null }
   ],
+
+  "similar": {
+    "R-061": { "llmOutcome": "OK", "candidates": [
+      { "defectId": "D-2026-001", "similarity": "HIGH", "matched": ["BUSINESS", "SYMPTOM", "WORDING"],
+        "reason": "같은 청약·서명 업무에서 서명 알림톡을 열면 다른 안내 화면이 뜬다는 내용이 같아요" },
+      { "defectId": "D-2026-002", "similarity": "MEDIUM", "matched": ["BUSINESS", "SCREEN"],
+        "reason": "같은 청약·서명 업무의 서명 화면 문제예요. 다만 이 결함은 화면이 멈추는 증상이라 확인이 필요해요" } ] },
+    "R-014": { "llmOutcome": "OK", "candidates": [
+      { "defectId": "D-2026-005", "similarity": "MEDIUM", "matched": ["WORDING"],
+        "reason": "눌러도 반응이 없다는 증상은 비슷하지만 화면(인쇄·고객 목록)이 달라 확인이 필요해요" } ] },
+    "R-062": { "llmOutcome": "OK", "candidates": [] }
+  },
 
   "statusTemplates": {
     "WORKAROUND": "{title} — 임시조치 안내가 등록됐어요",

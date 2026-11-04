@@ -4,7 +4,9 @@
      role=SALES|IT        보는 사람 역할 (없으면 SALES)
      tab=defects|unlinked 목록 탭 (없으면 defects)
      status= grade= type= 대표 결함 필터 (Defect.status·grade·type 코드)
-     item=D-…             오른쪽 상세 패널
+     item=D-… | R-…       오른쪽 패널: 대표 결함 상세 / 안 묶인 신고와 AI 비슷한 결함 추천(ADR-017)
+     popup=alarm          머리 [새 신고] 목록 팝업 (REQ-LG-07)
+     llm=ok|slow|fail     AI 추천 응답: 정상 / 늦음(로딩에서 멈춤) / 실패(규칙 후보) (REQ-LG-06)
      for=D-…              상세 패널 [신고 연결]에서 넘어온 대표 결함 (unlinked 탭에서 묶을 대상 미리 고름)
      dialog=status|link   가운데 대화상자: 상태 바꾸기 / 신고 묶기
      to=<상태 코드>       상태 바꾸기: 고른 다음 상태
@@ -38,9 +40,12 @@
     SALES_SUPPORT: '영업지원팀', DESIGN_SUPPORT: '상품설계지원팀', CONTRACT_IT: '계약관리팀 + IT' };
   var BUSINESS = { LOGIN: '로그인·접속', SUBSCRIPTION: '청약·서명', CUSTOMER_LOOKUP: '고객조회', DESIGN: '가입설계',
     CONTRACT_LOOKUP: '계약조회', ETC: '그 밖의 업무' };
+  var SYMPTOM = { NOT_SHOWN: '내용이 안 보여요', CANNOT_PROCEED: '다음으로 안 넘어가요', WRONG_SCREEN: '엉뚱한 화면이 떠요',
+    WRONG_INPUT: '입력이 잘못 들어가요', HOW_TO: '쓰는 법을 모르겠어요', ETC: '그 밖의 문제' };
   var ROLE_NAME = { SALES: '영업팀', IT: 'IT 담당' };
+  var SIMILAR = { HIGH: '비슷함 높음', MEDIUM: '비슷함 보통' };   // 07번 ⑤ similarity (LOW 는 서버가 버림)
 
-  var users = [], defects = [], unlinked = [], detail = null, preview = null;
+  var users = [], defects = [], unlinked = [], unlinkedFor = null, detail = null, preview = null, similar = null;
   var draft = { date: '', reason: '', memo: '' };   // 대화상자 입력 중인 값 (주소에는 [다음]을 누를 때 적음)
   var draftKey = '';
   var opener = null;
@@ -90,6 +95,8 @@
     var c = word.charCodeAt(word.length - 1) - 0xac00, jong = c >= 0 && c < 11172 ? c % 28 : 0;
     return jong && jong !== 8 ? '으로' : '로';
   }
+  /* 조사 "와/과": 결함 ID 끝 숫자를 읽은 소리로 정한다(영·일·삼·육·칠·팔 → 과, 이·사·오·구 → 와) */
+  function wa(id) { return '2459'.indexOf(String(id).slice(-1)) >= 0 ? '와' : '과'; }
   function stageIndex(code) { return ORDER.indexOf(code); }
   function userName(id) { var u = users.filter(function (x) { return x.id === id; })[0]; return u ? u.name : id; }
   function isBack(from, to) { return from === WONT_FIX || stageIndex(to) < stageIndex(from); }
@@ -124,8 +131,8 @@
   }
 
   /* ---- 주소 상태 (06번 11절) ---- */
-  var KEYS = ['role', 'user', 'tab', 'status', 'grade', 'type', 'item', 'for', 'dialog', 'report', 'link', 'to', 'dstep',
-    'date', 'reason', 'memo', 'err'];
+  var KEYS = ['role', 'user', 'popup', 'tab', 'status', 'grade', 'type', 'item', 'for', 'dialog', 'report', 'link', 'to', 'dstep',
+    'date', 'reason', 'memo', 'err', 'llm'];
   function read() {
     var st = {};
     location.hash.replace(/^#/, '').split('&').forEach(function (kv) {
@@ -136,8 +143,10 @@
     });
     if (!ROLE_NAME[st.role]) st.role = 'SALES';
     st.tab = st.tab === 'unlinked' ? 'unlinked' : 'defects';
+    if (st.llm !== 'slow' && st.llm !== 'fail') delete st.llm;   // 기본(ok)은 주소에 적지 않음
     return st;
   }
+  function isReportId(id) { return /^R-/.test(id || ''); }
   function go(patch) {
     var st = read();
     Object.keys(patch).forEach(function (k) { st[k] = patch[k]; });
@@ -158,10 +167,37 @@
   }
 
   /* ---- ① 머리 ---- */
+  function viewer(st) {
+    return users.filter(function (u) { return u.id === st.user && u.role === st.role; })[0] ||
+      users.filter(function (u) { return u.role === st.role; })[0] || null;
+  }
   function paintTop(st) {
-    var me = users.filter(function (u) { return u.id === st.user && u.role === st.role; })[0] ||
-      users.filter(function (u) { return u.role === st.role; })[0];
+    var me = viewer(st);
     $('ld-viewer').textContent = (me ? me.name + ' · ' : '') + ROLE_NAME[st.role];
+  }
+  /* 새 신고 알림 (REQ-LG-07, ADR-017): S1 알림 아이콘 배지 + 알림 팝업 모양의 목록. 색만이 아니라 숫자·글자로 알린다 */
+  function newReports() { return unlinked.filter(function (r) { return r.isNew; }); }
+  function paintAlarm(st) {
+    var news = newReports(), n = news.length, open = st.popup === 'alarm';
+    var badge = $('ld-alarm-badge');
+    badge.hidden = !n;
+    badge.textContent = n ? String(n) : '';
+    $('ld-alarm').setAttribute('aria-label', n ? '새 신고 ' + n + '건' : '새 신고 없음');
+    $('ld-alarm').setAttribute('aria-expanded', String(open));
+    $('ld-alarm-pop').hidden = !open;
+    if (!open) return;
+    $('ld-alarm-head').textContent = n ? '아직 안 묶인 새 신고 ' + n + '건' : '아직 안 묶인 새 신고';
+    var list = $('ld-alarm-list');
+    list.innerHTML = '';
+    if (!n) {
+      list.appendChild(el('li', null, [el('p', { cls: 'alarm-empty' }, ['새로 들어온 신고가 없어요'])]));
+      return;
+    }
+    news.forEach(function (r) {
+      list.appendChild(el('li', null, [el('button', { type: 'button', cls: 'alarm-item', 'data-alarm': r.id }, [
+        el('b', null, [r.id]), ' ' + (r.maskedText || '"나도 겪었어요" 신고'),
+        el('span', { cls: 'when' }, [fmtWhen(r.createdAt) + (r.reporter ? ' · ' + r.reporter.name : '')])])]));
+    });
   }
 
   /* ---- ② 목록 ---- */
@@ -211,7 +247,8 @@
     var target = st['for'] ? defects.filter(function (d) { return d.id === st['for']; })[0] : null;
     var note = el('div', { cls: 'pn-note ld-pick-note' }, [icon('i-info'), el('div', null, target
       ? [el('b', null, [target.id + ' 「' + target.title + '」에 묶을 신고를 고르세요']), '같은 원인으로 보이는 신고의 [묶기]를 누르세요.']
-      : [el('b', null, ['같은 원인의 대표 결함에 묶어 주세요']), '묶으면 그 결함의 상태가 바뀔 때 이 신고자에게도 알림이 가요.'])]);
+      : [el('b', null, ['같은 원인의 대표 결함에 묶어 주세요']),
+        '줄을 누르면 AI가 비슷한 대표 결함을 추천해요. 묶으면 그 결함의 상태가 바뀔 때 이 신고자에게도 알림이 가요.'])]);
     var body;
     if (!unlinked.length) {
       body = el('div', { cls: 'ld-card ld-empty' }, [el('p', null, ['아직 안 묶인 신고가 없어요'])]);
@@ -220,8 +257,11 @@
         return el('th', { scope: 'col', 'aria-label': i === 5 ? '묶기' : null }, [h]);
       }));
       var trs = unlinked.map(function (r) {
-        return el('tr', { 'data-report': r.id }, [
-          el('td', null, [el('span', { cls: 'ld-id' }, [r.id]), el('span', { cls: 'ld-title' }, [r.maskedText || '"나도 겪었어요" 신고'])]),
+        // 첫 칸(줄 전체도) 누르면 신고 패널(AI 추천). 새로 들어온 신고는 태그 글자로도 알린다(REQ-LG-07)
+        return el('tr', { 'data-report': r.id, 'data-id': r.id, cls: st.item === r.id ? 'is-open' : null }, [
+          el('td', null, [el('button', { type: 'button', cls: 'ld-open', 'data-open': r.id, 'aria-haspopup': 'dialog' }, [
+            el('span', { cls: 'ld-id' }, [r.id, r.isNew ? el('span', { cls: 'ld-tag is-new' }, ['새로 들어옴']) : null]),
+            el('span', { cls: 'ld-title' }, [r.maskedText || '"나도 겪었어요" 신고'])])]),
           el('td', { cls: 'is-nowrap' }, [BUSINESS[r.business] || r.business]),
           el('td', { cls: 'is-nowrap' }, [r.reporter ? r.reporter.name : '']),
           el('td', { cls: 'is-nowrap' }, [r.reporter ? r.reporter.branchName : '']),
@@ -229,7 +269,7 @@
           el('td', null, [btn('pn-btn-2', '묶기', 'link', { 'data-report': r.id, 'aria-haspopup': 'dialog',
             'aria-label': r.id + ' 묶기' })])]);
       });
-      body = el('div', { cls: 'ld-card' }, [el('table', { cls: 'ld-table is-static', 'aria-label': '아직 안 묶인 신고, 최신 순' }, [
+      body = el('div', { cls: 'ld-card' }, [el('table', { cls: 'ld-table', 'aria-label': '아직 안 묶인 신고, 최신 순' }, [
         el('thead', null, [head]), el('tbody', null, trs)])]);
     }
     return [note, body,
@@ -238,6 +278,9 @@
   function paintList(st) {
     $('ld-count-defects').textContent = defects.length;
     $('ld-count-unlinked').textContent = unlinked.length;
+    var n = newReports().length, nb = $('ld-new-badge');
+    nb.hidden = !n;
+    nb.textContent = n ? '새 ' + n : '';
     Array.prototype.forEach.call(document.querySelectorAll('.ld-tab'), function (b) {
       var on = b.getAttribute('data-tab') === st.tab;
       b.setAttribute('aria-selected', String(on));
@@ -303,7 +346,82 @@
     }
     return el('div', { cls: 'pn-card' }, kids);
   }
+  /* ---- ③-2 신고 패널: 안 묶인 신고 + AI 비슷한 대표 결함 추천 (REQ-LG-06, ADR-017) ----
+     AI는 후보만 낸다. 묶기는 담당자가 [이 결함에 묶기] → 신고 묶기 대화상자에서 확인하고 [묶기]를 눌러야 된다 */
+  function unlinkedReport(id) { return unlinked.filter(function (r) { return r.id === id; })[0] || null; }
+  function simTag(c) {
+    if (!c.similarity) return el('span', { cls: 'ld-tag is-dim' }, ['규칙으로 찾음']);
+    return el('span', { cls: 'ld-tag' + (c.similarity === 'HIGH' ? '' : ' is-dim') }, [SIMILAR[c.similarity] || c.similarity]);
+  }
+  function linkedCount(id) {
+    var d = defects.filter(function (x) { return x.id === id; })[0];
+    return d ? (d.reports || []).length : 0;
+  }
+  function aiNote() {
+    return el('div', { cls: 'pn-note' }, [icon('i-spark'), el('div', null, [el('b', null, ['AI 추천은 참고예요']),
+      '묶을지는 담당자가 확인하고 정해요. AI가 스스로 묶지 않아요.'])]);
+  }
+  function aiCard(r, st) {
+    var s = similar;
+    if (st.llm === 'slow' || !s) {
+      return el('div', { cls: 'pn-card ld-ai' }, [el('div', { cls: 'pn-loading', role: 'status' }, [el('div', { cls: 'pn-spin', 'aria-hidden': 'true' }),
+        el('p', null, [el('b', null, ['AI가 비슷한 대표 결함을 찾고 있어요'])]),
+        el('p', { cls: 'ld-meta' }, ['기다리지 않고 아래 [묶을 결함 고르기]로 바로 고를 수도 있어요.'])])]);
+    }
+    var fallback = s.llmOutcome === 'FALLBACK', list = s.candidates || [];
+    var head = el('div', { cls: 'kn-card-head' }, [
+      el('p', { cls: 'pn-card-title' }, [list.length ? (fallback ? '같은 업무·문제 유형의 대표 결함 ' : '비슷해 보이는 대표 결함 ') + list.length + '건'
+        : (fallback ? '같은 업무·문제 유형의 결함도 없어요' : '비슷한 대표 결함을 찾지 못했어요')]),
+      el('span', { cls: 'ld-tag' + (fallback ? ' is-dim' : '') }, [fallback ? '규칙 후보' : 'AI 추천'])]);
+    if (!list.length) {
+      return el('div', { cls: 'pn-card ld-ai' }, [head,
+        el('p', null, [fallback ? '대표 결함 목록에서 직접 골라 주세요.'
+          : '같은 원인의 대표 결함이 없으면 새 대표 결함으로 만들어요. 그래도 비슷한 게 있는지 [묶을 결함 고르기]로 목록을 한 번 더 봐 주세요.']),
+        fallback ? null : el('p', { cls: 'ld-meta' }, ['새 대표 결함 만들기는 대장 확장 기능에서 열려요.'])]);
+    }
+    return el('div', { cls: 'pn-card ld-ai' }, [head, el('ul', { cls: 'pn-plain ld-cands' }, list.map(function (c) {
+      return el('li', null, [
+        // 규칙 후보는 카드 머리 "규칙 후보" 태그로 알리므로 줄마다 같은 태그를 되풀이하지 않는다
+        el('div', { cls: 'ld-cand-head' }, [el('p', { cls: 'ld-cand-says' }, fallback
+          ? [el('b', { cls: 'ld-id' }, [c.defectId]), wa(c.defectId) + ' 같은 업무·문제 유형이에요']
+          : ['이 신고는 ', el('b', { cls: 'ld-id' }, [c.defectId]), wa(c.defectId) + ' 비슷해 보여요']), fallback ? null : simTag(c)]),
+        el('p', { cls: 'ld-cand-title' }, ['「' + c.title + '」']),
+        fallback ? null : el('p', { cls: 'ld-meta' }, ['이유: ' + c.reason]),   // 규칙 후보의 이유는 위 문장과 같아 되풀이하지 않음
+        el('p', { cls: 'ld-meta' }, ['지금 상태 ' + stageLabel(c.status) + ' · 묶인 신고 ' + linkedCount(c.defectId) + '건']),
+        btn('pn-btn-2 ld-cand-btn', [icon('i-link'), '이 결함에 묶기'], 'link-ai', { 'data-ai-link': c.defectId, 'aria-haspopup': 'dialog',
+          'aria-label': c.defectId + '에 묶기' })]);
+    }))]);
+  }
+  function paintReportPanel(st) {
+    var r = unlinkedReport(st.item), body = $('ld-body'), foot = $('ld-foot');
+    $('ld-panel-title').textContent = '신고 ' + r.id;
+    body.innerHTML = ''; foot.innerHTML = '';
+    var who = (r.reporter ? r.reporter.name + ' · ' + r.reporter.branchName + ' · ' : '') + fmtWhen(r.createdAt);
+    var warn = st.llm === 'fail' ? el('div', { cls: 'pn-note pn-warn' }, [icon('i-warn'), el('div', null, [el('b', null, ['AI 추천을 받지 못했어요']),
+      '같은 업무·같은 문제 유형으로 찾은 결함을 보여 드려요. 담당자가 확인하고 골라 주세요.'])]) : null;
+    [el('h3', { tabindex: '-1' }, [r.maskedText || '"나도 겪었어요" 신고']),
+      el('p', { cls: 'pn-lead' }, [who, r.isNew ? el('span', { cls: 'ld-tag is-new' }, ['새로 들어옴']) : null]),
+      // 이 패널의 목적은 묶을 결함 찾기라 AI 추천을 먼저, 신고 내용은 아래에 둔다
+      el('h4', null, ['AI 추천']),
+      warn || aiNote(),
+      aiCard(r, st),
+      el('p', { cls: 'pn-help' }, [icon('i-info'), el('span', null, ['AI에게는 가린 신고 문장과 업무·문제 유형, 대표 결함 제목·우회법만 보내요. 고객번호와 보낸 사람은 보내지 않아요.'])]),
+      el('h4', null, ['신고 내용']),
+      el('div', { cls: 'pn-card' }, [
+        rows([['업무', BUSINESS[r.business] || r.business], ['문제 유형', SYMPTOM[r.symptom] || r.symptom],
+          ['종류', TYPE[r.finalType] || r.finalType], ['처리 등급', [gradeTag(r.grade)]], ['담당 부서', DEPT[r.departmentCode] || r.departmentCode]])])
+    ].forEach(function (n) { if (n) body.appendChild(n); });
+    foot.appendChild(btn('pn-btn', [icon('i-link'), '묶을 결함 고르기'], 'link-pick', { 'aria-haspopup': 'dialog' }));
+    return true;
+  }
+
   function paintPanel(st) {
+    if (isReportId(st.item)) {
+      var rOpen = !!unlinkedReport(st.item);
+      $('ledger-panel').hidden = !rOpen;
+      $('ld-scrim').hidden = !rOpen;
+      return rOpen ? paintReportPanel(st) : false;
+    }
     var open = !!(st.item && detail && detail.id === st.item);
     $('ledger-panel').hidden = !open;
     $('ld-scrim').hidden = !open;
@@ -450,18 +568,46 @@
     var r = linkReport(st);
     var err = st.err === '1' && !st.link ? '묶을 대표 결함을 골라 주세요' : '';
     var who = r && r.reporter ? r.reporter.name + ' · ' + r.reporter.branchName + ' · ' + fmtDate(r.createdAt) : '';
+    // AI 추천 후보(ADR-017)는 따로 위에 모으고 나머지는 "다른 대표 결함"으로. 고르고 [묶기]를 누르는 건 담당자
+    var s = st.llm === 'slow' ? null : similar, cands = s && s.reportId === st.report ? s.candidates || [] : [];
+    var fallback = !!s && s.llmOutcome === 'FALLBACK';
+    var candIds = cands.map(function (c) { return c.defectId; });
+    var rest = sorted(defects).filter(function (d) { return candIds.indexOf(d.id) < 0; });
+    function choice(d, c) {
+      return el('li', null, [el('button', { type: 'button', cls: 'pn-choice', 'data-link': d.id, 'aria-pressed': String(st.link === d.id) }, [
+        el('span', null, [d.title]),
+        el('span', { cls: 'ld-choice-sub' }, [d.id + ' · ' + stageLabel(d.status) +
+          (c ? ' · ' + (c.similarity ? SIMILAR[c.similarity] : '규칙으로 찾음') : '')]),
+        c ? el('span', { cls: 'ld-choice-why' }, [c.reason]) : null,
+        el('span', { cls: 'pn-tick' }, [icon('i-check')])])]);
+    }
+    var aiPart;
+    if (st.llm === 'slow' || !s) {
+      aiPart = [el('div', { cls: 'pn-note' }, [icon('i-spark'), el('div', null, [el('b', null, ['AI가 비슷한 대표 결함을 찾고 있어요']),
+        '기다리지 않고 아래 목록에서 바로 고를 수 있어요.'])])];
+    } else if (cands.length) {
+      // 실패는 지연·없음과 같은 안내 상자 모양(경고)으로 목록 위에 알린다
+      aiPart = [fallback ? el('div', { cls: 'pn-note pn-warn' }, [icon('i-warn'), el('div', null, [el('b', null, ['AI 추천을 받지 못했어요']),
+          '같은 업무·문제 유형으로 찾은 결함이에요. 담당자가 확인해요.'])]) : null,
+        el('h4', { id: 'ld-link-ai' }, [(fallback ? '같은 업무·문제 유형의 결함 ' : 'AI가 비슷하다고 본 결함 ') + cands.length + '건']),
+        fallback ? null : el('p', { cls: 'pn-help' }, [icon('i-spark'), el('span', null, ['AI 추천 · 참고만 하고 담당자가 확인해요.'])]),
+        el('ul', { cls: 'pn-choices ld-one', role: 'group', 'aria-labelledby': 'ld-link-ai' }, cands.map(function (c) {
+          return choice(defects.filter(function (d) { return d.id === c.defectId; })[0] || { id: c.defectId, title: c.title, status: c.status }, c);
+        }))];
+    } else {
+      aiPart = [el('div', { cls: 'pn-note' + (fallback ? ' pn-warn' : '') }, [icon(fallback ? 'i-warn' : 'i-spark'), el('div', null, fallback
+        ? [el('b', null, ['AI 추천을 받지 못했어요']), '아래 목록에서 직접 골라 주세요.']
+        : [el('b', null, ['비슷한 대표 결함을 찾지 못했어요 (AI 추천)']), '같은 원인의 결함이 없으면 새 대표 결함으로 만들어요. 아래 목록도 한 번 더 봐 주세요.'])])];
+    }
     // 묶을 신고(정보 카드)와 고를 대표 결함(선택 버튼)은 소제목으로 나눠 카드끼리 붙어 보이지 않게 한다
     return [el('h3', { tabindex: '-1' }, ['어느 대표 결함에 묶을까요?']),
       r ? el('h4', null, ['묶을 신고']) : null,
       r ? el('div', { cls: 'pn-card' }, [el('p', { cls: 'pn-card-title' }, [r.id + ' · ' + (BUSINESS[r.business] || '')]),
-        el('p', null, [r.maskedText || '"나도 겪었어요" 신고']), el('p', { cls: 'ld-meta' }, [who])]) : null,
-      el('h4', { id: 'ld-link-list' }, ['대표 결함 ' + defects.length + '건 중 고르기']),
-      el('ul', { cls: 'pn-choices ld-one', role: 'group', 'aria-labelledby': 'ld-link-list' }, sorted(defects).map(function (d) {
-        return el('li', null, [el('button', { type: 'button', cls: 'pn-choice', 'data-link': d.id, 'aria-pressed': String(st.link === d.id) }, [
-          el('span', null, [d.title]), el('span', { cls: 'ld-choice-sub' }, [d.id + ' · ' + stageLabel(d.status)]),
-          el('span', { cls: 'pn-tick' }, [icon('i-check')])])]);
-      })),
-      el('p', { cls: 'pn-err', role: 'alert', hidden: !err }, [err])];
+        el('p', null, [r.maskedText || '"나도 겪었어요" 신고']), el('p', { cls: 'ld-meta' }, [who])]) : null]
+      .concat(aiPart, [
+        el('h4', { id: 'ld-link-list' }, [cands.length ? '다른 대표 결함 ' + rest.length + '건' : '대표 결함 ' + defects.length + '건 중 고르기']),
+        el('ul', { cls: 'pn-choices ld-one', role: 'group', 'aria-labelledby': 'ld-link-list' }, rest.map(function (d) { return choice(d, null); })),
+        el('p', { cls: 'pn-err', role: 'alert', hidden: !err }, [err])]);
   }
   function linkDoneView(st) {
     var d = defects.filter(function (x) { return x.id === st.link; })[0];
@@ -531,17 +677,31 @@
   function render() {
     var st = read();
     paintTop(st);
-    var need = st.item ? A.getDefect(st.item) : Promise.resolve(null);
-    return need.then(function (d) {
+    // 안 묶인 신고의 "새로 들어옴"은 보는 담당자마다 다르다(05번 unlinkedSeenAt): 보는 사람이 바뀌면 다시 읽는다
+    var me = viewer(st), meId = me ? me.id : '';
+    var needUnlinked = unlinkedFor === meId ? Promise.resolve(unlinked) : A.getUnlinkedReports(meId);
+    return needUnlinked.then(function (list) {
+      unlinked = list || []; unlinkedFor = meId;
+      return st.item && !isReportId(st.item) ? A.getDefect(st.item) : null;
+    }).then(function (d) {
       detail = d;
-      if (st.dialog === 'status' && d && st.to) {
+      // AI 비슷한 결함 추천: 신고 패널이나 신고 묶기 대화상자가 열릴 때. 지연(llm=slow)은 응답 없이 로딩에서 멈춘다
+      var rid = st.dialog === 'link' ? st.report : isReportId(st.item) ? st.item : '';
+      similar = null;
+      if (rid && st.llm !== 'slow') {
+        A.setProto({ llm: st.llm === 'fail' ? 'fail' : 'ok' });
+        return A.postSimilarDefects(rid).then(function (s) { similar = s; });
+      }
+    }).then(function () {
+      if (st.dialog === 'status' && detail && st.to) {
         syncDraft(st);
-        return A.postStatusPreview(d.id, { from: d.status, to: st.to, plannedFixDate: draft.date || null,
+        return A.postStatusPreview(detail.id, { from: detail.status, to: st.to, plannedFixDate: draft.date || null,
           wontFixReasonText: st.to === WONT_FIX ? reasonText() : null });
       }
       return null;
     }).then(function (p) {
       preview = p;
+      paintAlarm(st);
       paintList(st);
       var panel = paintPanel(st);
       var dlg = paintDialog(st);
@@ -571,9 +731,13 @@
   }
   function closeDialog() {
     var st = read();
-    go(closeDialogPatch());
+    // 신고를 묶고 끝 화면에서 닫으면 그 신고 패널도 닫는다(프론트 단계는 저장하지 않아 목록은 그대로)
+    var linked = st.dialog === 'link' && st.dstep === 'done';
+    go(closeDialogPatch(linked && isReportId(st.item) ? { item: '' } : null));
     setTimeout(function () {
-      var t = st.dialog === 'link' ? document.querySelector('[data-report="' + st.report + '"] .pn-btn-2') : $('ld-foot').querySelector('.pn-btn');
+      var panelOpen = !$('ledger-panel').hidden;
+      var t = panelOpen ? $('ld-foot').querySelector('.pn-btn')
+        : st.dialog === 'link' ? document.querySelector('[data-report="' + st.report + '"] .pn-btn-2') : $('ld-foot').querySelector('.pn-btn');
       if (t) t.focus();
     }, 0);
   }
@@ -599,6 +763,15 @@
 
   function onClick(e) {
     var t = e.target;
+    // 새 신고 알림 팝업: 버튼으로 열고 닫고, 항목을 누르면 그 신고 패널(AI 추천), 바깥을 누르면 닫는다
+    if (t.closest('#ld-alarm')) { go({ popup: read().popup === 'alarm' ? '' : 'alarm' }); return; }
+    var alarmItem = t.closest('[data-alarm]');
+    if (alarmItem) {
+      opener = null;
+      go(closeDialogPatch({ popup: '', tab: 'unlinked', 'for': '', item: alarmItem.getAttribute('data-alarm') }));
+      return;
+    }
+    if (read().popup === 'alarm' && !t.closest('#ld-alarm-pop')) { go({ popup: '' }); return; }
     var tab = t.closest('.ld-tab');
     if (tab) { go(closeDialogPatch({ tab: tab.getAttribute('data-tab'), item: '', 'for': '' })); return; }
     var open = t.closest('[data-open]');
@@ -618,6 +791,9 @@
     else if (act === 'status') { opener = b; go({ dialog: 'status', to: '', dstep: '', err: '' }); }
     else if (act === 'to-link') go(closeDialogPatch({ tab: 'unlinked', item: '', 'for': st.item }));
     else if (act === 'link') go({ dialog: 'link', report: b.getAttribute('data-report'), link: st['for'] || '', dstep: '', err: '' });
+    // 신고 패널에서: AI 후보의 [이 결함에 묶기]는 그 결함을 미리 고른 신고 묶기, 주 버튼은 미리 고르지 않음 (연결은 [묶기]에서 사람이)
+    else if (act === 'link-ai') go({ dialog: 'link', report: st.item, link: b.getAttribute('data-ai-link'), dstep: '', err: '' });
+    else if (act === 'link-pick') go({ dialog: 'link', report: st.item, link: st['for'] || '', dstep: '', err: '' });
     else if (act === 'link-confirm') {
       if (!st.link) { go({ err: '1' }); return; }
       A.postLinkReport(st.link, st.report).then(function () { go({ dstep: 'done', err: '' }); });
@@ -651,7 +827,8 @@
     var st = read();
     var dlgOpen = !$('ledger-dialog').hidden, panelOpen = !$('ledger-panel').hidden;
     if (e.key === 'Escape') {
-      if (dlgOpen) { e.preventDefault(); closeDialog(); } else if (panelOpen) { e.preventDefault(); closePanel(); }
+      if (st.popup === 'alarm') { e.preventDefault(); go({ popup: '' }); $('ld-alarm').focus(); }
+      else if (dlgOpen) { e.preventDefault(); closeDialog(); } else if (panelOpen) { e.preventDefault(); closePanel(); }
       return;
     }
     var tab = e.target.closest && e.target.closest('.ld-tab');
@@ -678,8 +855,8 @@
     window.addEventListener('hashchange', render);
   }
 
-  window.SFA_READY = Promise.all([A.getUsers(), A.getDefects(), A.getUnlinkedReports()]).then(function (r) {
-    users = r[0] || []; defects = r[1] || []; unlinked = r[2] || [];
+  window.SFA_READY = Promise.all([A.getUsers(), A.getDefects()]).then(function (r) {
+    users = r[0] || []; defects = r[1] || [];   // 안 묶인 신고는 보는 담당자 기준이라 render() 에서 읽는다
     bind();
     return render();
   });

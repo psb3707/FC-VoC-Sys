@@ -22,6 +22,9 @@
   --ld-row-hover: var(--pn-selected-bg);
   --ld-dlg-shadow: var(--pn-dlg-shadow);       /* panel.css: --pn-panel-shadow 와 같은 색·세기, 가운데 창이라 아래로 */
   --ld-chip-line: var(--pn-line-soft);
+  /* 탭 배지: S1 배지(.badge) 색·굵기 그대로, "새 N" 글자가 들어가 높이·글자만 키움 (06번 0-3 "알림 버튼·숫자 배지") */
+  --ld-tab-badge-h: 22px;
+  --ld-tab-badge-font: 14px;
   /* 탭: 홈 공지·업무 탭 구조 (S3 패널 탭 --kn-tab-* 와 같은 값) */
   --ld-tab-bg: var(--kn-tab-bg);
   --ld-tab-line: var(--kn-tab-line);
@@ -125,6 +128,7 @@ body.ld-page:has(.pn:not([hidden])) { overflow-y: hidden; }
 .ld-reports li:first-child { padding-top: 0; }
 .ld-reports li:last-child { padding-bottom: 0; }
 .ld-reports .ld-who { display: block; color: var(--ld-sub); }
+.ld-panel .pn-foot .pn-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .ld-panel .pn-foot .pn-btn-2 { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 
 /* ---- ④ 가운데 대화상자: S2 패널 틀(.pn)을 가운데로. 모서리 24px(콘텐츠 카드), 그림자는 --pn-panel-shadow 계열 ---- */
@@ -150,3 +154,37 @@ body.ld-page:has(.pn:not([hidden])) { overflow-y: hidden; }
 .ld-meta { color: var(--ld-sub); }
 .ld-pick-note + .ld-card { margin-top: 16px; }
 .ld-dlg .pn-choice > span:first-child { font-weight: 700; }
+
+/* ---- 새 신고 알림 (REQ-LG-07, ADR-017): S1 알림 아이콘 + 숫자 배지(.badge, 0-2)와 알림 팝업(.alarm-pop, 0-1) 모양 그대로 ---- */
+.ld-alarm-wrap { position: relative; flex: none; }
+.ld-page .ld-alarm { display: inline-flex; align-items: center; gap: 22px; min-width: 0; padding: 0 20px 0 18px; }
+.ld-alarm-ico { position: relative; display: inline-flex; }
+.ld-alarm-ico .badge { top: -9px; right: -12px; }
+.ld-alarm-pop { top: calc(100% + 8px); right: 0; z-index: 30; }
+.ld-alarm-pop .alarm-item b { color: var(--ld-accent); }
+/* 탭 배지: 같은 배지 토큰(배경·글자·최소 크기)에 "새 N" 글자가 들어가 조금 넓게 */
+.ld-tab-badge { position: static; display: inline-block; height: var(--ld-tab-badge-h); margin-left: 8px; padding: 0 8px; border-radius: 999px;
+  font-size: var(--ld-tab-badge-font); line-height: var(--ld-tab-badge-h); vertical-align: 2px; }
+/* "새로 들어옴" 태그: 배지와 같은 빨강 계열 연한 알약 + 진한 글자(대비 4.5 이상). 글자로 뜻을 전한다 */
+.ld-tag.is-new { margin-left: 8px; background: var(--ld-tag-warn-bg); color: var(--ld-tag-warn-ink); vertical-align: 1px; }
+/* 520px 패널에서는 한 줄에 다 안 들어가므로 늘 다음 줄 맨 앞에 둔다(들여쓰기 방지) */
+.pn-lead .ld-tag.is-new { display: table; margin: 4px 0 0; }
+
+/* ---- AI 추천 카드 (REQ-LG-06, ADR-017, 0-3 "AI 추천 카드"): 콘텐츠 카드 안 후보 줄, 줄 사이 1px 연한 선 ---- */
+.ld-cands li { padding: 16px 0; border-top: 1px solid var(--ld-line-soft); }
+.ld-cands li:first-child { padding-top: 4px; border-top: 0; }
+.ld-cands li:last-child { padding-bottom: 0; }
+.ld-cands p { margin: 0 0 4px; }
+.ld-cands .ld-cand-says { font-weight: 700; }
+.ld-cands .ld-cand-says .ld-id { display: inline; color: var(--ld-accent); }
+.ld-cand-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 0 0 6px; }
+.ld-cands .ld-cand-head .ld-cand-says { margin: 0; }
+.ld-cands .ld-cand-title { font-weight: 500; }
+.ld-page .ld-cand-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; margin-top: 8px; }
+.ld-ai .pn-loading { padding: 8px 0 0; }
+.ld-ai .pn-loading .pn-spin { margin-bottom: 16px; }
+.ld-panel .pn-body > .pn-help { margin-top: 16px; }
+.ld-dlg .pn-body > .pn-help { margin: 0 0 12px; }
+/* 대화상자의 AI 후보 선택 버튼: 글자 2줄 선택 버튼 + 셋째 줄 이유 */
+.ld-dlg .pn-choice .ld-choice-why { color: var(--ld-sub); font-weight: 500; }
+.ld-dlg .pn-choice[aria-pressed="true"] .ld-choice-why { color: var(--ld-ink); }

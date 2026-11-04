@@ -21,13 +21,26 @@
   <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4 8h14l-4-4M20 16H6l4 4" fill="none" stroke="currentColor" stroke-width="2.2"/></symbol>
   <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" fill="none" stroke="currentColor" stroke-width="2.2"/></symbol>
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M9 7L4 12l5 5M4 12h12a4 4 0 0 1 0 8h-2" fill="none" stroke="currentColor" stroke-width="2.2"/></symbol>
-  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" fill="currentColor"/><path d="M4 21a8 8 0 0 1 16 0z" fill="currentColor"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l2 5.5L19.5 10 14 12l-2 5.5L10 12 4.5 10 10 8.5z" fill="currentColor"/><path d="M18.5 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z" fill="currentColor"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3l10 18H2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 10v5" stroke="currentColor" stroke-width="2.4"/><circle cx="12" cy="18" r="1.3" fill="currentColor"/></symbol>
+  <symbol id="i-user"viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" fill="currentColor"/><path d="M4 21a8 8 0 0 1 16 0z" fill="currentColor"/></symbol>
 </svg>
 
 <!-- ① 페이지 머리 (SFA 밖 화면: SFA 헤더·파란 탭 바를 흉내 내지 않는다, 06번 0절 3항) -->
 <header class="ld-top" data-a11y="new">
   <span class="pn-ico"><svg aria-hidden="true"><use href="#i-ledger"/></svg></span>
   <h1 class="ld-brand">결함 대장</h1>
+  <!-- 새 신고 알림 (ADR-017): S1 알림 아이콘 + 숫자 배지, 누르면 S1 알림 팝업 모양의 새 신고 목록 -->
+  <div class="ld-alarm-wrap">
+    <button type="button" class="pn-btn-2 ld-alarm" id="ld-alarm" aria-haspopup="true" aria-expanded="false" aria-controls="ld-alarm-pop">
+      <span class="ld-alarm-ico"><svg aria-hidden="true"><use href="#i-bell"/></svg><span class="badge" id="ld-alarm-badge" data-a11y="badge" hidden></span></span>
+      <span id="ld-alarm-text">새 신고</span>
+    </button>
+    <div class="alarm-pop ld-alarm-pop" id="ld-alarm-pop" role="region" aria-labelledby="ld-alarm-head" hidden>
+      <div class="alarm-head" id="ld-alarm-head"></div>
+      <ul class="alarm-list" id="ld-alarm-list"></ul>
+    </div>
+  </div>
   <p class="ld-viewer"><svg aria-hidden="true"><use href="#i-user"/></svg><span id="ld-viewer"></span></p>
 </header>
 
@@ -36,7 +49,7 @@
   <p class="ld-lead">같은 원인의 신고를 묶어 상태를 관리해요. 상태를 바꾸면 묶인 신고자에게 알림이 가요.</p>
   <div class="ld-tabs" role="tablist" aria-label="목록 고르기">
     <button type="button" role="tab" class="ld-tab" id="ld-tab-defects" data-tab="defects" aria-controls="ld-view">대표 결함 <span class="ld-count" id="ld-count-defects"></span></button>
-    <button type="button" role="tab" class="ld-tab" id="ld-tab-unlinked" data-tab="unlinked" aria-controls="ld-view">아직 안 묶인 신고 <span class="ld-count" id="ld-count-unlinked"></span></button>
+    <button type="button" role="tab" class="ld-tab" id="ld-tab-unlinked" data-tab="unlinked" aria-controls="ld-view">아직 안 묶인 신고 <span class="ld-count" id="ld-count-unlinked"></span><span class="badge ld-tab-badge" id="ld-new-badge" data-a11y="badge" hidden></span></button>
   </div>
   <section class="ld-view" id="ld-view" role="tabpanel"></section>
 </main>

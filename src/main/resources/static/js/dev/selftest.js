@@ -371,6 +371,30 @@
         }
       });
       add('s4-block-gap', gf);
+
+      // 새 신고 알림·AI 추천 (REQ-LG-06·07, ADR-017): 색만으로 알리지 않고, AI 추천은 표시가 있고 연결은 사람이 한다
+      var af = [];
+      all('#ld-alarm-badge, #ld-new-badge').forEach(function (b) {
+        if (!/\d/.test(b.textContent)) af.push(label(b) + ' 숫자 없음');
+      });
+      var alarm = document.getElementById('ld-alarm');
+      if (alarm && !/새 신고/.test(alarm.textContent)) af.push('알림 버튼 글자 없음');
+      all('.ld-ai').forEach(function (c) {
+        var tag = c.querySelector('.kn-card-head .ld-tag'), load = c.querySelector('.pn-loading');
+        if (!load && (!tag || !/AI 추천|규칙 후보/.test(tag.textContent))) af.push('AI 추천 카드에 "AI 추천" 표시 없음');
+        var rule = !!tag && /규칙/.test(tag.textContent);   // 규칙 후보는 카드 머리 태그로 알림
+        Array.prototype.forEach.call(c.querySelectorAll('.ld-cands > li'), function (li) {
+          var st = li.querySelector('.ld-cand-head .ld-tag');
+          if (!rule && (!st || !/비슷함/.test(st.textContent))) af.push(label(li) + ' 비슷함 글자 없음');
+          if (!li.querySelector('[data-act="link-ai"]')) af.push(label(li) + ' [이 결함에 묶기] 없음');
+        });
+      });
+      // AI 추천이 보이는 곳에는 "사람이 확인" 안내가 있어야 한다
+      var aiShown = all('.ld-ai, .ld-choice-why').length;
+      if (aiShown && !/담당자가 확인/.test(((document.getElementById('ld-body') || {}).textContent || '') + ((document.getElementById('ld-dlg-body') || {}).textContent || ''))) {
+        af.push('"담당자가 확인" 안내 없음');
+      }
+      add('s4-ai', af);
     }
 
     var result = { ok: checks.every(function (c) { return c.pass; }), url: location.hash, checks: checks };

@@ -89,7 +89,17 @@ LEDGER_STATES = ["role=SALES", "role=IT&grade=IMMEDIATE", "role=SALES&status=RES
                  LD + "to=FIX_PLANNED&dstep=done&date=2026-11-25",
                  "role=SALES&item=D-2026-006&dialog=status&to=REPRODUCED&dstep=done",
                  "role=SALES&tab=unlinked&dialog=link&report=R-061&link=D-2026-001",
-                 "role=SALES&tab=unlinked&dialog=link&report=R-061&link=D-2026-001&dstep=done"]
+                 "role=SALES&tab=unlinked&dialog=link&report=R-061&link=D-2026-001&dstep=done",
+                 # 새 신고 알림·AI 비슷한 결함 추천 (REQ-LG-06·07, ADR-017): 알림 팝업, 담당자별 새 신고,
+                 # 신고 패널 추천(높음·보통 / 보통 / 없음 / 지연 / 실패→규칙 후보), 추천에서 연 신고 묶기(정상·지연·실패·없음)
+                 "role=SALES&popup=alarm", "role=IT&popup=alarm", "role=IT&tab=unlinked",
+                 "role=SALES&tab=unlinked&item=R-061", "role=SALES&tab=unlinked&item=R-014",
+                 "role=SALES&tab=unlinked&item=R-062", "role=SALES&tab=unlinked&item=R-061&llm=slow",
+                 "role=SALES&tab=unlinked&item=R-061&llm=fail", "role=SALES&tab=unlinked&item=R-014&llm=fail",
+                 "role=SALES&tab=unlinked&item=R-061&dialog=link&report=R-061&link=D-2026-001",
+                 "role=SALES&tab=unlinked&item=R-061&dialog=link&report=R-061&llm=slow",
+                 "role=SALES&tab=unlinked&item=R-061&dialog=link&report=R-061&link=D-2026-001&llm=fail",
+                 "role=SALES&tab=unlinked&item=R-062&dialog=link&report=R-062"]
 
 VIRTUAL_TIME_MS = 3000   # 화면마다 흘리는 가상 시간 (예전 --virtual-time-budget=3000)
 CMD_TIMEOUT = 90         # DevTools 명령·기다림 하나의 최대 초
