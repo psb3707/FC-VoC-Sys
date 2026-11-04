@@ -6,7 +6,7 @@
    (c) fixtures·HTML 에 주민·휴대폰·카드·긴 숫자 형식 0건
    (d) 성씨로 시작하는 한글 3글자 낱말은 UI 낱말이거나 바로 뒤에 "(가상)"
    (e) 화면 시안 표시 0건(ADR-016): 주석을 뺀 코드에 "화면 시안"·"시안 조절"·시안 띠/줄 클래스 없음
-2) 상태 주소 × 화면 크기마다 headless Chrome(없으면 Edge)으로
+2) headless Chrome(없으면 Edge)을 한 번만 띄워 DevTools 프로토콜로, 상태 주소 × 화면 크기마다
    캡처(target/ui-check/<상태>_<폭>.png)와 자체 검사(index.html?selftest=1#<상태>)
    S1 상태(STATES × SIZES), S2 접수 패널 상태(PANEL_STATES × PANEL_SIZES),
    S3 공지 카드 요약(KNOWN_HOME_STATES × SIZES)과 S3 패널(KNOWN_PANEL_STATES × PANEL_SIZES)을 함께 본다.
@@ -14,13 +14,18 @@
 사용: 작업 트리 루트에서  python scripts/ui_check.py
 표준 라이브러리만 쓴다. 하나라도 실패하면 종료 코드 1.
 """
-import html
+import base64
 import json
+import os
 import re
+import select
 import shutil
+import socket
+import struct
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -46,6 +51,8 @@ BROWSERS = [
     Path(r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"),
     Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
     Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"),
+    Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+    Path("/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"),
 ]
 STATES = ["role=FC", "role=MANAGER", "role=SALES", "role=FC&popup=alarm", "role=FC&notice=next", "role=FC&demo=1"]
 SIZES = [(1280, 800), (1888, 952), (1920, 1080)]   # 1888×952: 기준 스크린샷 크기(ADR-012)
@@ -63,6 +70,9 @@ K = "role=FC&board=known&panel=known&"
 KNOWN_PANEL_STATES = [K + "tab=known", K + "tab=known&item=D-2026-005", K + "tab=mine",
                       "role=FC&panel=known&tab=mine&item=R-013",   # 알림 팝업 항목에서 연 상태
                       "role=MANAGER&panel=known&tab=mine", "role=SALES&panel=known&tab=mine"]   # 빈 화면
+
+VIRTUAL_TIME_MS = 3000   # 화면마다 흘리는 가상 시간 (예전 --virtual-time-budget=3000)
+CMD_TIMEOUT = 90         # DevTools 명령·기다림 하나의 최대 초
 
 EXTERNAL = re.compile(r"https?://|//cdn", re.I)
 NETWORK = re.compile(r"fetch\s*\(|XMLHttpRequest")
@@ -121,22 +131,173 @@ def find_browser() -> Path | None:
     return None
 
 
-def run_browser(browser: Path, profile: str, w: int, h: int, extra: list[str], url: str) -> subprocess.CompletedProcess:
-    args = [str(browser), "--headless=new", "--disable-gpu", "--hide-scrollbars", f"--window-size={w},{h}",
-            "--virtual-time-budget=3000", "--allow-file-access-from-files", "--no-first-run",
-            "--no-default-browser-check", "--disable-extensions", f"--user-data-dir={profile}", *extra, url]
-    return subprocess.run(args, capture_output=True, timeout=90)
+class Chrome:
+    """headless Chrome 하나를 띄워 두고 DevTools 프로토콜(웹소켓, 표준 라이브러리만)로 조종한다.
+    예전에는 조합마다 Chrome 을 두 번(캡처·자체 검사) 새로 띄워 오래 걸렸다."""
+
+    def __init__(self, exe: Path, profile: str):
+        self.profile = Path(profile)
+        self.proc = subprocess.Popen(
+            [str(exe), "--headless=new", "--disable-gpu", "--hide-scrollbars", "--remote-debugging-port=0",
+             "--allow-file-access-from-files", "--no-first-run", "--no-default-browser-check",
+             "--disable-extensions", f"--user-data-dir={profile}", "about:blank"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        port, path = self._wait_port()
+        self.sock = socket.create_connection(("127.0.0.1", port), timeout=CMD_TIMEOUT)
+        self.buf = b""
+        key = base64.b64encode(os.urandom(16)).decode()
+        self.sock.sendall((f"GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nUpgrade: websocket\r\n"
+                           f"Connection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n").encode())
+        while b"\r\n\r\n" not in self.buf:
+            self._fill()
+        head, self.buf = self.buf.split(b"\r\n\r\n", 1)
+        status = head.split(b"\r\n", 1)[0]
+        if b" 101 " not in status:
+            raise RuntimeError(f"DevTools 연결 실패: {status!r}")
+        self.next_id = 0
+        self.events: list[dict] = []
+        target = self.send("Target.createTarget", {"url": "about:blank"})["targetId"]
+        self.session = self.send("Target.attachToTarget", {"targetId": target, "flatten": True})["sessionId"]
+        self.send("Page.enable", session=self.session)
+
+    def _wait_port(self) -> tuple[int, str]:
+        f = self.profile / "DevToolsActivePort"
+        end = time.monotonic() + 30
+        while time.monotonic() < end:
+            if self.proc.poll() is not None:
+                raise RuntimeError(f"브라우저가 바로 종료됨 (exit {self.proc.returncode})")
+            try:
+                port, path = f.read_text().split()[:2]
+                return int(port), path
+            except (OSError, ValueError):
+                time.sleep(0.05)
+        raise RuntimeError("DevTools 포트를 얻지 못함 (30초)")
+
+    # --- 웹소켓 (RFC 6455, 텍스트 프레임만) ---
+    def _write(self, text: str) -> None:
+        data = text.encode()
+        n = len(data)
+        head = bytearray([0x81])
+        if n < 126:
+            head.append(0x80 | n)
+        elif n < 65536:
+            head += bytes([0x80 | 126]) + struct.pack(">H", n)
+        else:
+            head += bytes([0x80 | 127]) + struct.pack(">Q", n)
+        mask = os.urandom(4)
+        masked = bytes(b ^ mask[i & 3] for i, b in enumerate(data))
+        self.sock.sendall(bytes(head) + mask + masked)
+
+    def _fill(self) -> None:
+        chunk = self.sock.recv(1 << 20)
+        if not chunk:
+            raise RuntimeError("DevTools 연결이 끊김")
+        self.buf += chunk
+
+    def _exact(self, n: int) -> bytes:
+        while len(self.buf) < n:
+            self._fill()
+        b, self.buf = self.buf[:n], self.buf[n:]
+        return b
+
+    def _read(self) -> dict:
+        parts = []
+        while True:
+            b0, b1 = self._exact(2)
+            n = b1 & 0x7F
+            if n == 126:
+                n = struct.unpack(">H", self._exact(2))[0]
+            elif n == 127:
+                n = struct.unpack(">Q", self._exact(8))[0]
+            payload = self._exact(n)
+            op = b0 & 0x0F
+            if op == 8:
+                raise RuntimeError("DevTools 연결이 닫힘")
+            if op in (9, 10):   # ping·pong: 서버는 보통 보내지 않음, 무시
+                continue
+            parts.append(payload)
+            if b0 & 0x80:
+                return json.loads(b"".join(parts))
+
+    def send(self, method: str, params: dict | None = None, session: str | None = None) -> dict:
+        self.next_id += 1
+        msg = {"id": self.next_id, "method": method, "params": params or {}}
+        if session:
+            msg["sessionId"] = session
+        self._write(json.dumps(msg))
+        while True:
+            m = self._read()
+            if m.get("id") == self.next_id:
+                if "error" in m:
+                    raise RuntimeError(f"{method}: {m['error'].get('message')}")
+                return m.get("result", {})
+            if "method" in m:
+                self.events.append(m)
+
+    def wait_event(self, name: str, timeout: float) -> None:
+        end = time.monotonic() + timeout
+        while True:
+            for i, e in enumerate(self.events):
+                if e["method"] == name and e.get("sessionId") == self.session:
+                    del self.events[i]
+                    return
+            if time.monotonic() > end:
+                raise RuntimeError(f"{name} 기다림 시간 초과")
+            # 받은 것이 없을 때만 소켓을 기다린다 (프레임 중간에서 끊기지 않게)
+            if self.buf or select.select([self.sock], [], [], max(0.05, end - time.monotonic()))[0]:
+                self.events.append(self._read())
+
+    # --- 화면 ---
+    def open(self, url: str, w: int, h: int) -> None:
+        """예전 --window-size·--virtual-time-budget=3000 과 같게: 창 크기를 맞추고 새 문서로 연 뒤
+        가상 시간(네트워크 요청이 남아 있으면 멈춤)을 3초 흘린다."""
+        s = self.session
+        self.send("Emulation.setVirtualTimePolicy", {"policy": "advance"}, s)   # 지난 화면의 멈춘 가상 시간 풀기
+        self.send("Emulation.setDeviceMetricsOverride",
+                  {"width": w, "height": h, "deviceScaleFactor": 1, "mobile": False}, s)
+        self.events.clear()
+        self.send("Page.navigate", {"url": "about:blank"}, s)   # 주소 # 만 바뀌어도 새로 불러오게
+        self.wait_event("Page.loadEventFired", CMD_TIMEOUT)
+        # 가상 시간을 멈춘 채 이동하고, 새 문서가 들어선 뒤에 3초 예산을 준다
+        self.send("Emulation.setVirtualTimePolicy", {"policy": "pause"}, s)
+        self.events.clear()
+        self.send("Page.navigate", {"url": url}, s)
+        self.wait_event("Page.frameNavigated", CMD_TIMEOUT)
+        self.send("Emulation.setVirtualTimePolicy",
+                  {"policy": "pauseIfNetworkFetchesPending", "budget": VIRTUAL_TIME_MS}, s)
+        self.wait_event("Emulation.virtualTimeBudgetExpired", CMD_TIMEOUT)
+
+    def screenshot(self, png: Path) -> None:
+        data = self.send("Page.captureScreenshot", {"format": "png"}, self.session)["data"]
+        png.write_bytes(base64.b64decode(data))
+
+    def eval(self, expr: str):
+        r = self.send("Runtime.evaluate", {"expression": expr, "returnByValue": True}, self.session)
+        return r.get("result", {}).get("value")
+
+    def close(self) -> None:
+        try:
+            self.send("Browser.close")
+        except Exception:  # noqa: BLE001  이미 끊겼으면 아래에서 강제 종료
+            pass
+        try:
+            self.sock.close()
+        except OSError:
+            pass
+        try:
+            self.proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+            self.proc.wait()
 
 
-def selftest(browser: Path, profile: str, w: int, h: int, url: str) -> dict:
-    cp = run_browser(browser, profile, w, h, ["--dump-dom"], url)
-    dom = cp.stdout.decode("utf-8", errors="replace")
-    m = re.search(r'<pre id="selftest-result"[^>]*>(.*?)</pre>', dom, re.S)
-    if not m:
-        return {"ok": False, "checks": [{"name": "selftest-missing", "pass": False,
-                                         "detail": f"결과 없음 (exit {cp.returncode})"}]}
+def selftest(chrome: Chrome, w: int, h: int, url: str) -> dict:
+    chrome.open(url, w, h)
+    text = chrome.eval("(document.getElementById('selftest-result') || {}).textContent || ''")
+    if not text:
+        return {"ok": False, "checks": [{"name": "selftest-missing", "pass": False, "detail": "결과 없음"}]}
     try:
-        return json.loads(html.unescape(m.group(1)))
+        return json.loads(text)
     except json.JSONDecodeError as e:
         return {"ok": False, "checks": [{"name": "selftest-json", "pass": False, "detail": str(e)}]}
 
@@ -170,29 +331,42 @@ def main() -> int:
           f" + S2·S3 패널 {len(PANEL_STATES) + len(KNOWN_PANEL_STATES)}개 상태 × {len(PANEL_SIZES)}개 크기")
     print(f"  {'상태':<26}{'크기':<11}결과")
     rows = []
+    started = time.monotonic()
+    chrome = None
     try:
+        chrome = Chrome(browser, profile)   # 브라우저는 한 번만 띄워 모든 조합에 쓴다
         for st, w, h in combos:
             name = st.replace("=", "-").replace("&", "_") + f"_{w}"
             png = OUT / f"{name}.png"
             if png.exists():
                 png.unlink()
-            run_browser(browser, profile, w, h, [f"--screenshot={png}"], f"{base}#{st}")
-            res = selftest(browser, profile, w, h, f"{base}?selftest=1#{st}")
-            bad = [c for c in res.get("checks", []) if not c.get("pass")]
+            bad = []
+            try:
+                chrome.open(f"{base}#{st}", w, h)
+                chrome.screenshot(png)
+                res = selftest(chrome, w, h, f"{base}?selftest=1#{st}")
+            except (RuntimeError, OSError) as e:
+                res = {"ok": False, "checks": [{"name": "browser", "pass": False, "detail": str(e)}]}
+            bad += [c for c in res.get("checks", []) if not c.get("pass")]
             if not png.exists():
                 bad.append({"name": "screenshot", "detail": "캡처 파일 없음"})
             ok = res.get("ok") and not bad
             failed |= not ok
             rows.append((st, w, h, ok, bad))
-            print(f"  {st:<26}{f'{w}x{h}':<11}{'PASS' if ok else 'FAIL'}")
+            print(f"  {st:<26}{f'{w}x{h}':<11}{'PASS' if ok else 'FAIL'}", flush=True)
             for c in bad:
                 print(f"      - {c.get('name')}: {c.get('detail')}")
+    except (RuntimeError, OSError) as e:
+        print(f"FAIL: 브라우저 시작·연결 실패: {e}")
+        failed = True
     finally:
+        if chrome:
+            chrome.close()
         shutil.rmtree(profile, ignore_errors=True)
 
     passed = sum(1 for r in rows if r[3])
     print(f"\n요약: 정적 검사 {'PASS' if not sf else 'FAIL'}, 화면 {passed}/{len(rows)} PASS")
-    print(f"캡처: {OUT}")
+    print(f"캡처: {OUT}  (화면 검사 {time.monotonic() - started:.0f}초)")
     return 1 if failed else 0
 
 
