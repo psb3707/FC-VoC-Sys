@@ -20,6 +20,7 @@ import json
 import os
 import re
 import select
+from urllib.parse import quote
 import shutil
 import socket
 import struct
@@ -99,7 +100,14 @@ LEDGER_STATES = ["role=SALES", "role=IT&grade=IMMEDIATE", "role=SALES&status=RES
                  "role=SALES&tab=unlinked&item=R-061&dialog=link&report=R-061&link=D-2026-001",
                  "role=SALES&tab=unlinked&item=R-061&dialog=link&report=R-061&llm=slow",
                  "role=SALES&tab=unlinked&item=R-061&dialog=link&report=R-061&link=D-2026-001&llm=fail",
-                 "role=SALES&tab=unlinked&item=R-062&dialog=link&report=R-062"]
+                 "role=SALES&tab=unlinked&item=R-062&dialog=link&report=R-062",
+                 # 글자 찾기 (REQ-LG-08, q= URL 인코딩): 찾음(알림톡) / 묶인 신고 문장에서만(비밀번호) / 영문 대소문자(B) /
+                 # 없음(환급) / 필터와 함께(서명 + 수정 예정) / 필터와 함께 없음(알림톡 + 해결) / 안 묶인 신고 탭 찾음·없음 / 찾은 뒤 상세 패널
+                 "role=SALES&q=" + quote("알림톡"), "role=SALES&q=" + quote("비밀번호"), "role=SALES&q=B",
+                 "role=SALES&q=" + quote("환급"), "role=SALES&status=FIX_PLANNED&q=" + quote("서명"),
+                 "role=SALES&status=RESOLVED&q=" + quote("알림톡"),
+                 "role=SALES&tab=unlinked&q=" + quote("알림톡"), "role=SALES&tab=unlinked&q=" + quote("환급"),
+                 "role=SALES&q=" + quote("알림톡") + "&item=D-2026-001"]
 
 VIRTUAL_TIME_MS = 3000   # 화면마다 흘리는 가상 시간 (예전 --virtual-time-budget=3000)
 CMD_TIMEOUT = 90         # DevTools 명령·기다림 하나의 최대 초
