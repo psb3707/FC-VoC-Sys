@@ -1,0 +1,204 @@
+/* S4 결함 대장 (docs/06-ui-spec.md 6절, 디자인 대응표 0-3절, ADR-014 결정 5).
+   SFA 밖 화면이라 SFA 헤더·파란 탭 바를 흉내 내지 않고, S2 패널 토큰(--pn-*)을 그대로 쓴다.
+   상세 패널·대화상자 안의 카드·안내 상자·태그·진행 막대·버튼은 css/panel.css·known.css 클래스를 재사용하고,
+   이 파일에는 S4에만 있는 것(페이지 머리·탭·필터·표·대화상자 위치)만 둔다.
+   색·모서리·그림자는 아래 --ld-* 토큰(= --pn-*·--sfa-* 를 가리킴)으로만 쓴다. */
+:root {
+  --ld-gutter: 32px;                           /* 홈 가운데 열 여백 */
+  --ld-top-h: 72px;
+  --ld-row-h: var(--pn-btn-h);                 /* 56px: 표 행 최소 높이 */
+  --ld-dlg-w: 640px;
+  --ld-max-w: 1440px;                          /* 넓은 화면에서 본문·머리 폭 */
+  --ld-bg: var(--pn-bg);
+  --ld-surface: var(--pn-surface);             /* #f7f9fa */
+  --ld-ink: var(--pn-ink);
+  --ld-sub: var(--pn-sub);                     /* #525866: 표 머리·보조 글자 */
+  --ld-accent: var(--pn-accent);
+  --ld-line-soft: var(--pn-line-soft);         /* #e6ebf0: 머리 아래 선·표 줄 */
+  --ld-field-line: var(--pn-field-line);
+  --ld-card-radius: var(--pn-card-radius);     /* 24px */
+  --ld-btn-radius: var(--pn-btn-radius);       /* 12px */
+  --ld-card-shadow: var(--pn-card-shadow);
+  --ld-row-hover: var(--pn-selected-bg);
+  --ld-dlg-shadow: var(--pn-dlg-shadow);       /* panel.css: --pn-panel-shadow 와 같은 색·세기, 가운데 창이라 아래로 */
+  --ld-chip-line: var(--pn-line-soft);
+  /* 탭 배지: S1 배지(.badge) 색·굵기 그대로, "새 N" 글자가 들어가 높이·글자만 키움 (06번 0-3 "알림 버튼·숫자 배지") */
+  --ld-tab-badge-h: 22px;
+  --ld-tab-badge-font: 14px;
+  /* 탭: 홈 공지·업무 탭 구조 (S3 패널 탭 --kn-tab-* 와 같은 값) */
+  --ld-tab-bg: var(--kn-tab-bg);
+  --ld-tab-line: var(--kn-tab-line);
+  --ld-tab-on-line: var(--kn-tab-on-line);
+  --ld-tab-rule: var(--kn-tab-rule);
+  --ld-tab-ink: var(--kn-tab-ink);
+  --ld-tab-radius: var(--kn-tab-radius);
+  /* 알약 태그: 연한 바탕 + 진한 글자 (대비 4.5 이상) */
+  --ld-tag-bg: var(--pn-selected-bg);          /* 진행 중 상태·일반 등급: #f2f9fd + #0077b3 */
+  --ld-tag-ink: var(--pn-accent);
+  --ld-tag-warn-bg: var(--pn-warn-bg);         /* 즉시 등급: #fdecea + #a1221a */
+  --ld-tag-warn-ink: var(--pn-warn-ink);
+  --ld-tag-ok-bg: #f1faf4;                     /* 해결·승인됨: #f1faf4 + #1e7f4f (대비 약 4.7) */
+  --ld-tag-ok-ink: var(--pn-ok);
+  --ld-tag-dim-bg: var(--pn-line-soft);        /* 수정하지 않음·모아서: #e6ebf0 + #525866 (대비 약 5.9) */
+  --ld-tag-dim-ink: var(--pn-sub);
+  /* 글자 찾기 (REQ-LG-08, 0-3 "찾은 낱말 표시"): 연한 노랑 바탕 + 진한 글자 --pn-ink #292d33 (대비 약 12) */
+  --ld-mark-bg: #fff0a8;
+  --ld-search-w: 272px;                        /* 찾기 입력란 폭: 1280px 폭 기본 화면에서 필터 줄이 한 줄에 들어가게(디자인 리뷰) */
+}
+
+/* SFA 홈은 화면 고정(스크롤 없음)이지만 결함 대장은 문서처럼 세로로 스크롤한다 */
+body.ld-page { display: block; height: auto; min-height: 100%; overflow-x: hidden; overflow-y: scroll; background: var(--ld-surface);
+  color: var(--ld-ink); font-size: var(--pn-text); line-height: 1.5; letter-spacing: -.02em; word-break: keep-all; }
+/* 스크롤 막대를 늘 두어 탭을 바꿔도 본문이 옆으로 밀리지 않게 하고(scrollbar-gutter 는 고정 패널을 창 끝에서 떼어 놓아 쓰지 않음),
+   패널·대화상자가 열리면 페이지 스크롤을 막아 패널이 창 오른쪽 끝에 붙게 한다 */
+body.ld-page:has(.pn:not([hidden])) { overflow-y: hidden; }
+.ld-page button, .ld-page select, .ld-page input, .ld-page textarea { font-family: inherit; font-size: var(--pn-text); letter-spacing: inherit; color: var(--ld-ink); }
+.ld-page button { cursor: pointer; }
+.ld-page :focus-visible { outline: 3px solid var(--ld-accent); outline-offset: 2px; }
+.ld-page [tabindex="-1"]:focus { outline: none; }
+.ld-page svg { width: 22px; height: 22px; flex: none; }
+
+/* ---- ① 페이지 머리: 흰 바탕 + 파란 아이콘 원 + 이름 + 보는 사람 ---- */
+.ld-top { display: flex; align-items: center; gap: 12px; min-height: var(--ld-top-h);
+  padding: 0 max(var(--ld-gutter), calc((100% - var(--ld-max-w)) / 2 + var(--ld-gutter)));
+  background: var(--ld-bg); border-bottom: 1px solid var(--ld-line-soft); }
+.ld-brand { flex: 1; margin: 0; font-size: var(--pn-title); font-weight: 700; }
+.ld-viewer { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--ld-sub); font-weight: 500; }
+.ld-viewer svg { color: var(--ld-sub); }
+
+/* ---- ② 목록 ---- */
+.ld-main { max-width: var(--ld-max-w); margin: 0 auto; padding: 24px var(--ld-gutter) 32px; }
+.ld-lead { margin: 0 0 20px; color: var(--ld-sub); }
+
+/* 탭: 홈 공지 탭 구조(위 모서리 12px, 1px 연한 테두리, 선택 탭 흰 바탕·굵게)를 18px·56px로. 선택은 ✓ 로도 알림 */
+.ld-tabs { display: flex; gap: 0; border-bottom: 2px solid var(--ld-tab-rule); }
+.ld-page .ld-tab { min-height: var(--pn-btn-h); margin: 0 -1px 0 0; padding: 0 24px; border: 1px solid var(--ld-tab-line); border-bottom: 0;
+  border-radius: var(--ld-tab-radius) var(--ld-tab-radius) 0 0; background: var(--ld-tab-bg); color: var(--ld-tab-ink); font-weight: 500; }
+.ld-page .ld-tab[aria-selected="true"] { position: relative; background: var(--ld-bg); border-color: var(--ld-tab-on-line); color: var(--ld-ink); font-weight: 700; }
+.ld-tab[aria-selected="true"]::before { content: "✓ "; }
+.ld-count { color: inherit; }
+
+/* 필터 줄: 선택 상자(56px) + 정렬 안내 */
+.ld-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; margin: 24px 0 16px; }
+.ld-filter label { display: block; margin: 0 0 8px; font-weight: 700; }   /* S2 .pn-field label 과 같은 8px */
+.ld-filter select { min-width: 168px; min-height: var(--pn-btn-h); padding: 0 40px 0 16px; border: 1px solid var(--ld-field-line);
+  border-radius: var(--ld-btn-radius); background: var(--ld-bg); }
+.ld-sort { display: flex; align-items: center; gap: 8px; min-height: var(--pn-btn-h); margin: 0 0 0 auto; color: var(--ld-sub); }
+.ld-sort svg { color: var(--ld-accent); }
+.ld-reset { min-height: var(--pn-btn-h); }
+
+/* 글자 찾기 (REQ-LG-08): 필터 줄 맨 앞. 입력란(0-3 "입력란": 56px·모서리 12px·#8a94a6) + 보조 [찾기]·[지우기] */
+.ld-search-row { display: flex; gap: 8px; }
+.ld-page .ld-q { width: var(--ld-search-w); min-height: var(--pn-btn-h); padding: 0 16px; border: 1px solid var(--ld-field-line);
+  border-radius: var(--ld-btn-radius); background: var(--ld-bg); }
+.ld-q::placeholder { color: var(--ld-sub); opacity: 1; }
+.ld-q::-webkit-search-cancel-button { display: none; }   /* 작은 기본 ×(56px 미만) 대신 [지우기] 버튼 */
+.ld-page .ld-q-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; }
+.ld-mark { padding: 0 1px; background: var(--ld-mark-bg); color: var(--ld-ink); }   /* 강조색 ID 안에서도 진한 글자(노랑 위 #0077b3 은 대비 부족) */
+.ld-hit { display: block; color: var(--ld-sub); font-weight: 500; }
+.ld-empty-acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+
+/* 표 카드: 콘텐츠 카드(테두리 없음·24px·홈 날짜 카드 그림자) 안에 표. 바깥 테두리·세로 칸 선 없음 */
+.ld-card { padding: 8px 24px; background: var(--ld-bg); border: 0; border-radius: var(--ld-card-radius); box-shadow: var(--ld-card-shadow); }
+.ld-table { width: 100%; border-collapse: collapse; }
+.ld-table th { padding: 14px 12px; color: var(--ld-sub); font-weight: 700; text-align: left; white-space: nowrap;
+  border-bottom: 1px solid var(--ld-line-soft); }
+.ld-table td { height: var(--ld-row-h); padding: 10px 12px; border-bottom: 1px solid var(--ld-line-soft); vertical-align: middle; }
+.ld-table tbody tr:last-child td { border-bottom: 0; }
+.ld-table .is-num { text-align: right; white-space: nowrap; }
+.ld-table .is-nowrap { white-space: nowrap; }
+.ld-table tbody tr { cursor: pointer; }
+.ld-table tbody tr:hover, .ld-table tbody tr.is-open { background: var(--ld-row-hover); }
+.ld-table tbody tr:hover .ld-id, .ld-table tbody tr.is-open .ld-id { color: var(--pn-accent-hover); }   /* #f2f9fd 위 대비 여유 */
+/* 첫 칸: ID + 아랫줄 제목. 칸 전체가 누르는 곳(56px 이상) */
+.ld-open { display: block; width: 100%; min-height: var(--pn-btn-h); padding: 4px 0; border: 0; background: none; text-align: left; line-height: 1.4; }
+.ld-id { display: block; color: var(--ld-accent); font-weight: 700; }
+.ld-title { display: block; font-weight: 500; }
+.ld-open:hover .ld-title { text-decoration: underline; }
+.ld-total { margin: 16px 4px 0; color: var(--ld-sub); }
+.ld-total b { color: var(--ld-ink); }
+.ld-empty { padding: 40px 16px; text-align: center; }
+.ld-empty p { margin: 0 0 16px; }
+
+/* 알약 태그 (06번 0-3 작은 상태 표시): 글자를 함께 쓰므로 색만으로 뜻을 전하지 않는다 */
+.ld-tag { display: inline-block; padding: 0 10px; border-radius: 999px; background: var(--ld-tag-bg); color: var(--ld-tag-ink);
+  font-weight: 700; white-space: nowrap; }
+.ld-tag.is-warn { background: var(--ld-tag-warn-bg); color: var(--ld-tag-warn-ink); }
+.ld-tag.is-ok { background: var(--ld-tag-ok-bg); color: var(--ld-tag-ok-ink); }
+.ld-tag.is-dim { background: var(--ld-tag-dim-bg); color: var(--ld-tag-dim-ink); }
+
+/* 아직 안 묶인 신고 줄의 [묶기] 보조 버튼 */
+.ld-table .pn-btn-2 { min-width: 96px; white-space: nowrap; }
+.ld-pick-note { margin: 24px 0 0; }
+
+/* ---- ③ 상세 패널 (panel.css .pn 틀) ---- */
+.ld-panel .kn-card-head .pn-tag { white-space: nowrap; }
+.ld-panel .pn-rows dt { flex-basis: 120px; }
+.ld-panel .ld-hist dt { flex: 0 0 132px; white-space: nowrap; }
+.ld-hist .ld-tag { display: table; margin: 4px 0 0; }
+.ld-hist .ld-why { display: block; color: var(--ld-sub); }
+.ld-reports li + li { margin-top: 0; border-top: 1px solid var(--ld-line-soft); }
+.ld-reports li { padding: 12px 0; }
+.ld-reports li:first-child { padding-top: 0; }
+.ld-reports li:last-child { padding-bottom: 0; }
+.ld-reports .ld-who { display: block; color: var(--ld-sub); }
+.ld-panel .pn-foot .pn-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.ld-panel .pn-foot .pn-btn-2 { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+
+/* ---- ④ 가운데 대화상자: S2 패널 틀(.pn)을 가운데로. 모서리 24px(콘텐츠 카드), 그림자는 --pn-panel-shadow 계열 ---- */
+.ld-dlg-scrim { z-index: 54; }
+.pn.ld-dlg { top: 50%; left: 50%; right: auto; bottom: auto; z-index: 55; width: var(--ld-dlg-w); max-width: calc(100% - 32px);
+  max-height: calc(100% - 48px); transform: translate(-50%, -50%); border-radius: var(--ld-card-radius); box-shadow: var(--ld-dlg-shadow); overflow: hidden; }
+.ld-dlg .pn-choices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ld-dlg .pn-choice { flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; }
+.ld-dlg .pn-choice .ld-choice-sub { color: var(--ld-sub); font-weight: 500; }
+.ld-dlg .pn-choice[aria-pressed="true"] .ld-choice-sub { color: var(--ld-ink); }
+.ld-dlg .pn-chips .pn-chip { min-width: 0; }
+.ld-recipients { display: flex; flex-wrap: wrap; gap: 8px 10px; margin: 0; padding: 0; list-style: none; }
+.ld-recipients li { padding: 4px 14px; border-radius: 999px; background: var(--ld-surface); box-shadow: inset 0 0 0 1px var(--ld-chip-line); color: var(--ld-ink); font-weight: 500; }
+.ld-recipients li span { color: var(--ld-sub); }
+.ld-quote { margin: 0; padding: 12px 16px; border-radius: var(--pn-note-radius); background: var(--ld-surface); font-weight: 500; }
+.ld-dlg .pn-end h3 { margin-bottom: 8px; }
+.ld-dlg .pn-foot a.pn-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; }
+.ld-dlg .pn-choices.ld-one { grid-template-columns: minmax(0, 1fr); }
+/* 대화상자 본문의 덩어리(카드·선택 버튼 목록·안내 상자) 사이는 16px. 선택 버튼 목록은 margin 0 이라
+   앞 카드에 붙으면 그림자가 겹쳐 보였다(신고 묶기): 목록에도 위 여백을 준다. 소제목(h4) 뒤는 h4 아래 여백이 맞춘다 */
+.ld-dlg .pn-body > .pn-choices { margin-top: 16px; }
+.ld-dlg .pn-body > h4 + .pn-choices, .ld-dlg .pn-body > h4 + .pn-card { margin-top: 0; }
+.ld-meta { color: var(--ld-sub); }
+.ld-pick-note + .ld-card { margin-top: 16px; }
+.ld-dlg .pn-choice > span:first-child { font-weight: 700; }
+
+/* ---- 새 신고 알림 (REQ-LG-07, ADR-017): S1 알림 아이콘 + 숫자 배지(.badge, 0-2)와 알림 팝업(.alarm-pop, 0-1) 모양 그대로 ---- */
+.ld-alarm-wrap { position: relative; flex: none; }
+.ld-page .ld-alarm { display: inline-flex; align-items: center; gap: 22px; min-width: 0; padding: 0 20px 0 18px; }
+.ld-alarm-ico { position: relative; display: inline-flex; }
+.ld-alarm-ico .badge { top: -9px; right: -12px; }
+.ld-alarm-pop { top: calc(100% + 8px); right: 0; z-index: 30; }
+.ld-alarm-pop .alarm-item b { color: var(--ld-accent); }
+/* 탭 배지: 같은 배지 토큰(배경·글자·최소 크기)에 "새 N" 글자가 들어가 조금 넓게 */
+.ld-tab-badge { position: static; display: inline-block; height: var(--ld-tab-badge-h); margin-left: 8px; padding: 0 8px; border-radius: 999px;
+  font-size: var(--ld-tab-badge-font); line-height: var(--ld-tab-badge-h); vertical-align: 2px; }
+/* "새로 들어옴" 태그: 배지와 같은 빨강 계열 연한 알약 + 진한 글자(대비 4.5 이상). 글자로 뜻을 전한다 */
+.ld-tag.is-new { margin-left: 8px; background: var(--ld-tag-warn-bg); color: var(--ld-tag-warn-ink); vertical-align: 1px; }
+/* 520px 패널에서는 한 줄에 다 안 들어가므로 늘 다음 줄 맨 앞에 둔다(들여쓰기 방지) */
+.pn-lead .ld-tag.is-new { display: table; margin: 4px 0 0; }
+
+/* ---- AI 추천 카드 (REQ-LG-06, ADR-017, 0-3 "AI 추천 카드"): 콘텐츠 카드 안 후보 줄, 줄 사이 1px 연한 선 ---- */
+.ld-cands li { padding: 16px 0; border-top: 1px solid var(--ld-line-soft); }
+.ld-cands li:first-child { padding-top: 4px; border-top: 0; }
+.ld-cands li:last-child { padding-bottom: 0; }
+.ld-cands p { margin: 0 0 4px; }
+.ld-cands .ld-cand-says { font-weight: 700; }
+.ld-cands .ld-cand-says .ld-id { display: inline; color: var(--ld-accent); }
+.ld-cand-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 0 0 6px; }
+.ld-cands .ld-cand-head .ld-cand-says { margin: 0; }
+.ld-cands .ld-cand-title { font-weight: 500; }
+.ld-page .ld-cand-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; margin-top: 8px; }
+.ld-ai .pn-loading { padding: 8px 0 0; }
+.ld-ai .pn-loading .pn-spin { margin-bottom: 16px; }
+.ld-panel .pn-body > .pn-help { margin-top: 16px; }
+.ld-dlg .pn-body > .pn-help { margin: 0 0 12px; }
+/* 대화상자의 AI 후보 선택 버튼: 글자 2줄 선택 버튼 + 셋째 줄 이유 */
+.ld-dlg .pn-choice .ld-choice-why { color: var(--ld-sub); font-weight: 500; }
+.ld-dlg .pn-choice[aria-pressed="true"] .ld-choice-why { color: var(--ld-ink); }

@@ -42,6 +42,7 @@
   --pn-choice-shadow: var(--sfa-quick-shadow);
   --pn-choice-shadow-hover: var(--sfa-quick-shadow-hover);
   --pn-panel-shadow: -8px 0 32px rgba(64, 96, 128, .18);
+  --pn-dlg-shadow: 0 8px 32px rgba(64, 96, 128, .18);   /* 가운데 대화상자(S4): 패널 그림자와 같은 색·세기 */
   --pn-scrim: rgba(41, 45, 51, .2);
 }
 

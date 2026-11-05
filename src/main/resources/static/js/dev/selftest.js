@@ -1,4 +1,4 @@
-/* 화면 자체 검사 (docs/06-ui-spec.md 11절). index.html?selftest=1 일 때만 불러온다.
+/* 화면 자체 검사 (docs/06-ui-spec.md 11절). index.html·ledger.html ?selftest=1 일 때만 불러온다.
    결과는 <pre id="selftest-result"> 에 {ok, checks:[{name, pass, detail}]} JSON으로 남긴다.
    요소 구분: data-a11y="new"(새 요소) | "sfa"(기존 모양·진입점) | "replica"(재현한 기존 화면·가상 데이터, 대비 제외: ADR-012) | "badge"
    data-clip-ok: 원래 화면처럼 일부러 잘라 보이는 영역(날짜 카드 슬라이더). 글자 잘림 검사 제외. */
@@ -83,6 +83,9 @@
     add('new-click-56px', clickables.filter(function (el) { return cat(el) === 'new' && el.getBoundingClientRect().height < 56 - EPS; })
       .map(function (el) { return label(el) + ' h=' + el.getBoundingClientRect().height.toFixed(1); }));
 
+    // 4~6은 SFA 홈(index.html)에만 있는 요소. SFA 밖 화면(<body data-screen>, 예: S4 ledger.html)은 건너뛴다
+    var screen = document.body.getAttribute('data-screen');
+    if (!screen) {
     // 4. SFA 퀵메뉴 버튼 = 06번 0-1 (높이 96, 모서리 16, 글자 14)
     var quick = all('[data-sfa="quick"]');
     var qf = [];
@@ -133,6 +136,7 @@
       if (hex(parseColor(ts.color)) !== '#292c33') sf.push('공지 탭(선택) 글자 ' + ts.color);
     }
     add('entry-same-look', sf, '퀵메뉴·공지 탭');
+    }
 
     // 7. 알림 배지(0-2)와 팝업(0-1)
     var bf = [];
@@ -280,6 +284,117 @@
       // 맨 아래는 본문(행동 줄 없음): 본문이 패널 바닥까지 (ADR-016)
       if (kb && !near(kb.getBoundingClientRect().bottom, kr.bottom)) kf.push('본문이 패널 맨 아래까지 아님');
       add('s3-panel-token', kf, kW + 'px');
+    }
+
+    // 14. S4 결함 대장 (06번 6절, 0-3절 데이터 표·페이지 머리·가운데 대화상자, ADR-014 결정 5)
+    if (screen === 'ledger') {
+      var lf = [], lvw = document.documentElement.clientWidth;
+      var brand = document.querySelector('.ld-top h1');
+      if (!brand || px(cs(brand).fontSize) < 24 - EPS) lf.push('페이지 제목 24px 미만');
+      var ltabs = all('.ld-tabs [role="tab"]');
+      if (!document.querySelector('.ld-tabs[role="tablist"]')) lf.push('role=tablist 없음');
+      if (ltabs.length !== 2) lf.push('목록 탭 ' + ltabs.length + '개 (2 필요)');
+      var lsel = ltabs.filter(function (b) { return b.getAttribute('aria-selected') === 'true'; });
+      if (lsel.length !== 1) lf.push('선택된 탭 ' + lsel.length + '개');
+      lsel.forEach(function (b) { if (parseInt(cs(b).fontWeight, 10) < 700) lf.push('선택 탭 굵게 아님'); });
+      // 표: 카드 안, 행 56px 이상, 세로 칸 선·바깥 테두리 없음
+      all('.ld-table tbody tr').forEach(function (tr) {
+        if (tr.getBoundingClientRect().height < 56 - EPS) lf.push('표 행 높이 ' + tr.getBoundingClientRect().height.toFixed(1));
+      });
+      all('.ld-table td, .ld-table th').forEach(function (c) {
+        var s = cs(c);
+        if (px(s.borderLeftWidth) || px(s.borderRightWidth)) lf.push(label(c) + ' 세로 칸 선');
+      });
+      all('.ld-card').forEach(function (c) {
+        var s = cs(c);
+        if (px(s.borderTopWidth) && s.boxShadow !== 'none') lf.push('카드 테두리+그림자 겹침');
+        if (!near(px(s.borderTopLeftRadius), 24)) lf.push('카드 모서리 ' + s.borderTopLeftRadius);
+      });
+      if (!document.querySelector('.ld-total') || !/총 \d+건/.test(document.querySelector('.ld-total').textContent)) lf.push('"총 N건" 없음');
+      // 상세 패널: S2와 같은 틀(오른쪽 520px, 1280 미만 100%)
+      var lp = document.getElementById('ledger-panel');
+      if (lp && visible(lp)) {
+        var lr = lp.getBoundingClientRect(), lw = window.innerWidth < 1280 ? lvw : 520;
+        if (!near(lr.width, lw)) lf.push('패널 폭 ' + lr.width.toFixed(1) + ' (기대 ' + lw + ')');
+        if (!near(lr.right, lvw) || !near(lr.top, 0)) lf.push('패널 위치 오른쪽·위 아님');
+        if (lp.getAttribute('role') !== 'dialog' || lp.getAttribute('aria-modal') !== 'true') lf.push('패널 role=dialog/aria-modal 없음');
+        var lt = lp.querySelector('.pn-head h2');
+        if (!lt || px(cs(lt).fontSize) < 24 - EPS) lf.push('패널 제목 24px 미만');
+        var lfoot = document.getElementById('ld-foot');
+        if (!lfoot || !near(lfoot.getBoundingClientRect().bottom, lr.bottom)) lf.push('행동 줄이 패널 맨 아래 아님');
+        if (all('#ledger-panel .pn-btn').length !== 1) lf.push('패널 주 버튼 ' + all('#ledger-panel .pn-btn').length + '개 (1 필요)');
+        all('#ledger-panel .kn-progress').forEach(function (p) {
+          if (!p.querySelector('.kn-now') || !p.querySelector('[aria-current="step"]')) lf.push('진행 단계 글자·aria-current 없음');
+        });
+      }
+      // 가운데 대화상자: 화면 안, 가운데, 모서리 24px, 단계 글자, 주 버튼 하나(56px·#0077b3)
+      var ld = document.getElementById('ledger-dialog');
+      if (ld && visible(ld)) {
+        var dr = ld.getBoundingClientRect(), vh = document.documentElement.clientHeight;
+        if (Math.abs((dr.left + dr.right) / 2 - lvw / 2) > 1) lf.push('대화상자 가로 가운데 아님');
+        if (dr.top < -EPS || dr.bottom > vh + EPS || dr.left < -EPS || dr.right > lvw + EPS) lf.push('대화상자가 화면 밖으로 나감');
+        if (ld.getAttribute('role') !== 'dialog' || ld.getAttribute('aria-modal') !== 'true') lf.push('대화상자 role=dialog/aria-modal 없음');
+        if (!near(px(cs(ld).borderTopLeftRadius), 24)) lf.push('대화상자 모서리 ' + cs(ld).borderTopLeftRadius);
+        if (!(document.getElementById('ld-dlg-steps-text') || {}).textContent) lf.push('대화상자 단계 글자 없음');
+        var dp = all('#ledger-dialog .pn-btn');
+        if (dp.length !== 1) lf.push('대화상자 주 버튼 ' + dp.length + '개 (1 필요)');
+        dp.forEach(function (b) {
+          var r = b.getBoundingClientRect(), s = cs(b);
+          if (r.height < 56 - EPS || !near(px(s.borderTopLeftRadius), 12) || hex(parseColor(s.backgroundColor)) !== '#0077b3') {
+            lf.push(label(b) + ' h=' + r.height + ' r=' + s.borderTopLeftRadius + ' bg=' + s.backgroundColor);
+          }
+        });
+        var dfoot = document.getElementById('ld-dlg-foot');
+        if (!dfoot || !near(dfoot.getBoundingClientRect().bottom, dr.bottom)) lf.push('행동 줄이 대화상자 맨 아래 아님');
+      } else if (!(lp && visible(lp)) && all('.ld-main .pn-btn').length > 1) {
+        lf.push('목록 주 버튼 ' + all('.ld-main .pn-btn').length + '개');
+      }
+      add('s4-ledger-token', lf, lvw + 'px');
+
+      // 패널·대화상자 본문의 덩어리끼리 겹치거나 붙지 않는가: 이어지는 두 덩어리 사이가 겹치면 실패,
+      // 둘 다 그림자 있는 카드(또는 그림자 카드 목록)이면 12px 이상 떨어져야 한다 (06번 0-3 콘텐츠 카드, 신고 묶기 겹침 재발 방지)
+      var gf = [];
+      function shadowy(el) {
+        if (cs(el).boxShadow !== 'none') return true;
+        var inner = el.querySelector(':scope > li > *');
+        return !!inner && cs(inner).boxShadow !== 'none';
+      }
+      ['ld-body', 'ld-dlg-body'].forEach(function (id) {
+        var box = document.getElementById(id);
+        if (!box || !visible(box)) return;
+        var kids = Array.prototype.filter.call(box.children, visible);
+        for (var i = 1; i < kids.length; i++) {
+          var a = kids[i - 1], b = kids[i];
+          var gap = b.getBoundingClientRect().top - a.getBoundingClientRect().bottom;
+          if (gap < -EPS) gf.push(label(a) + ' ↔ ' + label(b) + ' 겹침 ' + gap.toFixed(1));
+          else if (shadowy(a) && shadowy(b) && gap < 12 - EPS) gf.push(label(a) + ' ↔ ' + label(b) + ' 간격 ' + gap.toFixed(1));
+        }
+      });
+      add('s4-block-gap', gf);
+
+      // 새 신고 알림·AI 추천 (REQ-LG-06·07, ADR-017): 색만으로 알리지 않고, AI 추천은 표시가 있고 연결은 사람이 한다
+      var af = [];
+      all('#ld-alarm-badge, #ld-new-badge').forEach(function (b) {
+        if (!/\d/.test(b.textContent)) af.push(label(b) + ' 숫자 없음');
+      });
+      var alarm = document.getElementById('ld-alarm');
+      if (alarm && !/새 신고/.test(alarm.textContent)) af.push('알림 버튼 글자 없음');
+      all('.ld-ai').forEach(function (c) {
+        var tag = c.querySelector('.kn-card-head .ld-tag'), load = c.querySelector('.pn-loading');
+        if (!load && (!tag || !/AI 추천|규칙 후보/.test(tag.textContent))) af.push('AI 추천 카드에 "AI 추천" 표시 없음');
+        var rule = !!tag && /규칙/.test(tag.textContent);   // 규칙 후보는 카드 머리 태그로 알림
+        Array.prototype.forEach.call(c.querySelectorAll('.ld-cands > li'), function (li) {
+          var st = li.querySelector('.ld-cand-head .ld-tag');
+          if (!rule && (!st || !/비슷함/.test(st.textContent))) af.push(label(li) + ' 비슷함 글자 없음');
+          if (!li.querySelector('[data-act="link-ai"]')) af.push(label(li) + ' [이 결함에 묶기] 없음');
+        });
+      });
+      // AI 추천이 보이는 곳에는 "사람이 확인" 안내가 있어야 한다
+      var aiShown = all('.ld-ai, .ld-choice-why').length;
+      if (aiShown && !/담당자가 확인/.test(((document.getElementById('ld-body') || {}).textContent || '') + ((document.getElementById('ld-dlg-body') || {}).textContent || ''))) {
+        af.push('"담당자가 확인" 안내 없음');
+      }
+      add('s4-ai', af);
     }
 
     var result = { ok: checks.every(function (c) { return c.pass; }), url: location.hash, checks: checks };
