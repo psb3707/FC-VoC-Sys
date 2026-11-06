@@ -10,6 +10,7 @@
     var drafts = new Map();
     var serial = 0, actor, form, receipt, confirming, offer, error, invalid, busy, wide, ai, restored;
     var steps = ['problem', 'review'];
+    var expanded;
     var types = [['UNCLASSIFIED', '담당자가 확인해 주세요'], ['DEFECT', '전산 오류'],
       ['USAGE', '사용법 문의'], ['IMPROVEMENT', '개선 요청']];
     var devices = [['SAME', '접수하는 기기와 같아요'], ['PC', '다른 컴퓨터'], ['PHONE', '휴대폰'], ['TABLET', '태블릿'],
@@ -24,11 +25,12 @@
     function reset() {
       form = { requestId: ++serial, business: '', oneLine: '', symptom: '', detail: '', extraSymptoms: [], urgent: [],
         customerScope: '', customerNo: '', device: '', screen: '', date: '', time: '', contact: '', contactTime: '',
-        finalType: 'UNCLASSIFIED', onBehalf: '', condition: '', source: '' };
+        finalType: 'UNCLASSIFIED', onBehalf: '', condition: '', source: '', attemptedWorkaround: '' };
       receipt = null;
       confirming = busy = wide = restored = false;
       error = invalid = '';
       ai = null;
+      expanded = {};
     }
     function owner(st) {
       var user = ui.user(st);
@@ -42,18 +44,24 @@
       ui.paint(st);
     }
     function open(st) { start(owner(st)); }
-    function handoff(st, question, answer, onBehalf) {
+    function handoff(st, question, answer) {
       if (actor !== owner(st)) start(owner(st));
-      if (offer) restoreDraft();
+      if (offer && !hasContent() && !form.onBehalf) restoreDraft();
+      error = invalid = '';
       if (!form.oneLine.trim()) form.oneLine = question;
       else if (form.oneLine.trim() !== question && !form.detail.split('\n').includes(question)) {
-        form.detail = [question, form.detail].filter(Boolean).join('\n').slice(0, 1000);
+        var detail = [form.detail, question].filter(Boolean).join('\n');
+        if (detail.length <= 1000) {
+          form.detail = detail;
+          expanded.description = true;
+        } else {
+          error = '상세 설명이 길어서 AI 질문을 옮기지 못했어요. 작성하신 내용은 그대로 있어요.';
+        }
       }
       form.business = form.business || answer.business || '';
       form.symptom = form.symptom || answer.symptom || '';
       invalidateAi();
       form.source = 'ASSISTANT';
-      form.onBehalf = onBehalf || form.onBehalf;
       ui.go({ step: 'problem' });
     }
     function select(key, label, choices, emptyLabel) {
@@ -77,9 +85,13 @@
         el(long ? 'textarea' : 'input', input, long ? [form[key]] : []),
         invalid === key ? errorText() : null]);
     }
-    function details(title, content, open) {
-      return el('details', { cls: 'pn-details pq-details', open: open }, [
-        el('summary', null, [title]), el('div', { cls: 'pq-details-body' }, content)]);
+    function details(key, title, content, initiallyOpen) {
+      var state = expanded;
+      var section = el('details', { cls: 'pn-details pq-details', 'data-quick-section': key,
+        open: state[key] === undefined ? initiallyOpen : state[key] }, [
+        el('summary', { 'data-fk': 'section:' + key }, [title]), el('div', { cls: 'pq-details-body' }, content)]);
+      section.addEventListener('toggle', function () { if (section.isConnected) state[key] = section.open; });
+      return section;
     }
     function errorText() {
       return error ? el('p', { cls: 'pn-err', id: 'quick-error', role: 'alert' }, [error]) : null;
@@ -112,8 +124,47 @@
           btn('pn-btn-2', '고객 안내 복사', 'quick-copy', { 'data-guide': d.id })]) : null,
         el('p', { cls: 'pn-lead' }, ['이 방법으로도 진행하기 어려우면 접수에 상황을 남겨 주세요.'])]);
     }
-    function problem(st) {
-      var matches = related();
+    function recommendation(matches) {
+      var id = A.findQuickIntakeGuide(form.business, form.oneLine);
+      return matches.find(function (d) { return d.id === id; });
+    }
+    function refreshAdvice() {
+      var box = document.getElementById('quick-related');
+      if (!box) return;
+      var matches = related(), suggested = recommendation(matches);
+      var signature = suggested ? 'guide:' + suggested.id : matches.map(function (d) { return d.id; }).join(',');
+      if (box.getAttribute('data-match') === signature) return;
+      box.setAttribute('data-match', signature);
+      box.textContent = '';
+      if (suggested) {
+        var summary = el('span', { cls: 'pq-guide-summary' }, [
+          el('strong', null, ['지금 해볼 방법']),
+          el('span', null, [suggested.workaround]),
+          el('span', { cls: 'pq-guide-more' }, ['방법 자세히 보기'])
+        ]);
+        var card = details('method-' + suggested.id, summary, [
+          el('p', { cls: 'pn-card-title' }, [suggested.title]),
+          suggested.guide && suggested.guide.steps ? el('ol', { cls: 'pq-guide-steps' }, suggested.guide.steps.map(function (step) {
+            return el('li', null, [step]);
+          })) : null,
+          suggested.plannedFixDate ? el('p', null, ['수정 예정 · ', ui.fmtDate(suggested.plannedFixDate)]) : null,
+          el('div', { cls: 'pq-actions' }, [
+            btn('pn-btn-2', '해봤는데 아직 안 돼요', 'quick-tried', { 'data-id': suggested.id }),
+            btn('pn-btn-2', '나도 겪었어요', 'quick-participate', { 'data-id': suggested.id, disabled: busy })])
+        ]);
+        card.classList.add('pq-inline-guide');
+        box.appendChild(card);
+      } else if (matches.length) {
+        box.appendChild(details('related', '이 업무의 공개 오류 (' + matches.length + '건)', matches.map(function (d) {
+          return el('div', { cls: 'pq-related-case' }, [
+            el('p', { cls: 'pn-card-title' }, [d.title]),
+            el('p', null, [d.workaround || '아직 공개된 임시 방법이 없어요.']),
+            btn('pn-btn-2', '나도 겪었어요', 'quick-participate', { 'data-id': d.id, disabled: busy })]);
+        })));
+      }
+    }
+    function problem() {
+      var urgentCount = form.urgent.length + Number(form.customerScope === 'MANY');
       return {
         body: [
           el('h3', { tabindex: '-1' }, ['어떤 업무가 막혔나요?']),
@@ -124,28 +175,20 @@
           select('business', '업무', entries(meta.businesses), '어떤 업무인지 골라 주세요'),
           field('oneLine', '무슨 일이 있었나요?', { maxlength: '100', placeholder: '예) 서명 링크를 누르면 다른 화면이 떠요' }),
           el('p', { cls: 'pn-help', id: 'quick-count' }, [form.oneLine.length + '/100자 · 고객 이름과 번호는 빼고 적어 주세요.']),
-          el('h4', null, ['지금 상황을 알려 주세요 (선택)']),
-          tags('urgent', '긴급 사정과 영향 범위', options.urgency,
-            btn('pn-chip', '여러 고객에게 발생', 'quick-many', { 'aria-pressed': String(form.customerScope === 'MANY') })),
-          st.mode === 'B' ? btn('pn-btn-2 pq-ask', 'AI에게 물어보기', 'assistant') : null,
-          details('증상이나 상세 설명 추가', [
+          el('div', { id: 'quick-related', cls: 'pq-related', 'aria-live': 'polite' }),
+          details('urgent', urgentCount ? '긴급 사정 · ' + urgentCount + '개 선택' : '긴급 사정 추가 (선택)', [
+            tags('urgent', '긴급 사정과 영향 범위', options.urgency,
+              btn('pn-chip', '여러 고객에게 발생', 'quick-many', { 'aria-pressed': String(form.customerScope === 'MANY') }))
+          ]),
+          details('description', '증상이나 상세 설명 추가 (선택)', [
             select('symptom', '대표 증상 (선택)', entries(symptoms), '고르기 어려우면 비워 두세요'),
             el('p', { cls: 'pn-label' }, ['다른 증상도 있었나요?']),
             tags('extraSymptoms', '추가 증상', entries(symptoms.filter(function (item) { return item.code !== form.symptom; }))),
             field('detail', '상세 설명 (선택)', { maxlength: '1000', placeholder: '오류가 나기 전에 하신 작업을 적어 주세요.' })
-          ], !!(form.symptom || form.extraSymptoms.length || form.detail)),
-          matches.length ? el('section', { 'aria-label': '관련 공개 오류' }, [
-            el('h4', null, ['이 업무의 공개 오류']),
-            el('p', { cls: 'pn-lead' }, ['겪으신 문제와 다르면 아래에서 새로 접수할 수 있어요.']),
-            el('ul', { cls: 'pn-plain' }, matches.map(function (d) {
-              return el('li', { cls: 'pn-card pq-actions' }, [
-                el('p', { cls: 'pn-card-title' }, [d.title]),
-                el('p', null, [d.workaround || '담당자가 원인을 확인하고 있어요.']),
-                btn('pn-btn-2', '나도 겪었어요', 'quick-participate', { 'data-id': d.id, disabled: busy })]);
-            }))]) : null,
+          ]),
           invalid ? null : errorText()
         ],
-        foot: [btn('pn-btn', matches.length ? '새 오류 접수 · 확인으로' : '확인으로', 'quick-review', { disabled: busy })]
+        foot: [btn('pn-btn', '확인으로', 'quick-review', { disabled: busy })]
       };
     }
     function review(st) {
@@ -157,32 +200,37 @@
           el('div', { cls: 'pn-card pq-summary' }, [rows([
             ['업무', ui.labelOf(meta.businesses, form.business)], ['한 줄 설명', form.oneLine],
             form.detail ? ['상세 설명', form.detail] : null,
+            form.attemptedWorkaround ? ['시도한 임시 방법', form.attemptedWorkaround] : null,
             form.symptom ? ['대표 증상', ui.labelOf(symptoms, form.symptom)] : null,
             form.extraSymptoms.length ? ['추가 증상', form.extraSymptoms.map(function (code) { return ui.labelOf(symptoms, code); }).join(', ')] : null,
             form.urgent.length ? ['우선 확인 요청', options.urgency.filter(function (pair) { return form.urgent.includes(pair[0]); })
               .map(function (pair) { return pair[1]; }).join(' · ')] : null])]),
-          select('customerScope', '한 고객에게만 발생했나요? (선택)', scope, '답을 몰라도 접수할 수 있어요'),
-          form.customerScope === 'ONE' ? field('customerNo', '고객번호 (선택 · 번호 없이 접수할 수 있어요)', { maxlength: '40' }) : null,
-          details('자동으로 확인한 정보와 오류가 난 환경', [
-            rows([['접수하는 기기', data.context.reportedFrom.device + ' · ' + data.context.reportedFrom.browser],
-              ['접수 화면', data.context.screenName], ['접수 시각', ui.fmtWhen(data.context.occurredAt)]]),
-            select('device', '오류가 난 기기 (선택)', devices),
-            field('screen', '오류가 난 화면 (선택)', { maxlength: '80' }),
-            el('div', { cls: 'pq-grid' }, [
-              field('date', '발생 날짜 (선택)', { type: 'date' }), field('time', '발생 시각 (선택)', { type: 'time' })])
-          ], invalid === 'screen' || !!(form.device || form.screen || form.date || form.time)),
-          details('연락받을 방법과 가능 시간', [
-            el('p', null, ['응답은 내 접수내역에서 확인할 수 있어요.']),
-            select('contact', '연락 방법 (선택)', options.contact),
-            form.contact === 'PHONE' ? select('contactTime', '연락 가능한 시간 (선택)', options.time) : null
-          ], !!form.contact),
-          details('가려지는 정보 보기', [
-            el('p', null, ['고객번호는 AI와 접수 내역에 보내지 않아요. 이름과 번호는 설명에서 빼고 적어 주세요.']),
-            rows([['정리에 사용하는 설명', form.oneLine], form.detail ? ['상세 설명', form.detail] : null])
-          ], false),
-          canAi ? aiSection() : null,
-          st.mode === 'B' ? select('finalType', '문의 유형 (선택)', types, '담당자가 확인해 주세요') : null,
-          btn('pn-btn-2 pq-wide-toggle', wide ? '기본 너비로 보기' : '넓게 보기', 'quick-wide', { 'aria-pressed': String(wide) }),
+          details('extra', '고객 범위·발생 환경·연락 방법 추가 (선택)', [
+            select('customerScope', '한 고객에게만 발생했나요? (선택)', scope, '답을 몰라도 접수할 수 있어요'),
+            form.customerScope === 'ONE' ? field('customerNo', '고객번호 (선택 · 번호 없이 접수할 수 있어요)', { maxlength: '40' }) : null,
+            details('incident', '자동으로 확인한 정보와 오류가 난 환경', [
+              rows([['접수하는 기기', data.context.reportedFrom.device + ' · ' + data.context.reportedFrom.browser],
+                ['접수 화면', data.context.screenName], ['접수 시각', ui.fmtWhen(data.context.occurredAt)]]),
+              select('device', '오류가 난 기기 (선택)', devices),
+              field('screen', '오류가 난 화면 (선택)', { maxlength: '80' }),
+              el('div', { cls: 'pq-grid' }, [
+                field('date', '발생 날짜 (선택)', { type: 'date' }), field('time', '발생 시각 (선택)', { type: 'time' })])
+            ], invalid === 'screen' || !!(form.device || form.screen || form.date || form.time)),
+            details('contact', '연락받을 방법과 가능 시간', [
+              el('p', null, ['응답은 내 접수내역에서 확인할 수 있어요.']),
+              select('contact', '연락 방법 (선택)', options.contact),
+              form.contact === 'PHONE' ? select('contactTime', '연락 가능한 시간 (선택)', options.time) : null
+            ], !!form.contact),
+            btn('pn-btn-2 pq-wide-toggle', wide ? '기본 너비로 보기' : '넓게 보기', 'quick-wide', { 'aria-pressed': String(wide) })
+          ]),
+          details('review-ai', canAi ? '개인정보 확인 및 AI 정리 (선택)' : '개인정보 확인 (선택)', [
+            details('privacy', '가려지는 정보 보기', [
+              el('p', null, ['고객번호는 AI와 접수 내역에 보내지 않아요. 이름과 번호는 설명에서 빼고 적어 주세요.']),
+              rows([['정리에 사용하는 설명', form.oneLine], form.detail ? ['상세 설명', form.detail] : null])
+            ], false),
+            canAi ? aiSection() : null,
+            st.mode === 'B' ? select('finalType', '문의 유형 (선택)', types, '담당자가 확인해 주세요') : null
+          ]),
           invalid === 'screen' ? null : errorText()
         ],
         foot: [btn('pn-btn-2', '이전', 'quick-back', { disabled: busy }),
@@ -231,12 +279,13 @@
             rows([
               ['현재 상태', receipt.kind === 'ME_TOO' ? '같은 오류를 겪었다고 알렸어요' : '접수 완료 · 담당자 확인 대기'],
               receipt.urgent && receipt.urgent.length ? ['우선 확인 요청', '긴급 사정을 함께 남겼어요'] : null,
+              receipt.attemptedWorkaround ? ['시도한 임시 방법', receipt.attemptedWorkaround] : null,
               receipt.department ? ['담당 창구', receipt.department] : null,
               ['연락', receipt.contact === 'PHONE' ? '전화 희망' +
                 (receipt.contactTime ? ' · ' + options.time.find(function (pair) { return pair[0] === receipt.contactTime; })[1] : '') : 'SFA 내 접수내역'],
               ['다음 안내', '정해지면 내 접수내역에서 확인할 수 있어요.']
             ])]),
-          guide(d)
+          d && d.workaround !== receipt.attemptedWorkaround ? guide(d) : null
         ],
         foot: [btn('pn-btn', '이 접수의 진행 상황 보기', 'quick-mine')]
       };
@@ -251,7 +300,7 @@
       };
       if (st.step === 'review') return review(st);
       if (st.step === 'receipt') return done();
-      return problem(st);
+      return problem();
     }
     function hasContent() {
       return !!(form.business || form.oneLine || form.detail || form.urgent.length || form.extraSymptoms.length ||
@@ -264,13 +313,13 @@
       restored = true;
       offer = false;
     }
-    function close(st) {
+    function close(st, returnStep) {
       if (!form || actor !== owner(st)) start(owner(st));
       if (busy) return;
       if (confirming) return act('keep', st);
       if (!receipt && hasContent()) {
         confirming = true;
-        if (st.step === 'assistant') return ui.go({ step: 'problem' });
+        if (st.step === 'assistant') return ui.go({ step: returnStep });
         ui.paint(st);
         document.getElementById('quick-confirm').focus();
         return;
@@ -279,14 +328,16 @@
       ui.close();
     }
     function request(st) {
-      var match = form.symptom ? related().find(function (d) { return d.workaround; }) : null;
+      var matches = related();
+      var match = recommendation(matches) || (form.symptom ? matches.find(function (d) { return d.workaround; }) : null);
       return {
         requestId: actor + ':' + form.requestId, reporterId: form.onBehalf || actor, submittedById: actor,
         business: form.business, symptom: form.symptom, oneLine: form.oneLine.trim(), detail: form.detail.trim(),
         extraSymptoms: form.extraSymptoms, urgent: form.urgent, customerScope: form.customerScope,
         incident: { device: form.device, screen: form.screen, date: form.date, time: form.time },
         screen: form.screen, contact: form.contact, contactTime: form.contact === 'PHONE' ? form.contactTime : '',
-        finalType: st.mode === 'A' ? 'UNCLASSIFIED' : form.finalType, evidence: evidence(), guideId: match ? match.id : null
+        finalType: st.mode === 'A' ? 'UNCLASSIFIED' : form.finalType, evidence: evidence(), guideId: match ? match.id : null,
+        attemptedWorkaround: form.attemptedWorkaround
       };
     }
     function focusError(st, key, message) {
@@ -352,11 +403,19 @@
     }
     function act(action, st, button) {
       if (busy) return;
+      var section = button && button.closest('[data-quick-section]');
+      if (section) expanded[section.getAttribute('data-quick-section')] = section.open;
       if (action === 'review') {
         if (!form.business) return focusError(st, 'business', '어떤 업무인지 골라 주세요.');
         if (!form.oneLine.trim()) return focusError(st, 'oneLine', '무슨 일이 있었는지 적어 주세요.');
         error = invalid = '';
         return ui.go({ step: 'review' });
+      }
+      if (action === 'tried') {
+        var suggested = recommendation(related());
+        if (!suggested || suggested.id !== button.getAttribute('data-id')) return;
+        form.attemptedWorkaround = suggested.workaround;
+        return act('review', st);
       }
       if (action === 'submit') return submit(st);
       if (action === 'mine' && receipt) {
@@ -439,17 +498,20 @@
     function change(st, target, eventType) {
       var key = target.getAttribute('data-quick');
       if (!key) return;
+      if (key === 'business' && form.business !== target.value) form.attemptedWorkaround = '';
       if (form[key] !== target.value && ['business', 'oneLine', 'detail', 'symptom', 'customerScope'].includes(key)) {
         invalidateAi();
       }
       form[key] = target.value;
       if (key === 'oneLine') {
         document.getElementById('quick-count').textContent = target.value.length + '/100자 · 고객 이름과 번호는 빼고 적어 주세요.';
+        refreshAdvice();
       }
       if (invalid === key && target.value.trim()) {
         invalid = error = '';
         target.removeAttribute('aria-invalid');
-        target.removeAttribute('aria-describedby');
+        if (key === 'oneLine') target.setAttribute('aria-describedby', 'quick-count');
+        else target.removeAttribute('aria-describedby');
         var message = document.getElementById('quick-error');
         if (message) message.remove();
       }
@@ -459,7 +521,13 @@
     }
 
     return { steps: steps, isStep: isStep, open: open, enter: enter, handoff: handoff, view: view, act: act,
-      change: change, close: close, isWide: function () { return wide; },
-      onBehalf: function (value) { if (value !== undefined) form.onBehalf = value; return form.onBehalf; } };
+      change: change, close: close, refreshAdvice: refreshAdvice, isWide: function () { return wide; },
+      canSwitch: function () { return !confirming && !busy; },
+      questionSeed: function (st) { return actor === owner(st) ? form.oneLine : ''; },
+      onBehalf: function (st, value) {
+        if (actor !== owner(st)) start(owner(st));
+        if (value !== undefined) form.onBehalf = value;
+        return form.onBehalf;
+      } };
   };
 })();

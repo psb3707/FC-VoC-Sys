@@ -83,6 +83,18 @@
           wontFixReasonCode: d.wontFixReasonCode, wontFixReasonText: d.wontFixReasonText, guide: quick.guides[d.id] || null }] : [];
       }));
     },
+    // 공개 대장의 시연 문구만 로컬에서 비교한다. 입력을 저장하거나 AI를 호출하지 않는다.
+    findQuickIntakeGuide: function (business, text) {
+      if (!business || containsPrivateValue(text)) return null;
+      var matches = (Q.defects || []).filter(function (example) {
+        return example.business === business && matchesQuestion(text, example);
+      });
+      if (matches.length !== 1) return null;
+      var d = (L.defects || []).find(function (item) {
+        return item.id === matches[0].id && item.published && item.workaround;
+      });
+      return d ? d.id : null;
+    },
     previewQuickIntake: function (req) {
       var blocked = ['oneLine', 'detail', 'screen'].some(function (key) { return containsPrivateValue(req[key]); });
       return ok({ blocked: blocked });
@@ -104,7 +116,8 @@
           detail: req.detail, business: req.business, symptom: req.symptom, extraSymptoms: req.extraSymptoms,
           finalType: req.finalType, urgent: req.urgent, customerScope: req.customerScope,
           incident: req.incident, contact: req.contact, contactTime: req.contactTime, evidence: req.evidence,
-          department: quick.departments[req.business] || quick.departments.ETC, guideId: req.guideId
+          department: quick.departments[req.business] || quick.departments.ETC, guideId: req.guideId,
+          attemptedWorkaround: req.attemptedWorkaround
         };
         quickReports.push(copy(report));
         submissions.set(req.requestId, report);

@@ -195,11 +195,13 @@
           r.urgent && r.urgent.length ? ['우선 확인 요청', r.urgent.map(function (code) { return URGENCY[code]; }).join(' · ')] : null,
           r.evidence ? ['추가 확인', r.evidence] : null,
           r.detail ? ['상세 설명', r.detail] : null,
+          r.attemptedWorkaround ? ['시도한 임시 방법', r.attemptedWorkaround] : null,
           r.incident && r.incident.screen ? ['오류 화면', r.incident.screen] : null,
           r.incident && (r.incident.date || r.incident.time) ? ['발생 시각', [r.incident.date, r.incident.time].filter(Boolean).join(' ')] : null,
           d ? planOf(d) : null
         ]),
-        related ? publicGuide(related) : d && d.workaround ? rows([['지금 해볼 방법', d.workaround]]) : null,
+        related ? (related.workaround === r.attemptedWorkaround ? null : publicGuide(related)) :
+          d && d.workaround ? rows([['지금 해볼 방법', d.workaround]]) : null,
         r.fcNotice && r.fcNotice.approvedText
           ? el('div', { cls: 'pn-note' }, [icon('i-info'), el('div', null, [el('b', null, ['담당자 안내']), r.fcNotice.approvedText])])
           : el('p', { cls: 'kn-none' }, [d ? '담당자 안내는 아직 없어요' : '접수 완료 · 담당자 확인 대기']),

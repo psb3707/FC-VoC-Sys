@@ -233,7 +233,7 @@
     panel.hidden = !open;
     $('pn-scrim').hidden = !open;
     document.querySelector('[data-panel="intake"]').setAttribute('aria-expanded', String(open));
-    if (!open || st.step !== 'assistant') assistant = null;
+    if (!open || (!quick.steps.includes(st.step) && st.step !== 'assistant')) assistant = null;
     if (!open) { lastStep = null; lastKeys = null; return Promise.resolve(); }
     syncKeys(st);
     var q = seqOf(st);
@@ -243,7 +243,8 @@
         return Promise.resolve();
       }
       if (!assistant || assistant.hash !== location.hash) {
-        assistant = { hash: location.hash, text: '', question: '', result: null, error: '', pending: false };
+        var initialText = assistantReturn === '0' ? '' : quick.questionSeed(st);
+        assistant = { hash: location.hash, text: initialText, question: '', result: null, error: '', pending: false };
       }
       syncFixture(st);
       paint(st);
@@ -292,6 +293,13 @@
     var fk = document.activeElement && document.activeElement.getAttribute && document.activeElement.getAttribute('data-fk');
     var caret = fk && document.activeElement.selectionStart;
     var asking = st.step === 'assistant', compact = quick.isStep(st.step);
+    var mode = $('pn-mode-toggle');
+    var canSwitch = assistantEnabled(st) && ((asking && assistantReturn !== '0') ||
+      (quick.steps.includes(st.step) && quick.canSwitch()));
+    mode.hidden = !canSwitch;
+    mode.textContent = asking ? '일반 접수' : 'AI 모드';
+    mode.setAttribute('data-act', asking ? 'leave-assistant' : 'assistant');
+    $('intake-panel').classList.toggle('pq-mode-switch', canSwitch);
     $('intake-panel').classList.toggle('pq-wide', compact && st.step === 'review' && quick.isWide());
     paintProxy(st);
     $('pn-steps').hidden = asking;
@@ -300,6 +308,7 @@
     var body = $('pn-body');
     body.innerHTML = '';
     view.body.forEach(function (n) { if (n) body.appendChild(n); });
+    if (st.step === 'problem') quick.refreshAdvice();
     var foot = $('pn-foot');
     foot.innerHTML = '';
     foot.classList.toggle('pn-assist-foot', asking);
@@ -327,7 +336,7 @@
     users.filter(function (u) { return u.role === 'FC'; }).forEach(function (u) {
       sel.appendChild(el('option', { value: u.id }, [u.name + ' 대신 접수']));
     });
-    sel.value = quick.isStep(st.step) ? quick.onBehalf() : form.onBehalf;
+    sel.value = usesQuickForm(st) ? quick.onBehalf(st) : form.onBehalf;
   }
 
   function paintSteps(st) {
@@ -406,8 +415,8 @@
             el('button', { cls: assistant.result ? 'pn-btn-2' : 'pn-btn',
               type: 'submit', disabled: assistant.pending }, ['보내기'])]),
           assistant.error ? el('div', { cls: 'pn-err', role: 'alert' }, [assistant.error]) : null,
-          assistant.result ? btn('pn-btn', '이 내용으로 문의 접수', 'assistant-handoff')
-            : btn('pn-btn-2', '일반 접수로 돌아가기', 'leave-assistant')]
+          assistant.result ? btn('pn-btn', '이 내용으로 문의 접수', 'assistant-handoff') : null,
+          assistantReturn === '0' ? btn('pn-btn-2', '일반 접수로 돌아가기', 'leave-assistant') : null]
       };
     },
     '1': function (st) {
@@ -663,7 +672,7 @@
     return A.postIntakeQuestion({ text: session.text }).catch(function () {
       return { outcome: 'UNAVAILABLE' };
     }).then(function (result) {
-      if (assistant !== session || location.hash !== session.hash) return;
+      if (assistant !== session) return;
       session.pending = false;
       if (result.outcome === 'BLOCKED') {
         session.error = '번호나 이메일처럼 보이는 내용을 지우고 다시 적어 주세요.';
@@ -672,6 +681,7 @@
         session.text = '';
         session.result = result;
       }
+      if (location.hash !== session.hash) return;
       return render().then(function () {
         var target = $(session.error ? 'pn-assist-text' : 'pn-assist-answer');
         if (target) target.focus();
@@ -718,7 +728,7 @@
     var q = seqOf(st);
     switch (act) {
       case 'assistant':
-        assistantReturn = st.step === '0' ? '0' : 'problem';
+        assistantReturn = st.step;
         return go({ step: 'assistant' });
       case 'ask-suggestion': return ask(suggestions[Number(b.getAttribute('data-index'))]);
       case 'leave-assistant': return go({ step: assistantReturn });
@@ -727,7 +737,7 @@
         return render().then(function () { $('pn-assist-text').focus(); });
       case 'assistant-handoff':
         var answer = assistant.result, text = assistant.question, onBehalf = form.onBehalf;
-        if (assistantReturn === 'problem') return quick.handoff(st, text, answer, onBehalf);
+        if (usesQuickForm(st)) return quick.handoff(st, text, answer);
         blank();
         form.fromAssistant = true;
         form.onBehalf = onBehalf;
@@ -783,10 +793,12 @@
     return Array.prototype.filter.call($('intake-panel').querySelectorAll('button, input, select, textarea, summary, [tabindex="0"]'),
       function (x) { return !x.disabled && x.getClientRects().length; });
   }
+  function usesQuickForm(st) {
+    return quick.isStep(st.step) || (st.step === 'assistant' && assistantReturn !== '0');
+  }
   function requestClose() {
     var st = read();
-    if (quick.isStep(st.step) || (st.step === 'assistant' && assistantReturn === 'problem')) return quick.close(st);
-    return close();
+    return usesQuickForm(st) ? quick.close(st, assistantReturn) : close();
   }
 
   function onKey(e) {
@@ -827,7 +839,8 @@
     });
     $('pn-close').addEventListener('click', requestClose);
     $('pn-proxy-select').addEventListener('change', function (e) {
-      if (quick.isStep(read().step)) quick.onBehalf(e.target.value);
+      var st = read();
+      if (usesQuickForm(st)) quick.onBehalf(st, e.target.value);
       else { form.onBehalf = e.target.value; form.edit = null; }
     });
     document.addEventListener('keydown', onKey);

@@ -343,7 +343,7 @@ def selftest(chrome: Chrome, w: int, h: int, url: str) -> dict:
 
 
 def quick_intake_check(chrome: Chrome, page: str) -> None:
-    """두 화면에서 쓰던 접수의 복구·실패 후 재시도·내역 연결을 한 번 확인한다."""
+    """두 화면 접수의 안내·모드 전환·복구·재시도·내역 연결을 확인한다."""
     chrome.open(page + "#role=FC&panel=intake&step=problem&submit=fail", 390, 780)
     chrome.send("Emulation.setVirtualTimePolicy", {"policy": "advance"}, chrome.session)
     flow = """(async () => {
@@ -360,11 +360,24 @@ def quick_intake_check(chrome: Chrome, page: str) -> None:
       const message = '서명 알림톡을 열면 초대장이 떠요';
       await window.SFA_READY;
       const work = await wait('#quick-business');
+      if (find('[data-quick-section="urgent"]').open || find('[data-quick-section="description"]').open) {
+        throw Error('첫 화면에서 추가 입력이 기본으로 열림');
+      }
       work.value = 'SUBSCRIPTION';
       work.dispatchEvent(new Event('change', { bubbles: true }));
+      if (find('[data-quick-section="related"]').open) throw Error('업무만 선택했을 때 오류 상세가 열림');
       const line = await wait('#quick-oneLine');
+      line.focus();
       line.value = message;
       line.dispatchEvent(new Event('input', { bubbles: true }));
+      if (!find('#quick-related').innerText.includes('지금 해볼 방법') || document.activeElement !== line) {
+        throw Error('입력 중 임시 방법이나 포커스 확인 실패');
+      }
+      click('.pn-head #pn-mode-toggle');
+      if ((await wait('#pn-assist-text')).value !== message) throw Error('AI 모드에서 질문 초안 유실');
+      click('.pn-head #pn-mode-toggle');
+      if ((await wait('#quick-oneLine')).value !== message) throw Error('AI 모드 왕복 뒤 설명 유실');
+      click('[data-quick-section="urgent"] > summary');
       action('quick-toggle');
       click('#pn-close');
       await wait('#quick-confirm');
@@ -375,7 +388,15 @@ def quick_intake_check(chrome: Chrome, page: str) -> None:
       action('quick-restore');
       if (find('#quick-oneLine').value !== message) throw Error('임시저장 복구 실패');
       window.SfaHash.update({ submit: 'fail' });
-      action('quick-review');
+      click('[data-quick-section^="method-"] > summary');
+      action('quick-tried');
+      await wait('#quick-customerScope');
+      if (find('[data-quick-section="extra"]').open || !find('#pn-body').innerText.includes('시도한 임시 방법')) {
+        throw Error('접수 확인에서 시도한 방법 또는 기본 접힘 확인 실패');
+      }
+      click('.pn-head #pn-mode-toggle');
+      await wait('#pn-assist-text');
+      click('.pn-head #pn-mode-toggle');
       await wait('#quick-customerScope');
       action('quick-submit');
       await wait('#quick-error');
@@ -384,7 +405,8 @@ def quick_intake_check(chrome: Chrome, page: str) -> None:
       await wait('#quick-receipt-id');
       action('quick-mine');
       const record = await wait('#kn-body .is-target[data-id]');
-      if (!record.innerText.includes(message) || !record.innerText.includes('고객 상담 중')) {
+      if (!record.innerText.includes(message) || !record.innerText.includes('고객 상담 중') ||
+          !record.innerText.includes('시도한 임시 방법')) {
         throw Error('접수 상세에서 입력과 긴급 사정 확인 실패');
       }
       return 'ok';
