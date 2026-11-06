@@ -80,6 +80,12 @@
 ```
 차단 시: `{"blocked":true,"detections":[{"type":"RRN"}]}` (값 없음, HTTP 422 `BLOCKED_INPUT`).
 
+### 접수 채널 AI 문의 (ADR-018)
+
+화면은 `ApiClient.getIntakeQuestions()`와 `ApiClient.postIntakeQuestion({text})`를 사용한다. FRONTEND 단계에서는 시연용 표현 매칭과 가상 공개 대장만 읽는다. BACKEND 단계의 `POST /api/intake/questions`는 마스킹·차단을 먼저 거친다.
+
+응답의 `outcome`은 `GUIDANCE`, `MATCH`, `NO_MATCH`, `UNAVAILABLE`, `BLOCKED` 중 하나다. `type`은 `USAGE`, `DEFECT`, `IMPROVEMENT` 또는 확인이 필요한 경우 `null`이다. 안내 문구와 업무·증상 코드는 있을 때만 제공한다. `MATCH`의 `defect`에는 공개된 ID·제목·상태·임시 방법·예정일·수정하지 않는 이유만 포함할 수 있다. 승인된 안내문은 별도 안내 문구로 준다. 차단 응답에는 질문 내용이 없다.
+
 ### POST `/api/intake/sessions`
 응답
 ```json

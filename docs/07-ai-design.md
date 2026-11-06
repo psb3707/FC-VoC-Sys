@@ -1,7 +1,7 @@
 # 07. AI(LLM) 모듈 설계서
 
-## 1. 역할 (5가지로 한정, REQ-AI-01)
-① 한 줄 입력을 티켓 필드로 구조화 ② 빠진 재현 정보 되묻기 ③ 사용법/결함/개선 분류 ④ FC용 쉬운 안내문 초안 ⑤ 아직 안 묶인 신고와 비슷한 대표 결함 후보 추천(결함 대장, ADR-017). 최종 확정은 사람. **등급·부서·컴플라이언스 판단은 하지 않는다.** ⑤는 후보만 내고 **신고를 결함에 연결하지 않는다**(연결은 담당자, REQ-LG-02).
+## 1. 역할 (6가지로 한정, REQ-AI-01)
+① 한 줄 입력을 티켓 필드로 구조화 ② 빠진 재현 정보 되묻기 ③ 사용법/결함/개선 분류 ④ FC용 쉬운 안내문 초안 ⑤ 아직 안 묶인 신고와 비슷한 대표 결함 후보 추천(결함 대장, ADR-017) ⑥ 접수 전 질문을 분류하고 확인된 사용법 또는 공개 결함 근거를 찾기(ADR-018). 최종 확정은 사람. **등급·부서·컴플라이언스 판단은 하지 않는다.** ⑤는 후보만 내고 **신고를 결함에 연결하지 않는다**(연결은 담당자, REQ-LG-02).
 
 ## 2. 인터페이스
 ```java
@@ -11,6 +11,7 @@ interface LlmGateway {
   RefineResult refine(MaskedInput input, List<MaskedQa> answers, TraceContext ctx);
   NoticeDraft draftNotice(MaskedDefectSummary summary, TraceContext ctx);          // ④
   SimilarResult findSimilarDefects(MaskedInput report, List<MaskedDefectSummary> defects, TraceContext ctx); // ⑤
+  IntakeQuestionMatch matchIntakeQuestion(MaskedInput question, List<MaskedDefectSummary> publicDefects, TraceContext ctx); // ⑥
 }
 // 공급자는 "프롬프트 + 스키마 → JSON 문자열"만 책임
 interface LlmProvider {
@@ -20,6 +21,7 @@ interface LlmProvider {
 ```
 - `MaskedInput`은 `privacy` 패키지만 생성 가능. 마스킹 안 한 문자열은 컴파일 단계에서 LLM으로 못 간다.
 - 지연을 줄이려 ①②③은 `triage` 한 번에 묶는다.
+- ⑥의 답변은 확인된 사용법이나 서버가 검증한 공개 결함 ID를 근거로 구성한다. 공개·승인 필드는 서버가 읽으며, 근거가 없거나 조회에 실패하면 직접 접수로 이어진다.
 
 ## 3. 공급자 전환
 | 설정 | 값 |
