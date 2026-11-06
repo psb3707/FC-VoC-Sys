@@ -1,0 +1,23 @@
+/* S2 AI 문의. 퀵메뉴, 알약, 콘텐츠 카드, 입력란의 SFA 토큰을 재사용한다. */
+.pn-assist-entry { margin: 0 0 24px; }
+.pn-assist-entry strong, .pn-assist-entry small { display: block; font-size: var(--pn-text); }
+.pn-assist-entry small { margin-top: 4px; color: var(--pn-sub); }
+.pn-assist-entry > svg { position: absolute; right: 14px; }
+.pn-assist-label { color: var(--pn-accent); font-weight: 700; }
+.pn-assist-suggestions .pn-chip { border-radius: 999px; padding: 8px 16px; text-align: left; }
+.pn-assist-suggestions .pn-chip:hover { background: var(--pn-selected-bg); }
+.pn-assist-result { overflow-wrap: anywhere; }
+.pn-assist-result .pn-tag { margin: 0 0 12px; }
+.pn-assist-question { color: var(--pn-sub); font-weight: 700; }
+.pn-assist-foot { flex-direction: column; gap: 10px; }
+.pn-assist-foot p { margin: 0; color: var(--pn-sub); }
+.pn-assist-compose { display: flex; gap: 8px; }
+.pn-assist-compose .pn-input { flex: 1; min-width: 0; }
+.pn-assist-compose button { flex: none; min-width: 0; padding: 0 16px; }
+.pn-assist-compose .pn-btn:disabled { cursor: wait; }
+.pn-assist-foot > button { width: 100%; }
+@media (max-width: 480px) {
+  .pn-assist-entry { padding-left: 12px; }
+  .pn-assist-result .pn-rows div { display: block; }
+  .pn-assist-result .pn-rows dd { margin-top: 2px; }
+}

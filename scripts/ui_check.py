@@ -62,7 +62,7 @@ STATES = ["role=FC", "role=MANAGER", "role=SALES", "role=FC&popup=alarm", "role=
 SIZES = [(1280, 800), (1888, 952), (1920, 1080)]   # 1888×952: 기준 스크린샷 크기(ADR-012)
 # S2 접수 패널: 단계 0~7, 끝 화면, 분기 7종, A/B, 대리 접수 (js/intake-panel.js 주소 키, 06번 11절 시연 주소 목록)
 P = "role=FC&panel=intake&"
-PANEL_STATES = [P + "step=0", P + "step=1", P + "case=customer&step=2", P + "case=defect&step=3",
+PANEL_STATES = [P + "step=0", P + "step=assistant", P + "step=1", P + "case=customer&step=2", P + "case=defect&step=3",
                 P + "case=blocked&step=4&alert=blocked", P + "step=5", P + "llm=slow&step=5", P + "llm=fail&step=5",
                 P + "case=customer&step=6", P + "mode=A&case=customer&step=6", P + "step=7", P + "mode=A&step=7",
                 P + "step=done", P + "step=metoo", P + "case=usage&step=usage", P + "known=off&step=1",

@@ -5,6 +5,7 @@
   'use strict';
   var F = window.FIXTURES || {};
   var I = F.intake || {};
+  var Q = F.intakeAssistant || {};
 
   function copy(v) { return JSON.parse(JSON.stringify(v)); }
   function ok(v) { return Promise.resolve(v == null ? null : copy(v)); }
@@ -56,8 +57,17 @@
       if (d) r.reportCount = d.reportCount + 1;
       return Promise.resolve(r);
     },
+    /* 접수 채널 AI 문의 (ADR-018). 네트워크 없이 시연용 표현과 공개 결함을 비교한다. */
+    getIntakeQuestions: function () { return ok(Q.questions || []); },
+    postIntakeQuestion: function (req) {
+      var question = String((req || {}).text || '').trim();
+      if (containsPrivateValue(question)) return ok({ outcome: 'BLOCKED' });
+      if (proto.llm === 'fail') return ok({ outcome: 'UNAVAILABLE' });
+      return ok(intakeAnswer(question));
+    },
     /* POST /api/intake/preview -> 차단·마스킹 결과와 AI 전달 내용 (차단 시 값 없이 유형만) */
-    postIntakePreview: function (/* req */) {
+    postIntakePreview: function (req) {
+      if (req && req.source === 'ASSISTANT') return ok({ blocked: containsPrivateValue(req.oneLine) });
       var p = I.preview || {};
       return ok(proto['case'] === 'blocked' ? p.blocked : p[caseOf()]);
     },
@@ -75,6 +85,10 @@
     postReport: function (req) {
       var r = I.reports || {}, c = caseOf(), key;
       req = req || {};
+      if (req.source === 'ASSISTANT') {
+        if (containsPrivateValue(req.title) || containsPrivateValue(req.summary)) return ok({ blocked: true });
+        return ok({ reportId: 'R-102', type: 'UNCLASSIFIED', grade: null, departmentCode: null, closedAsGuidance: false });
+      }
       if (req.mode === 'A' || req.llmOutcome === 'FALLBACK') {
         key = c === 'customer' ? 'unclassifiedCustomer' : c === 'usage' ? 'unclassifiedLogin' : 'unclassified';
       } else if (c === 'usage') {
@@ -198,6 +212,40 @@
       });
     }
   };
+
+  // 시연용 형식 차단. 이름·주소 등은 입력하지 않도록 안내하며, 전체 마스킹은 백엔드 단계에서 수행한다.
+  function containsPrivateValue(text) {
+    return /(?:\d[ .()-]*){6}|[^\s@]+@[^\s@]+\.[^\s@]+/.test(text);
+  }
+  function matchesQuestion(question, example) {
+    return example.terms.every(function (term) { return term.test(question); });
+  }
+  function intakeAnswer(question) {
+    var asksHow = /어떻게|어디서|방법|는\s*법|사용법|알려|모르겠/.test(question);
+    var hasError = /안\s*(돼|되|열|보여|넘어)|않|오류|실패|먹통|멈|다른 화면|늦|느리|느려/.test(question);
+    var matches = (Q.defects || []).filter(function (example) {
+      return matchesQuestion(question, example);
+    });
+    if (matches.length === 1) {
+      var match = matches[0];
+      var d = (L.defects || []).find(function (item) { return item.published && item.id === match.id; });
+      if (d) {
+        var notice = (L.fcNotices || []).find(function (n) { return n.defectId === d.id && n.status === 'APPROVED'; });
+        return { outcome: 'MATCH', type: d.type, business: match.business, symptom: match.symptom,
+          guidance: notice ? notice.approvedText : null,
+          defect: { id: d.id, title: d.title, status: d.status, workaround: d.workaround,
+            plannedFixDate: d.plannedFixDate, wontFixReasonText: d.wontFixReasonText } };
+      }
+    }
+    if (!matches.length && asksHow && !hasError && Q.usage && matchesQuestion(question, Q.usage)) {
+      return { outcome: 'GUIDANCE', type: 'USAGE', business: Q.usage.business, symptom: Q.usage.symptom,
+        guidance: I.sessions.usage.usageGuide };
+    }
+    var type = null;
+    if (matches.length === 1 || (!matches.length && hasError)) type = 'DEFECT';
+    if (!matches.length && !hasError && asksHow) type = 'USAGE';
+    return { outcome: 'NO_MATCH', type: type };
+  }
 
   /* S4 도우미: 신고에 신고자(이름·지점)를 붙인다. 내 신고(getMyReports)에 defect 를 붙여 내리는 것과 같은 방식 */
   var L = F.ledger || {};
