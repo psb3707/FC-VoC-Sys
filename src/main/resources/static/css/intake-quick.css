@@ -1,0 +1,29 @@
+/* ADR-019. 카드, 입력란, 알약, 펼침 영역은 접수 패널의 토큰을 재사용한다. */
+#intake-panel { --pq-wide: 760px; }
+.pq-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.pq-details .pq-details-body { padding: 16px 24px; }
+.pq-details-body > :first-child { margin-top: 0; }
+.pq-details-body > :last-child { margin-bottom: 0; }
+.pq-details .pn-rows { padding: 0; }
+.pq-details .pn-chip, .pq-actions .pn-btn-2 { min-width: 0; }
+.pq-actions .pn-btn-2 + .pn-btn-2 { margin-left: 8px; }
+.pq-ask, .pq-wide-toggle, .pq-status { margin-top: 16px; }
+.pq-guide-steps { margin: 0 0 12px; padding-left: 1.5em; }
+.pq-urgency { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pq-urgency .pn-chip { width: 100%; padding: 8px; line-height: 1.35; }
+.pq-urgency .pn-chip[aria-pressed="true"] { padding: 7px; }
+#pn-body .pn-card, #kn-body .pq-followup { overflow-wrap: anywhere; }
+#kn-body .pq-followup .pn-btn-2 { min-width: 0; }
+.pq-followup .pn-chips { margin-bottom: 12px; }
+@media (min-width: 1280px) {
+  #intake-panel.pq-wide { width: var(--pq-wide); }
+}
+@media (max-width: 1279.98px) {
+  .pq-wide-toggle { display: none; }
+}
+@media (max-width: 480px) {
+  .pq-summary .pn-rows dt { flex-basis: 86px; }
+  .pq-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .pq-actions .pn-btn-2 + .pn-btn-2 { margin: 8px 0 0; }
+  .pq-actions .pn-btn-2 { width: 100%; }
+}

@@ -6,6 +6,8 @@
   var F = window.FIXTURES || {};
   var I = F.intake || {};
   var Q = F.intakeAssistant || {};
+  var quickReports = [], followups = new Map(), cancelled = new Set(), submissions = new Map(), failedSubmissions = new Set();
+  var quick = I.quick || {};
 
   function copy(v) { return JSON.parse(JSON.stringify(v)); }
   function ok(v) { return Promise.resolve(v == null ? null : copy(v)); }
@@ -33,8 +35,14 @@
     /* GET /api/reports/mine?userId=  -> 내 신고와 진행 단계 (최근 바뀐 순).
        각 건: Report 키 + defect(지금 상태) + statusHistory + fcNotice(승인본만, 없으면 null) */
     getMyReports: function (userId) {
-      var list = (F.myReports || []).filter(function (r) { return r.reporterId === userId; });
-      var when = function (r) { return (r.defect && r.defect.updatedAt) || r.createdAt; };
+      var list = visibleReports(userId).map(function (r) {
+        var item = copy(r);
+        item.followups = copy(followups.get(r.id) || []);
+        return item;
+      });
+      var when = function (r) {
+        return [r.createdAt, r.defect && r.defect.updatedAt, r.followups[0] && r.followups[0].at].filter(Boolean).sort().pop();
+      };
       list.sort(function (a, b) { return when(a) < when(b) ? 1 : -1; });
       return Promise.resolve(copy(list));
     },
@@ -65,6 +73,75 @@
       if (proto.llm === 'fail') return ok({ outcome: 'UNAVAILABLE' });
       return ok(intakeAnswer(question));
     },
+    /* ADR-019: 가상 대장과 같은 탭에서만 유지하는 접수·후속 기록. */
+    getQuickIntakeMeta: function () { return ok(quick.options); },
+    getQuickIntakeCatalog: function () {
+      return ok((Q.defects || []).flatMap(function (match) {
+        var d = (L.defects || []).find(function (item) { return item.id === match.id && item.published; });
+        return d ? [{ id: d.id, title: d.title, status: d.status, workaround: d.workaround,
+          business: match.business, symptom: match.symptom, plannedFixDate: d.plannedFixDate,
+          wontFixReasonCode: d.wontFixReasonCode, wontFixReasonText: d.wontFixReasonText, guide: quick.guides[d.id] || null }] : [];
+      }));
+    },
+    previewQuickIntake: function (req) {
+      var blocked = ['oneLine', 'detail', 'screen'].some(function (key) { return containsPrivateValue(req[key]); });
+      return ok({ blocked: blocked });
+    },
+    postQuickIntake: function (req, simulateFailure) {
+      var previous = submissions.get(req.requestId);
+      if (previous) return ok(previous);
+      if (simulateFailure && !failedSubmissions.has(req.requestId)) {
+        failedSubmissions.add(req.requestId);
+        return ok({ failed: true });
+      }
+      return window.ApiClient.previewQuickIntake(req).then(function (preview) {
+        if (preview.blocked) return { blocked: true };
+        var committed = submissions.get(req.requestId);
+        if (committed) return copy(committed);
+        var report = {
+          id: 'R-Q' + (quickReports.length + 1), kind: 'FULL', reporterId: req.reporterId, submittedById: req.submittedById,
+          createdAt: nowKst(), defectId: null, defect: null, title: req.oneLine, maskedText: req.oneLine,
+          detail: req.detail, business: req.business, symptom: req.symptom, extraSymptoms: req.extraSymptoms,
+          finalType: req.finalType, urgent: req.urgent, customerScope: req.customerScope,
+          incident: req.incident, contact: req.contact, contactTime: req.contactTime, evidence: req.evidence,
+          department: quick.departments[req.business] || quick.departments.ETC, guideId: req.guideId
+        };
+        quickReports.push(copy(report));
+        submissions.set(req.requestId, report);
+        return copy(report);
+      });
+    },
+    postQuickParticipation: function (defectId, reporterId, submittedById) {
+      var d = (L.defects || []).find(function (item) { return item.id === defectId && item.published; });
+      if (!d) return ok(null);
+      var existing = visibleReports(reporterId).find(function (r) {
+        return r.reporterId === reporterId && r.kind === 'ME_TOO' && r.defectId === defectId;
+      });
+      if (existing) return ok(existing);
+      var report = { id: 'R-Q' + (quickReports.length + 1), kind: 'ME_TOO', reporterId: reporterId,
+        submittedById: submittedById, createdAt: nowKst(), defectId: d.id, finalType: d.type,
+        department: quick.departments[(Q.defects.find(function (match) { return match.id === d.id; }) || {}).business],
+        defect: { id: d.id, title: d.title, status: d.status, workaround: d.workaround, plannedFixDate: d.plannedFixDate,
+          wontFixReasonCode: d.wontFixReasonCode, wontFixReasonText: d.wontFixReasonText }, guideId: d.id };
+      quickReports.push(report);
+      return ok(report);
+    },
+    postIntakeFollowup: function (id, userId, action, text) {
+      var report = visibleReports(userId).find(function (r) { return r.id === id; });
+      if (!report) return ok(null);
+      if (action === 'CANCEL') {
+        if (report.kind !== 'ME_TOO') return ok(null);
+        cancelled.add(id);
+        return ok({ cancelled: true });
+      }
+      if (!['ADD', 'STILL', 'RECURRED', 'URGENT'].includes(action) || (action === 'ADD' && !text)) return ok(null);
+      if (containsPrivateValue(text)) return ok({ blocked: true });
+      var entries = followups.get(id) || [];
+      entries.unshift({ action: action, text: text, at: nowKst() });
+      followups.set(id, entries);
+      return ok({ saved: true });
+    },
+
     /* POST /api/intake/preview -> 차단·마스킹 결과와 AI 전달 내용 (차단 시 값 없이 유형만) */
     postIntakePreview: function (req) {
       if (req && req.source === 'ASSISTANT') return ok({ blocked: containsPrivateValue(req.oneLine) });
@@ -77,9 +154,22 @@
       return ok(proto.llm === 'fail' ? s.fallback : s[caseOf()]);
     },
     /* POST /api/intake/sessions/{id}/answers -> 답변 반영 결과 */
-    postAnswers: function (/* sessionId, req */) {
+    postAnswers: function (sessionId, req) {
       var a = I.answers || {};
-      return ok(proto.llm === 'fail' ? a.fallback : (a[caseOf()] || a.defect));
+      if (proto.llm === 'fail') return ok(a.fallback);
+      var result = copy(a[caseOf()] || a.defect);
+      var answers = (req && req.answers) || [];
+      var facts = answers.filter(function (entry) { return entry.answer; }).map(function (entry) {
+        var question = ((I.sessions[caseOf()] || {}).questions || []).find(function (q) { return q.slot === entry.slot; });
+        return question ? question.text + ' ' + entry.answer : '';
+      }).filter(Boolean);
+      if (result.ticket) {
+        result.ticket.symptomSummary = [req && req.oneLine, facts.length ? facts.join(' / ') : '추가 정보 확인 필요']
+          .filter(Boolean).join(' · ');
+        result.ticket.stepsToReproduce = [];
+        result.ticket.expected = result.ticket.actual = null;
+      }
+      return ok(result);
     },
     /* POST /api/reports -> {reportId, type, grade, departmentCode, closedAsGuidance} */
     postReport: function (req) {
@@ -212,6 +302,16 @@
       });
     }
   };
+
+  function visibleReports(userId) {
+    return (F.myReports || []).concat(quickReports).filter(function (r) {
+      return !cancelled.has(r.id) && (r.reporterId === userId || r.submittedById === userId);
+    });
+  }
+  function nowKst() {
+    var KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+    return new Date(Date.now() + KST_OFFSET_MS).toISOString().slice(0, 19) + '+09:00';
+  }
 
   // 시연용 형식 차단. 이름·주소 등은 입력하지 않도록 안내하며, 전체 마스킹은 백엔드 단계에서 수행한다.
   function containsPrivateValue(text) {

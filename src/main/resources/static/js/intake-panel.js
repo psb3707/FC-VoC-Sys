@@ -3,7 +3,7 @@
    화면 안에 시안 조절 버튼은 없다(ADR-016). 모든 상태는 주소 # 뒤 키로만 바꾼다(06번 11절, 시연 주소 목록).
    S1 키(role, user, popup, notice, demo)에 더해
      panel=intake          패널 열림
-     step=0..7|assistant|metoo|usage|done   단계(끝 화면 포함)
+     step=problem|review|receipt|assistant   일반 접수 및 AI 문의. 숫자 단계는 실험·기존 시연용
      mode=A|B              A: AI 끔(5단계 없음, 6단계는 저장용 마스킹 결과만) / B: AI 켬 (기본 B)
      known=off             알려진 오류 단계(0) 끔 (S5 실험 재사용용)
      llm=ok|slow|fail      AI 응답: 정상 / 늦음(로딩에서 멈춤) / 실패(규칙 되묻기)
@@ -26,7 +26,7 @@
     LOGIN: 'i-key', SUBSCRIPTION: 'i-pen', CUSTOMER_LOOKUP: 'i-user', DESIGN: 'i-doc', CONTRACT_LOOKUP: 'i-search', ETC: 'i-menu',
     NOT_SHOWN: 'i-eye', CANNOT_PROCEED: 'i-stop', WRONG_SCREEN: 'i-swap', WRONG_INPUT: 'i-keyboard', HOW_TO: 'i-help'
   };
-  var TYPE_LABEL = { USAGE: '사용법 문의', DEFECT: '오류(결함)', IMPROVEMENT: '개선 요청', UNCLASSIFIED: '아직 정하지 않음' };
+  var TYPE_LABEL = { USAGE: '사용법 문의', DEFECT: '전산 오류', IMPROVEMENT: '개선 요청', UNCLASSIFIED: '아직 정하지 않음' };
   var DEFECT_STATUS = {
     RECEIVED: '접수', REPRODUCED: '문제 확인', CAUSE_FOUND: '원인 파악', WORKAROUND: '임시조치',
     FIX_PLANNED: '수정 예정', RESOLVED: '해결', WONT_FIX: '수정하지 않음'
@@ -53,10 +53,9 @@
     blocked: { customer: 'no', business: 'CUSTOMER_LOOKUP', symptom: 'NOT_SHOWN',
       oneLine: '주민번호 ○○○○○○-○○○○○○○ 로 찾았는데 안 나와요', answers: {} }
   };
-  var FALLBACK_ANSWERS = { device_path: '휴대폰', steps: '알림톡에서 서명 버튼을 누르면 매번 생겨요' };
 
   var meta = null, ctx = null, known = [], users = [], suggestions = [];
-  var assistant = null;
+  var assistant = null, assistantReturn = 'problem', quick;
   var form, res, lastStep = null, opener = null, booted = false, lastKeys = null;
 
   function blank() {
@@ -184,8 +183,7 @@
     chain = chain.then(function () {
       var s = res.session;
       if (!s || !(isAfter(step, '5') || step === 'done') || res.refined || !(s.questions || []).length) return;
-      if (s.llmOutcome === 'FALLBACK') Object.keys(FALLBACK_ANSWERS).forEach(function (k) { if (!form.answers[k]) form.answers[k] = FALLBACK_ANSWERS[k]; });
-      return A.postAnswers(s.sessionId, { answers: answersList(s) }).then(function (r) { res.refined = r; });
+      return A.postAnswers(s.sessionId, { answers: answersList(s), oneLine: res.preview && res.preview.maskedText || form.oneLine }).then(function (r) { res.refined = r; });
     });
     chain = chain.then(function () {
       if (step === 'done' && !res.report) return A.postReport(reportReq(st)).then(function (r) { res.report = r; });
@@ -240,7 +238,10 @@
     syncKeys(st);
     var q = seqOf(st);
     if (st.step === 'assistant') {
-      if (!assistantEnabled(st)) { go({ step: q[0] }); return Promise.resolve(); }
+      if (!assistantEnabled(st)) {
+        go({ step: st.known === 'off' || assistantReturn === '0' ? q[0] : 'problem' });
+        return Promise.resolve();
+      }
       if (!assistant || assistant.hash !== location.hash) {
         assistant = { hash: location.hash, text: '', question: '', result: null, error: '', pending: false };
       }
@@ -248,10 +249,16 @@
       paint(st);
       return Promise.resolve();
     }
+    if (quick.isStep(st.step)) {
+      if (st.known === 'off') go({ step: '1' });
+      else quick.enter(st);
+      return Promise.resolve();
+    }
     if (form.fromAssistant && st.step === 'done' && !res.report) {
       go({ step: '7' });
       return Promise.resolve();
     }
+    if (!st.step && st.known !== 'off') { go({ step: 'problem' }); return Promise.resolve(); }
     if (!st.step || (/^\d$/.test(st.step) && q.indexOf(st.step) < 0)) {
       var fix = !st.step ? q[0] : (q.filter(function (s) { return s > st.step; })[0] || q[q.length - 1]);
       go({ step: fix });
@@ -284,11 +291,12 @@
   function paint(st) {
     var fk = document.activeElement && document.activeElement.getAttribute && document.activeElement.getAttribute('data-fk');
     var caret = fk && document.activeElement.selectionStart;
-    var asking = st.step === 'assistant';
+    var asking = st.step === 'assistant', compact = quick.isStep(st.step);
+    $('intake-panel').classList.toggle('pq-wide', compact && st.step === 'review' && quick.isWide());
     paintProxy(st);
     $('pn-steps').hidden = asking;
     if (!asking) paintSteps(st);
-    var view = VIEWS[st.step] ? VIEWS[st.step](st) : { body: [el('p', null, ['알 수 없는 단계예요.'])], foot: [] };
+    var view = compact ? quick.view(st) : VIEWS[st.step] ? VIEWS[st.step](st) : { body: [el('p', null, ['알 수 없는 단계예요.'])], foot: [] };
     var body = $('pn-body');
     body.innerHTML = '';
     view.body.forEach(function (n) { if (n) body.appendChild(n); });
@@ -309,7 +317,7 @@
 
   function paintProxy(st) {
     var box = $('pn-proxy');
-    var ended = ['metoo', 'usage', 'done'].indexOf(st.step) >= 0;
+    var ended = ['metoo', 'usage', 'done', 'receipt'].indexOf(st.step) >= 0;
     box.hidden = st.role !== 'MANAGER' || ended;
     if (box.hidden) return;
     var me = proxyUser(st);
@@ -319,18 +327,21 @@
     users.filter(function (u) { return u.role === 'FC'; }).forEach(function (u) {
       sel.appendChild(el('option', { value: u.id }, [u.name + ' 대신 접수']));
     });
-    sel.value = form.onBehalf;
+    sel.value = quick.isStep(st.step) ? quick.onBehalf() : form.onBehalf;
   }
 
   function paintSteps(st) {
-    var q = seqOf(st), i = q.indexOf(st.step), end = END_TITLE[st.step];
+    var compact = quick.isStep(st.step);
+    var q = compact ? quick.steps : seqOf(st), i = q.indexOf(st.step);
+    var end = st.step === 'receipt' ? '접수 완료' : END_TITLE[st.step];
+    var label = compact ? (st.step === 'problem' ? '문제 알리기' : '확인하고 보내기') : STEP_TITLE[st.step];
     var text = $('pn-steps-text');
     text.innerHTML = '';
     if (end) {
       text.appendChild(el('b', null, [end]));
     } else {
       text.appendChild(el('b', null, [(i + 1) + '단계']));
-      text.appendChild(document.createTextNode(' / 전체 ' + q.length + '단계 · ' + (st.step === '6' && st.mode === 'A' ? '저장되는 내용' : STEP_TITLE[st.step])));
+      text.appendChild(document.createTextNode(' / 전체 ' + q.length + '단계 · ' + (st.step === '6' && st.mode === 'A' ? '저장되는 내용' : label)));
     }
     var track = $('pn-track');
     track.innerHTML = '';
@@ -685,7 +696,7 @@
       });
     }
     if (st.step === '5' && res.session && (res.session.questions || []).length) {
-      return A.postAnswers(res.session.sessionId, { answers: answersList(res.session) }).then(function (r) {
+      return A.postAnswers(res.session.sessionId, { answers: answersList(res.session), oneLine: res.preview && res.preview.maskedText || form.oneLine }).then(function (r) {
         res.refined = r; go({ step: q[i + 1] });
       });
     }
@@ -703,16 +714,20 @@
     var b = e.target.closest('[data-act]');
     if (!b) return;
     var st = read(), act = b.getAttribute('data-act'), code = b.getAttribute('data-code');
+    if (act.indexOf('quick-') === 0 && quick.isStep(st.step)) return quick.act(act.slice(6), st, b);
     var q = seqOf(st);
     switch (act) {
-      case 'assistant': return go({ step: 'assistant' });
+      case 'assistant':
+        assistantReturn = st.step === '0' ? '0' : 'problem';
+        return go({ step: 'assistant' });
       case 'ask-suggestion': return ask(suggestions[Number(b.getAttribute('data-index'))]);
-      case 'leave-assistant': return go({ step: '0' });
+      case 'leave-assistant': return go({ step: assistantReturn });
       case 'assistant-reset':
         assistant = null;
         return render().then(function () { $('pn-assist-text').focus(); });
       case 'assistant-handoff':
         var answer = assistant.result, text = assistant.question, onBehalf = form.onBehalf;
+        if (assistantReturn === 'problem') return quick.handoff(st, text, answer, onBehalf);
         blank();
         form.fromAssistant = true;
         form.onBehalf = onBehalf;
@@ -747,6 +762,8 @@
   }
 
   function onInput(e) {
+    var current = read();
+    if (quick.isStep(current.step)) return quick.change(current, e.target, e.type);
     var t = e.target, k = t.getAttribute && t.getAttribute('data-in');
     if (t.id === 'pn-assist-text' && assistant) { assistant.text = t.value; return; }
     if (!k) return;
@@ -766,12 +783,18 @@
     return Array.prototype.filter.call($('intake-panel').querySelectorAll('button, input, select, textarea, summary, [tabindex="0"]'),
       function (x) { return !x.disabled && x.getClientRects().length; });
   }
+  function requestClose() {
+    var st = read();
+    if (quick.isStep(st.step) || (st.step === 'assistant' && assistantReturn === 'problem')) return quick.close(st);
+    return close();
+  }
+
   function onKey(e) {
     if (read().panel !== 'intake') return;
     if (e.key === 'Escape') {
       if (!$('notice-box').hidden || !$('alarm-pop').hidden) return;   // 위에 뜬 안내 상자가 먼저 닫힌다
       e.preventDefault();
-      close();
+      requestClose();
       return;
     }
     if (e.key === 'Tab') {   // 패널 안에서만 이동 (aria-modal)
@@ -789,26 +812,35 @@
       opener = this;
       blank();
       lastStep = null;
-      go({ panel: 'intake', step: '', alert: '', 'case': '', popup: '', notice: '', tab: '', item: '' });   // S3 키(tab, item)도 지운다
+      assistantReturn = 'problem';
+      quick.open(read());
+      go({ panel: 'intake', step: '', submit: '', alert: '', 'case': '', popup: '', notice: '', tab: '', item: '' });   // S3 키(tab, item)도 지운다
     });
     var panel = $('intake-panel');
     panel.addEventListener('click', onClick);
     panel.addEventListener('input', onInput);
+    panel.addEventListener('change', onInput);
     panel.addEventListener('submit', function (e) {
       if (e.target.id !== 'pn-assist-form') return;
       e.preventDefault();
       ask($('pn-assist-text').value);
     });
-    $('pn-close').addEventListener('click', close);
-    $('pn-proxy-select').addEventListener('change', function (e) { form.onBehalf = e.target.value; form.edit = null; });
+    $('pn-close').addEventListener('click', requestClose);
+    $('pn-proxy-select').addEventListener('change', function (e) {
+      if (quick.isStep(read().step)) quick.onBehalf(e.target.value);
+      else { form.onBehalf = e.target.value; form.edit = null; }
+    });
     document.addEventListener('keydown', onKey);
     window.addEventListener('hashchange', render);
   }
 
   window.SFA_READY = (window.SFA_READY || Promise.resolve()).then(function () {
-    return Promise.all([A.getMetaForm(), A.getAutoContext(), A.getKnownErrors('MAIN', ''), A.getUsers(), A.getIntakeQuestions()]);
+    return Promise.all([A.getMetaForm(), A.getAutoContext(), A.getKnownErrors('MAIN', ''), A.getUsers(), A.getIntakeQuestions(), A.getQuickIntakeCatalog(), A.getQuickIntakeMeta()]);
   }).then(function (r) {
     meta = r[0]; ctx = r[1]; known = r[2] || []; users = r[3] || []; suggestions = r[4];
+    quick = window.createQuickIntake({ el: el, btn: btn, note: note, rows: rows, labelOf: labelOf,
+      fmtWhen: fmtWhen, fmtDate: fmtDate, user: proxyUser, read: read, go: go, paint: paint, close: close, copy: window.SfaCopy },
+      { meta: meta, context: ctx, catalog: r[5], options: r[6] });
     bind();
     return render();
   });

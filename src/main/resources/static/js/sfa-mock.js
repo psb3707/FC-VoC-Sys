@@ -203,6 +203,21 @@
   // 다른 화면 모듈(접수 패널)도 같은 주소 상태를 쓴다
   window.SfaHash = { read: readHash, update: update };
 
+  window.SfaCopy = function (value, status, fallback) {
+    function done(copied) {
+      if (status) status.textContent = copied ? '복사했어요.' : '자동으로 복사하지 못했어요. 글자를 선택해 복사해 주세요.';
+      if (!copied && fallback) {
+        var range = document.createRange();
+        range.selectNodeContents(fallback);
+        var selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+    }
+    if (!navigator.clipboard) return done(false);
+    return navigator.clipboard.writeText(value).then(function () { done(true); }, function () { done(false); });
+  };
+
   window.SFA_READY = Promise.all([window.ApiClient.getUsers(), window.ApiClient.getSfaHome()]).then(function (r) {
     users = r[0];
     home = r[1];
