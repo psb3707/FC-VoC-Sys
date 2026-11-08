@@ -403,6 +403,7 @@ def quick_intake_check(chrome: Chrome, page: str) -> None:
       if (!find('#pn-body').innerText.includes(message)) throw Error('제출 실패 뒤 설명 유실');
       action('quick-submit');
       await wait('#quick-receipt-id');
+      if (!find('.pn-receipt-enter .pn-success-mark svg')) throw Error('접수 완료 체크 누락');
       action('quick-mine');
       const record = await wait('#kn-body .is-target[data-id]');
       if (!record.innerText.includes(message) || !record.innerText.includes('고객 상담 중') ||
@@ -416,6 +417,51 @@ def quick_intake_check(chrome: Chrome, page: str) -> None:
     if result.get("result", {}).get("value") != "ok":
         detail = result.get("exceptionDetails", {})
         raise RuntimeError(detail.get("exception", {}).get("description", "두 화면 접수 동작 실패"))
+
+
+def assistant_motion_check(chrome: Chrome, page: str) -> None:
+    """모션 설정에 따라 답변이 실제로 나뉘거나 한 번에 표시되는지 확인한다."""
+    flow = """(async () => {
+      const find = (selector) => document.querySelector(selector);
+      const wait = async (condition) => {
+        for (let i = 0; i < 100; i++) {
+          if (condition()) return;
+          await new Promise(resolve => setTimeout(resolve, 25));
+        }
+        throw Error('AI 응답 상태가 전환되지 않음');
+      };
+      await window.SFA_READY;
+      const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const animation = getComputedStyle(find('.pn-assist-enter h3')).animationName;
+      if (animation !== (reduced ? 'none' : 'pn-assist-appear')) throw Error('AI 진입 모션 설정 오류');
+      find('[data-index="1"]').click();
+      let partial = 0;
+      if (!reduced) {
+        if (!find('.pn-assist-thinking .pn-assist-dots') || !find('#pn-assist-status').textContent) {
+          throw Error('답변 준비 표시 누락');
+        }
+        await wait(() => find('.pn-assist-result[aria-busy="true"] #pn-assist-reply')?.textContent.length);
+        partial = find('#pn-assist-reply').textContent.length;
+        if (find('[data-act="assistant-handoff"]')) throw Error('답변 표시 중에 접수 동작이 노출됨');
+      }
+      await wait(() => find('.pn-assist-result[aria-busy="false"]'));
+      const answer = find('#pn-assist-reply');
+      if (answer.textContent.length <= partial || !answer.textContent.includes('문자로 서명 링크') ||
+          answer.hasAttribute('aria-hidden') || !find('[data-act="assistant-handoff"]')) {
+        throw Error('완성된 답변과 접수 동작 확인 실패');
+      }
+      return 'ok';
+    })()"""
+    for preference in ("no-preference", "reduce"):
+        chrome.send("Emulation.setEmulatedMedia",
+                    {"features": [{"name": "prefers-reduced-motion", "value": preference}]}, chrome.session)
+        chrome.open(page + "#role=FC&panel=intake&step=assistant", 390, 780)
+        chrome.send("Emulation.setVirtualTimePolicy", {"policy": "advance"}, chrome.session)
+        result = chrome.send("Runtime.evaluate",
+                             {"expression": flow, "awaitPromise": True, "returnByValue": True}, chrome.session)
+        if result.get("result", {}).get("value") != "ok":
+            detail = result.get("exceptionDetails", {})
+            raise RuntimeError(detail.get("exception", {}).get("description", "AI 답변 표시 실패"))
 
 
 def main() -> int:
@@ -485,8 +531,10 @@ def main() -> int:
             try:
                 quick_intake_check(chrome, base)
                 print("  두 화면 접수 복구·재시도·내역 연결 PASS")
+                assistant_motion_check(chrome, base)
+                print("  AI 답변 준비·순차 표시·모션 줄이기 PASS")
             except (RuntimeError, OSError) as e:
-                print(f"  두 화면 접수 복구·재시도·내역 연결 FAIL: {e}")
+                print(f"  접수·AI 문의 동작 검사 FAIL: {e}")
                 failed = True
     except (RuntimeError, OSError) as e:
         print(f"FAIL: 브라우저 시작·연결 실패: {e}")

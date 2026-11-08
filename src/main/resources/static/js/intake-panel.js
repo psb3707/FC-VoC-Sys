@@ -16,6 +16,10 @@
   var A = window.ApiClient;
   var H = window.SfaHash;
   var $ = function (id) { return document.getElementById(id); };
+  var THINKING_MS = 380, STREAM_TICK_MS = 32;
+  var inspection = /[?&](?:selftest|compare)=1(?:&|$)/.test(location.search);
+  var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  function motionEnabled() { return !inspection && !reducedMotion.matches; }
 
   var STEP_TITLE = {
     '0': '알려진 오류 확인', '1': '저절로 붙는 정보', '2': '고객 관련 여부', '3': '업무와 문제 고르기',
@@ -88,6 +92,9 @@
     u.setAttribute('href', '#' + id);
     s.appendChild(u);
     return s;
+  }
+  function successMark() {
+    return el('span', { cls: 'pn-ico is-ok pn-success-mark', 'aria-hidden': 'true' }, [icon('i-check')]);
   }
   function btn(cls, label, act, extra) {
     var a = { type: 'button', cls: cls, 'data-act': act, 'data-fk': 'act:' + act };   // 다시 그려도 포커스 유지
@@ -234,7 +241,12 @@
     $('pn-scrim').hidden = !open;
     document.querySelector('[data-panel="intake"]').setAttribute('aria-expanded', String(open));
     if (!open || (!quick.steps.includes(st.step) && st.step !== 'assistant')) assistant = null;
-    if (!open) { lastStep = null; lastKeys = null; return Promise.resolve(); }
+    if (!open) {
+      $('pn-assist-status').textContent = '';
+      lastStep = null;
+      lastKeys = null;
+      return Promise.resolve();
+    }
     syncKeys(st);
     var q = seqOf(st);
     if (st.step === 'assistant') {
@@ -242,9 +254,10 @@
         go({ step: st.known === 'off' || assistantReturn === '0' ? q[0] : 'problem' });
         return Promise.resolve();
       }
-      if (!assistant || assistant.hash !== location.hash) {
+      var key = assistantKey(st);
+      if (!assistant || assistant.key !== key) {
         var initialText = assistantReturn === '0' ? '' : quick.questionSeed(st);
-        assistant = { hash: location.hash, text: initialText, question: '', result: null, error: '', pending: false };
+        assistant = { key: key, text: initialText, question: '', result: null, error: '', pending: false, streamStarted: null };
       }
       syncFixture(st);
       paint(st);
@@ -305,7 +318,12 @@
     $('pn-steps').hidden = asking;
     if (!asking) paintSteps(st);
     var view = compact ? quick.view(st) : VIEWS[st.step] ? VIEWS[st.step](st) : { body: [el('p', null, ['알 수 없는 단계예요.'])], foot: [] };
-    var body = $('pn-body');
+    var body = $('pn-body'), entering = st.step !== lastStep;
+    body.classList.toggle('pn-assist-enter', asking && entering && !assistant.pending && !assistant.result);
+    body.classList.toggle('pn-receipt-enter', entering && ['receipt', 'metoo', 'done'].includes(st.step));
+    var status = asking ? (assistant.pending || assistant.streamStarted !== null ? '답변을 준비하고 있어요.' :
+      assistant.result ? '답변이 준비됐어요.' : '') : '';
+    if ($('pn-assist-status').textContent !== status) $('pn-assist-status').textContent = status;
     body.innerHTML = '';
     view.body.forEach(function (n) { if (n) body.appendChild(n); });
     if (st.step === 'problem') quick.refreshAdvice();
@@ -313,15 +331,16 @@
     foot.innerHTML = '';
     foot.classList.toggle('pn-assist-foot', asking);
     view.foot.forEach(function (n) { if (n) foot.appendChild(n); });
-    if (st.step !== lastStep) {
+    if (entering) {
       body.scrollTop = 0;
       var h = body.querySelector('h3');
-      if (h) h.focus();
+      if (h && (!asking || assistant.streamStarted === null)) h.focus();
       lastStep = st.step;
     } else if (fk) {
       var back = document.querySelector('[data-fk="' + fk + '"]');
       if (back) { back.focus(); if (caret != null && back.setSelectionRange) try { back.setSelectionRange(caret, caret); } catch (e) { /* 선택 불가 입력 */ } }
     }
+    if (asking && assistant.streamStarted !== null) streamReply(assistant);
   }
 
   function paintProxy(st) {
@@ -393,29 +412,33 @@
       };
     },
     assistant: function () {
+      var waiting = assistant.pending || assistant.streamStarted !== null;
       var questionList = el('ul', { cls: 'pn-chips pn-assist-suggestions', 'aria-label': '추천 질문' },
         suggestions.map(function (q, i) {
-          return el('li', null, [btn('pn-chip', q, 'ask-suggestion', {
-            'data-index': i, 'data-fk': 'suggestion:' + i, disabled: assistant.pending
+          return el('li', { style: '--pn-enter-index: ' + (i + 3) }, [btn('pn-chip', q, 'ask-suggestion', {
+            'data-index': i, 'data-fk': 'suggestion:' + i
           })]);
         }));
-      var content = assistant.result ? answerCard(assistant.result) : questionList;
+      var initial = !assistant.pending && !assistant.result;
       return {
         body: [el('p', { cls: 'pn-assist-label' }, ['전산 접수 AI']),
-          assistant.result ? null : el('h3', { tabindex: '-1' }, ['무엇이 궁금하세요?']),
-          assistant.result ? null : el('p', { cls: 'pn-lead' }, ['사용 방법, 오류 증상, 이미 접수된 오류의 처리 상황을 물어보세요.']),
-          assistant.pending ? el('p', { role: 'status' }, ['공개된 사례를 확인하고 있어요.']) : null,
-          content],
+          initial ? el('h3', { tabindex: '-1' }, ['무엇이 궁금하세요?']) : null,
+          initial ? el('p', { cls: 'pn-lead' }, ['사용 방법, 오류 증상, 이미 접수된 오류의 처리 상황을 물어보세요.']) : null,
+          assistant.question ? el('p', { cls: 'pn-assist-question' }, ['내 질문 · ', assistant.question]) : null,
+          assistant.pending ? el('div', { cls: 'pn-assist-thinking', 'aria-hidden': 'true' }, [
+            el('span', { cls: 'pn-assist-dots' }, [el('i'), el('i'), el('i')]),
+            '공개된 사례를 확인하고 있어요.']) : null,
+          assistant.result ? answerCard(assistant.result) : initial ? questionList : null],
         foot: [el('p', { id: 'pn-assist-help' }, ['고객 이름, 번호, 비밀번호는 입력하지 마세요.']),
           el('form', { cls: 'pn-assist-compose', id: 'pn-assist-form' }, [
             el('input', { cls: 'pn-input', id: 'pn-assist-text', type: 'text', maxlength: '100', required: true,
               autocomplete: 'off', 'aria-label': '전산 문의 질문', 'aria-describedby': 'pn-assist-help',
               'data-fk': 'assistant-text', value: assistant.text, placeholder: '궁금한 점을 적어 주세요',
-              'aria-invalid': assistant.error ? 'true' : null, readonly: assistant.pending }),
-            el('button', { cls: assistant.result ? 'pn-btn-2' : 'pn-btn',
-              type: 'submit', disabled: assistant.pending }, ['보내기'])]),
+              'aria-invalid': assistant.error ? 'true' : null, readonly: waiting }),
+            el('button', { cls: assistant.result && !waiting ? 'pn-btn-2' : 'pn-btn',
+              type: 'submit', disabled: waiting }, ['보내기'])]),
           assistant.error ? el('div', { cls: 'pn-err', role: 'alert' }, [assistant.error]) : null,
-          assistant.result ? btn('pn-btn', '이 내용으로 문의 접수', 'assistant-handoff') : null,
+          assistant.result && !waiting ? btn('pn-btn', '이 내용으로 문의 접수', 'assistant-handoff') : null,
           assistantReturn === '0' ? btn('pn-btn-2', '일반 접수로 돌아가기', 'leave-assistant') : null]
       };
     },
@@ -594,7 +617,7 @@
     metoo: function () {
       var k = known.filter(function (x) { return res.meToo && x.id === res.meToo.defectId; })[0] || known[0] || {};
       return {
-        body: [el('div', { cls: 'pn-end' }, [el('span', { cls: 'pn-ico is-ok' }, [icon('i-check')]),
+        body: [el('div', { cls: 'pn-end' }, [successMark(),
           el('h3', { tabindex: '-1' }, ['신고 건수에 더했어요']),
           el('p', { cls: 'pn-lead' }, ['따로 적으실 것은 없어요.']),
           el('div', { cls: 'pn-card' }, [rows([['오류', k.title], ['같은 신고', (res.meToo ? res.meToo.reportCount : '') + '건'],
@@ -619,7 +642,7 @@
       var me = proxyUser(st);
       var who = form.onBehalf ? users.filter(function (u) { return u.id === form.onBehalf; })[0] : null;
       return {
-        body: [el('div', { cls: 'pn-end' }, [el('span', { cls: 'pn-ico is-ok' }, [icon('i-check')]),
+        body: [el('div', { cls: 'pn-end' }, [successMark(),
           el('h3', { tabindex: '-1' }, ['접수됐어요']),
           el('p', { cls: 'pn-lead' }, ['신고 번호 ' + (r.reportId || '')]),
           el('div', { cls: 'pn-card' }, [rows([['종류', TYPE_LABEL[r.type] || ''],
@@ -646,46 +669,109 @@
     } else {
       heading = result.outcome === 'UNAVAILABLE' ? '지금은 사례를 확인하기 어려워요' : '안내할 만한 유사 사례를 찾지 못했어요';
     }
-    return el('article', { cls: 'pn-card pn-assist-result', 'aria-labelledby': 'pn-assist-answer' }, [
-      el('p', { cls: 'pn-assist-question' }, ['내 질문 · ', assistant.question]),
-      el('span', { cls: 'pn-tag' }, [TYPE_LABEL[result.type] || '담당자 확인 필요']),
-      el('h3', { id: 'pn-assist-answer', tabindex: '-1' }, [heading]),
-      d ? el('p', { cls: 'pn-card-title' }, [d.title, ' · ', d.id]) : null,
-      detail,
-      result.guidance ? el('p', null, [result.guidance]) : null,
-      el('ul', { cls: 'pn-chips' }, [el('li', null, [btn('pn-chip', '다른 질문하기', 'assistant-reset')])])
+    var streaming = assistant.streamStarted !== null;
+    return el('article', { cls: 'pn-card pn-assist-result', 'aria-busy': String(streaming),
+      'aria-labelledby': streaming ? null : 'pn-assist-answer' }, [
+      el('div', { id: 'pn-assist-reply', 'aria-hidden': streaming ? 'true' : null }, [
+        el('span', { cls: 'pn-tag' }, [TYPE_LABEL[result.type] || '담당자 확인 필요']),
+        el('h3', { id: 'pn-assist-answer', tabindex: '-1' }, [heading]),
+        d ? el('p', { cls: 'pn-card-title' }, [d.title, ' · ', d.id]) : null,
+        detail,
+        result.guidance ? el('p', null, [result.guidance]) : null]),
+      !streaming ? el('ul', { cls: 'pn-chips' }, [el('li', null, [btn('pn-chip', '다른 질문하기', 'assistant-reset')])]) : null
     ]);
+  }
+
+  function assistantKey(st) {
+    var user = proxyUser(st);
+    return [st.role, user && user.id, st.llm].join('|');
+  }
+
+  function assistantIsVisible(session) {
+    var st = read();
+    return assistant === session && st.panel === 'intake' && st.step === 'assistant' &&
+      assistantEnabled(st) && assistantKey(st) === session.key;
+  }
+
+  function streamReply(session) {
+    var reply = $('pn-assist-reply');
+    var walker = document.createTreeWalker(reply, NodeFilter.SHOW_TEXT);
+    var parts = [], total = 0, node;
+    while ((node = walker.nextNode())) {
+      var characters = Array.from(node.data);
+      parts.push({ node: node, characters: characters, start: total });
+      total += characters.length;
+      node.data = '';
+    }
+    var duration = Math.max(460, Math.min(1250, total * 10));
+    function tick() {
+      if (!reply.isConnected || !assistantIsVisible(session)) return;
+      var count = Math.max(2, Math.ceil(total * (performance.now() - session.streamStarted) / duration));
+      if (!motionEnabled() || count >= total) {
+        session.streamStarted = null;
+        renderAssistantReply(session);
+        return;
+      }
+      parts.forEach(function (part) {
+        var size = Math.min(part.characters.length, Math.max(0, count - part.start));
+        if (part.size === size) return;
+        part.node.data = part.characters.slice(0, size).join('');
+        part.size = size;
+      });
+      window.setTimeout(tick, STREAM_TICK_MS);
+    }
+    tick();
+  }
+
+  function renderAssistantReply(session) {
+    if (!assistantIsVisible(session)) return;
+    var active = document.activeElement, composer = $('pn-assist-form');
+    var focusReply = active === document.body || $('pn-body').contains(active) || (composer && composer.contains(active));
+    return render().then(function () {
+      var target = $(session.error ? 'pn-assist-text' : 'pn-assist-answer');
+      if (focusReply && target) target.focus();
+    });
   }
 
   function ask(text) {
     var session = assistant;
-    if (!session || session.pending) return;
+    if (!session || session.pending || session.streamStarted !== null) return;
     session.text = text.trim();
     session.error = '';
     session.result = null;
+    session.question = '';
     if (!session.text) {
       session.error = '질문을 적어 주세요.';
-      return render().then(function () { $('pn-assist-text').focus(); });
+      return renderAssistantReply(session);
     }
+    var started = performance.now();
     session.pending = true;
     render();
     return A.postIntakeQuestion({ text: session.text }).catch(function () {
       return { outcome: 'UNAVAILABLE' };
     }).then(function (result) {
       if (assistant !== session) return;
-      session.pending = false;
       if (result.outcome === 'BLOCKED') {
+        session.pending = false;
         session.error = '번호나 이메일처럼 보이는 내용을 지우고 다시 적어 주세요.';
-      } else {
-        session.question = session.text;
-        session.text = '';
-        session.result = result;
+        return renderAssistantReply(session);
       }
-      if (location.hash !== session.hash) return;
-      return render().then(function () {
-        var target = $(session.error ? 'pn-assist-text' : 'pn-assist-answer');
-        if (target) target.focus();
-      });
+      session.question = session.text;
+      session.text = '';
+      function showAnswer() {
+        if (assistant !== session) return;
+        session.pending = false;
+        session.result = result;
+        session.streamStarted = motionEnabled() ? performance.now() : null;
+        if (assistantIsVisible(session)) {
+          if (session.streamStarted === null) return renderAssistantReply(session);
+          return render();
+        }
+      }
+      var remaining = THINKING_MS - (performance.now() - started);
+      if (!motionEnabled() || remaining <= 0) return showAnswer();
+      if (assistantIsVisible(session)) render();
+      window.setTimeout(showAnswer, remaining);
     });
   }
 
@@ -829,6 +915,7 @@
       go({ panel: 'intake', step: '', submit: '', alert: '', 'case': '', popup: '', notice: '', tab: '', item: '' });   // S3 키(tab, item)도 지운다
     });
     var panel = $('intake-panel');
+    panel.classList.toggle('pn-motion-off', inspection);
     panel.addEventListener('click', onClick);
     panel.addEventListener('input', onInput);
     panel.addEventListener('change', onInput);
@@ -851,7 +938,7 @@
     return Promise.all([A.getMetaForm(), A.getAutoContext(), A.getKnownErrors('MAIN', ''), A.getUsers(), A.getIntakeQuestions(), A.getQuickIntakeCatalog(), A.getQuickIntakeMeta()]);
   }).then(function (r) {
     meta = r[0]; ctx = r[1]; known = r[2] || []; users = r[3] || []; suggestions = r[4];
-    quick = window.createQuickIntake({ el: el, btn: btn, note: note, rows: rows, labelOf: labelOf,
+    quick = window.createQuickIntake({ el: el, btn: btn, note: note, rows: rows, labelOf: labelOf, successMark: successMark,
       fmtWhen: fmtWhen, fmtDate: fmtDate, user: proxyUser, read: read, go: go, paint: paint, close: close, copy: window.SfaCopy },
       { meta: meta, context: ctx, catalog: r[5], options: r[6] });
     bind();

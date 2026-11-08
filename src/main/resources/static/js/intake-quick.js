@@ -271,7 +271,9 @@
       var d = catalog.find(function (item) { return item.id === (receipt.guideId || receipt.defectId); });
       return {
         body: [
-          el('h3', { tabindex: '-1' }, [receipt.kind === 'ME_TOO' ? '같은 오류 참여가 기록됐어요' : '접수됐어요']),
+          el('div', { cls: 'pn-success' }, [
+            ui.successMark(),
+            el('h3', { tabindex: '-1' }, [receipt.kind === 'ME_TOO' ? '같은 오류 참여가 기록됐어요' : '접수됐어요'])]),
           el('div', { cls: 'pn-card pq-actions' }, [
             el('p', { cls: 'pn-card-title', id: 'quick-receipt-id', tabindex: '-1' }, ['접수번호 ', receipt.id]),
             btn('pn-btn-2', '접수번호 복사', 'quick-copy'),
