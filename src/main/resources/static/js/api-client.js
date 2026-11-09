@@ -7,7 +7,8 @@
   var I = F.intake || {};
   var Q = F.intakeAssistant || {};
   var store = window.IntakeDemoStore;
-  var quickReports = new Map(), followupText = new Map(), failedSubmissions = new Set();
+  var quickReports = new Map(), followupText = new Map(), failedSubmissions = new Set(), failedAttachments = new Set();
+  var draftRules = window.IntakeDraftRules;
   var quick = I.quick || {};
 
   function copy(v) { return JSON.parse(JSON.stringify(v)); }
@@ -98,7 +99,7 @@
       var question = String((req || {}).text || '').trim();
       if (containsPrivateValue(question)) return ok({ outcome: 'BLOCKED' });
       if (proto.llm === 'fail') return ok({ outcome: 'UNAVAILABLE' });
-      return ok(intakeAnswer(question));
+      return ok(intakeAnswer(draftRules.mask(question)));
     },
     /* ADR-021: 구조화 가상 접수는 대장과 공유한다. 자유 입력은 현재 페이지 메모리에 둔다. */
     getIntakeDiagnostics: function (mode) { return ok(collectDiagnostics(mode, nowKst())); },
@@ -124,14 +125,32 @@
       });
       return d ? d.id : null;
     },
+    previewIntakeDraft: function (req) { return ok(draftRules.preview(req)); },
+    planIntakeDraft: function (req, mode) {
+      return ok(mode === 'fail' ? { failed: true } : draftRules.plan(req));
+    },
+    getReportAttachment: function (reportId, userId) {
+      var agent = (F.users || []).find(function (user) { return user.id === userId; });
+      var state = store.read();
+      if (!agent || !['SALES', 'IT'].includes(agent.role) || state.cancelled[reportId] ||
+          !state.reports.some(function (r) { return r.id === reportId && r.hasAttachment; })) return ok(null);
+      return ok(state.attachments[reportId] || null);
+    },
     previewQuickIntake: function (req) {
-      var blocked = ['oneLine', 'detail', 'screen'].some(function (key) { return containsPrivateValue(req[key]); });
+      var text = ['oneLine', 'detail', 'screen'].map(function (key) { return req[key]; });
+      var blocked = text.concat(Object.values(req.aiDraft || {})).some(containsPrivateValue);
       return ok({ blocked: blocked });
     },
     postQuickIntake: function (req, simulateFailure) {
       if (!req.requestId || !(F.users || []).some(function (user) { return user.id === req.reporterId; })) return ok({ failed: true });
       var previous = store.read().reports.find(function (r) { return r.requestId === req.requestId; });
       if (previous) return ok(quickReports.get(previous.id) || previous);
+      var image = req.attachment;
+      if (image && !validAttachment(image)) return ok({ attachmentError: '확정한 이미지가 너무 크거나 형식이 맞지 않아요. 다시 선택해 주세요.' });
+      if (image && req.simulateAttachmentFailure && !failedAttachments.has(req.requestId)) {
+        failedAttachments.add(req.requestId);
+        return ok({ attachmentError: '이미지를 첨부하지 못했어요. 다시 접수하거나 이미지를 삭제하고 글만 접수할 수 있어요.' });
+      }
       if (simulateFailure && !failedSubmissions.has(req.requestId)) {
         failedSubmissions.add(req.requestId);
         return ok({ failed: true });
@@ -141,6 +160,9 @@
         return store.update(function (state) {
           var duplicate = state.reports.find(function (r) { return r.requestId === req.requestId; });
           if (duplicate) return copy(quickReports.get(duplicate.id) || duplicate);
+          if (image && Object.values(state.attachments).reduce(function (size, value) { return size + value.length; }, 0) + image.length > 2000000) {
+            return { attachmentError: '이 브라우저의 첨부 저장 한도에 도달했어요. 이미지를 빼고 접수할 수 있어요.' };
+          }
           var report = {
             id: 'R-Q' + state.nextReport++, kind: 'FULL', reporterId: req.reporterId, submittedById: req.submittedById,
             createdAt: nowKst(), defectId: null, defect: null, title: req.oneLine, maskedText: req.oneLine,
@@ -148,12 +170,18 @@
             finalType: req.finalType, urgent: req.urgent, customerScope: req.customerScope,
             incident: req.incident, contact: req.contact, contactTime: req.contactTime, evidence: req.evidence,
             department: quick.departments[req.business] || quick.departments.ETC, guideId: req.guideId,
+            grade: intakeGrade(req), departmentCode: INTAKE_DEPARTMENT[req.business] || 'SALES_SUPPORT',
+            hasAttachment: !!image, aiDraft: req.aiDraft ? draftRules.clean(req.aiDraft) : null,
             attemptedWorkaround: req.attemptedWorkaround,
             diagnostics: collectDiagnostics(req.diagnosticMode, validDate(req.diagnosticCapturedAt) ? req.diagnosticCapturedAt : nowKst())
           };
-          quickReports.set(report.id, copy(report));
+          if (report.aiDraft) report.aiDraftSummary = draftSummary(report);
           state.reports.push(storedReport(report, req.requestId));
+          if (image) state.attachments[report.id] = image;
           return copy(report);
+        }, !!image).then(function (result) {
+          if (result.id) quickReports.set(result.id, copy(result));
+          return result;
         });
       });
     },
@@ -383,6 +411,27 @@
       return !state.cancelled[r.id] && (r.reporterId === userId || r.submittedById === userId);
     });
   }
+  var INTAKE_DEPARTMENT = { LOGIN: 'LOGIN_SUPPORT', SUBSCRIPTION: 'SUBSCRIPTION_IT', CUSTOMER_LOOKUP: 'CUSTOMER_IT',
+    DESIGN: 'DESIGN_SUPPORT', CONTRACT_LOOKUP: 'CONTRACT_IT' };
+  function intakeGrade(req) {
+    if (req.finalType === 'USAGE') return null;
+    if ((req.business === 'SUBSCRIPTION' && ['CANNOT_PROCEED', 'WRONG_SCREEN'].includes(req.symptom)) ||
+        /서명|동의|설명의무|잘못된 문서/.test(req.oneLine)) return 'IMMEDIATE';
+    return req.business === 'LOGIN' ? 'NORMAL' : 'BATCH';
+  }
+  function validAttachment(image) {
+    return typeof image === 'string' && image.length <= 420000 &&
+      /^data:image\/(?:png;base64,iVBOR|jpeg;base64,\/9j\/)[A-Za-z0-9+/]+={0,2}$/.test(image);
+  }
+
+  function draftSummary(report) {
+    var draft = report.aiDraft, manual = report.incident || {}, detected = report.diagnostics.incident;
+    return { customerReported: !!draft.customer, verifiedProvided: !!draft.verified,
+      missing: draftRules.unknown(draft, !!(manual.screen || manual.date || manual.time ||
+        manual.device && manual.device !== 'UNKNOWN' || detected.device || detected.screen || detected.at),
+      !!((report.urgent || []).length || report.customerScope && report.customerScope !== 'UNKNOWN')) };
+  }
+
   function storedReport(report, requestId) {
     var meta = I.metaForm || {}, options = quick.options || {}, incident = report.incident || {};
     var category = (meta.businesses || []).find(function (item) { return item.code === report.business; });
@@ -397,6 +446,8 @@
       business: category ? category.code : 'ETC', symptom: symptoms.includes(report.symptom) ? report.symptom : '',
       extraSymptoms: (report.extraSymptoms || []).filter(function (code) { return symptoms.includes(code); }),
       finalType: ['DEFECT', 'USAGE', 'IMPROVEMENT', 'UNCLASSIFIED'].includes(report.finalType) ? report.finalType : 'UNCLASSIFIED',
+      grade: report.grade, departmentCode: report.departmentCode, hasAttachment: report.hasAttachment,
+      hasAiDraft: !!report.aiDraft, aiDraftSummary: report.aiDraftSummary,
       urgent: (report.urgent || []).filter(function (code) { return option('urgency', code); }),
       customerScope: option('scope', report.customerScope), contact: option('contact', report.contact),
       contactTime: option('time', report.contactTime), department: report.department, diagnostics: report.diagnostics,

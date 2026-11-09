@@ -469,6 +469,8 @@
       el('p', { cls: 'pn-help' }, [icon('i-info'), el('span', null, ['AI에게는 가린 신고 문장과 업무·문제 유형, 대표 결함 제목·우회법만 보내요. 고객번호와 보낸 사람은 보내지 않아요.'])]),
       el('h4', null, ['신고 내용']),
       r.diagnostics ? diagnosticDetails(r.diagnostics) : null,
+      r.hasAttachment ? attachmentDetails(r, st) : null,
+      draftSummaryCard(r),
       el('div', { cls: 'pn-card' }, [
         rows([['업무', BUSINESS[r.business] || r.business], ['문제 유형', SYMPTOM[r.symptom] || r.symptom],
           ['종류', TYPE[r.finalType] || r.finalType], ['처리 등급', [gradeTag(r.grade)]], ['담당 부서', DEPT[r.departmentCode] || r.departmentCode]])])
@@ -483,6 +485,38 @@
       rows([['접수하는 환경', diagnostics.submission.device || '미확인']].concat(window.IntakeDiagnosticsRows(diagnostics.submission, fmtWhen))),
       rows([['오류가 발생한 환경', diagnostics.incident.device || '미확인']].concat(window.IntakeDiagnosticsRows(diagnostics.incident, fmtWhen)))
     ]);
+  }
+
+  function draftSummaryCard(report) {
+    var summary = report.aiDraftSummary;
+    if (!summary) return null;
+    return el('details', { cls: 'pn-details' }, [
+      el('summary', null, ['AI 접수 초안 확인 항목']),
+      rows([['고객 진술', summary.customerReported ? '있음' : '미확인'],
+        ['설계사 확인', summary.verifiedProvided ? '별도 내용 있음' : '미확인'],
+        ['추가 확인', summary.missing.join(', ') || '없음']])
+    ]);
+  }
+
+  function attachmentDetails(report, st) {
+    var slot = el('div', { cls: 'pq-details-body', role: 'status' });
+    var details = el('details', { cls: 'pn-details pq-details pq-attachment' }, [
+      el('summary', null, ['확인된 화면 첨부 보기']), slot
+    ]);
+    details.addEventListener('toggle', function () {
+      if (!details.open || !details.isConnected) return;
+      slot.textContent = '첨부 이미지를 불러오고 있어요.';
+      var agent = viewer(st);
+      A.getReportAttachment(report.id, agent ? agent.id : null).then(function (image) {
+        if (!details.isConnected || !details.open) return;
+        slot.textContent = '';
+        if (image) slot.appendChild(el('img', { src: image, cls: 'pq-image-preview', alt: '설계사가 확인하고 첨부한 이미지' }));
+        else slot.textContent = '첨부를 열 수 없어요.';
+      }).catch(function () {
+        if (details.isConnected) slot.textContent = '첨부를 열지 못했어요. 닫았다 다시 열어 주세요.';
+      });
+    });
+    return details;
   }
 
   function resolutionRows(resolution) {
@@ -520,6 +554,8 @@
       return el('li', null, [el('span', { cls: 'ld-id' }, [r.id]), el('span', null, [r.maskedText || '"나도 겪었어요"로 보냄']),
         el('span', { cls: 'ld-who' }, [who.replace(/^ · /, '')]),
         r.diagnostics ? diagnosticDetails(r.diagnostics) : null,
+        r.hasAttachment ? attachmentDetails(r, st) : null,
+        draftSummaryCard(r),
         (r.followups || []).length ? el('ul', { cls: 'pn-plain' }, r.followups.map(function (entry) {
           var labels = { RECURRED: '다시 발생했어요', STILL: '아직 안 돼요', ADD: '추가 내용', URGENT: '긴급 사정 추가' };
           return el('li', null, [labels[entry.action], ' · ', fmtWhen(entry.at)]);

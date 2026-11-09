@@ -305,18 +305,18 @@
   function paint(st) {
     var fk = document.activeElement && document.activeElement.getAttribute && document.activeElement.getAttribute('data-fk');
     var caret = fk && document.activeElement.selectionStart;
-    var asking = st.step === 'assistant', compact = quick.isStep(st.step);
+    var asking = st.step === 'assistant', drafting = st.step === 'ai-draft', compact = quick.isStep(st.step);
     var mode = $('pn-mode-toggle');
     var canSwitch = assistantEnabled(st) && ((asking && assistantReturn !== '0') ||
-      (quick.steps.includes(st.step) && quick.canSwitch()));
+      ((drafting || quick.steps.includes(st.step)) && quick.canSwitch()));
     mode.hidden = !canSwitch;
-    mode.textContent = asking ? '일반 접수' : 'AI 모드';
-    mode.setAttribute('data-act', asking ? 'leave-assistant' : 'assistant');
+    mode.textContent = asking || drafting ? '일반 접수' : 'AI 모드';
+    mode.setAttribute('data-act', drafting ? 'quick-draft-return' : asking ? 'leave-assistant' : 'assistant');
     $('intake-panel').classList.toggle('pq-mode-switch', canSwitch);
     $('intake-panel').classList.toggle('pq-wide', compact && st.step === 'review' && quick.isWide());
     paintProxy(st);
-    $('pn-steps').hidden = asking;
-    if (!asking) paintSteps(st);
+    $('pn-steps').hidden = asking || drafting;
+    if (!asking && !drafting) paintSteps(st);
     var view = compact ? quick.view(st) : VIEWS[st.step] ? VIEWS[st.step](st) : { body: [el('p', null, ['알 수 없는 단계예요.'])], foot: [] };
     var body = $('pn-body'), entering = st.step !== lastStep;
     body.classList.toggle('pn-assist-enter', asking && entering && !assistant.pending && !assistant.result);
@@ -439,6 +439,7 @@
               type: 'submit', disabled: waiting }, ['보내기'])]),
           assistant.error ? el('div', { cls: 'pn-err', role: 'alert' }, [assistant.error]) : null,
           assistant.result && !waiting ? btn('pn-btn', '이 내용으로 문의 접수', 'assistant-handoff') : null,
+          assistant.pending && assistantReturn !== '0' ? btn('pn-btn-2', '기다리지 않고 접수', 'assistant-direct') : null,
           assistantReturn === '0' ? btn('pn-btn-2', '일반 접수로 돌아가기', 'leave-assistant') : null]
       };
     },
@@ -678,7 +679,9 @@
         d ? el('p', { cls: 'pn-card-title' }, [d.title, ' · ', d.id]) : null,
         detail,
         result.guidance ? el('p', null, [result.guidance]) : null]),
-      !streaming ? el('ul', { cls: 'pn-chips' }, [el('li', null, [btn('pn-chip', '다른 질문하기', 'assistant-reset')])]) : null
+      !streaming ? el('ul', { cls: 'pn-chips' }, [
+        assistantReturn !== '0' ? el('li', null, [btn('pn-chip', 'AI와 접수 초안 만들기', 'assistant-draft')]) : null,
+        el('li', null, [btn('pn-chip', '다른 질문하기', 'assistant-reset')])]) : null
     ]);
   }
 
@@ -821,6 +824,12 @@
       case 'assistant-reset':
         assistant = null;
         return render().then(function () { $('pn-assist-text').focus(); });
+      case 'assistant-direct':
+        var original = assistant.question || assistant.text;
+        assistant = null;
+        return quick.handoff(st, original, {});
+      case 'assistant-draft':
+        return quick.handoff(st, assistant.question, assistant.result, true);
       case 'assistant-handoff':
         var answer = assistant.result, text = assistant.question, onBehalf = form.onBehalf;
         if (usesQuickForm(st)) return quick.handoff(st, text, answer);

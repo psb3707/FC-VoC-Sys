@@ -7,8 +7,9 @@
     var el = ui.el, btn = ui.btn, note = ui.note, rows = ui.rows;
     var meta = data.meta, options = data.options, catalog = data.catalog;
     var symptoms = meta.symptoms.concat(options.symptoms);
-    var drafts = new Map();
-    var actor, form, receipt, diagnostics, confirming, offer, error, invalid, busy, wide, ai, restored;
+    var drafts = new Map(), attachment = window.createIntakeAttachment(ui);
+    var draftRules = window.IntakeDraftRules;
+    var actor, form, receipt, diagnostics, confirming, offer, error, invalid, busy, wide, ai, draftSession, restored;
     var steps = ['problem', 'review'];
     var expanded;
     var types = [['UNCLASSIFIED', '담당자가 확인해 주세요'], ['DEFECT', '전산 오류'],
@@ -25,11 +26,12 @@
     function reset() {
       form = { requestId: requestId(), business: '', oneLine: '', symptom: '', detail: '', extraSymptoms: [], urgent: [],
         customerScope: '', customerNo: '', device: '', screen: '', date: '', time: '', contact: '', contactTime: '',
-        finalType: 'UNCLASSIFIED', onBehalf: '', condition: '', source: '', attemptedWorkaround: '' };
+        finalType: 'UNCLASSIFIED', onBehalf: '', condition: '', source: '', attemptedWorkaround: '', attachment: '', draftFields: null, draftSource: '' };
       receipt = diagnostics = null;
       confirming = busy = wide = restored = false;
       error = invalid = '';
-      ai = null;
+      ai = draftSession = null;
+      attachment.reset();
       expanded = {};
     }
     function requestId() {
@@ -39,24 +41,29 @@
       var user = ui.user(st);
       return user ? user.id : st.role;
     }
-    function isStep(step) { return steps.includes(step) || step === 'receipt'; }
+    function isStep(step) { return steps.includes(step) || step === 'receipt' || step === 'ai-draft'; }
     function enter(st) {
       if (actor !== owner(st)) start(owner(st));
       if (st.step === 'receipt' && !receipt) return ui.go({ step: 'problem' });
+      if (st.step === 'ai-draft' && (!draftSession || !form.oneLine.trim())) return ui.go({ step: 'problem' });
       if (st.step === 'review' && (!form.business || !form.oneLine.trim())) return ui.go({ step: 'problem' });
-      var mode = st.diagnostics || '';
-      if (st.step === 'review' && (!diagnostics || diagnostics.mode !== mode)) {
-        var snapshot = form;
-        return A.getIntakeDiagnostics(mode).catch(function () { return { failed: true }; }).then(function (result) {
-          if (snapshot !== form || ui.read().panel !== 'intake' || ui.read().step !== 'review') return;
-          diagnostics = Object.assign({}, result, { mode: mode });
-          ui.paint(st);
-        });
-      }
-      ui.paint(st);
+      var mode = st.diagnostics || '', drafting = st.step === 'ai-draft';
+      var getDiagnostics = (drafting || st.step === 'review') && (!diagnostics || diagnostics.mode !== mode);
+      var getPreview = drafting && !draftSession.preview;
+      if (!getDiagnostics && !getPreview) return ui.paint(st);
+      var snapshot = form, activeDraft = draftSession, hash = location.hash;
+      return Promise.all([
+        getDiagnostics ? A.getIntakeDiagnostics(mode).catch(function () { return { failed: true }; }) : null,
+        getPreview ? A.previewIntakeDraft(draftInput()).catch(function () { return { failed: true }; }) : null
+      ]).then(function (result) {
+        if (snapshot !== form || location.hash !== hash) return;
+        if (result[0]) diagnostics = Object.assign({}, result[0], { mode: mode });
+        if (result[1] && draftSession === activeDraft) activeDraft.preview = result[1];
+        ui.paint(st);
+      });
     }
     function open(st) { start(owner(st)); }
-    function handoff(st, question, answer) {
+    function handoff(st, question, answer, withDraft) {
       if (actor !== owner(st)) start(owner(st));
       if (offer && !hasContent() && !form.onBehalf) restoreDraft();
       error = invalid = '';
@@ -74,7 +81,8 @@
       form.symptom = form.symptom || answer.symptom || '';
       invalidateAi();
       form.source = 'ASSISTANT';
-      ui.go({ step: 'problem' });
+      draftSession = withDraft ? { preview: null, state: 'preview', questions: [] } : null;
+      ui.go({ step: withDraft ? 'ai-draft' : 'problem' });
     }
     function select(key, label, choices, emptyLabel) {
       return el('div', { cls: 'pn-field' }, [el('label', { for: 'quick-' + key }, [label]),
@@ -97,9 +105,9 @@
         el(long ? 'textarea' : 'input', input, long ? [form[key]] : []),
         invalid === key ? errorText() : null]);
     }
-    function details(key, title, content, initiallyOpen) {
+    function details(key, title, content, initiallyOpen, className) {
       var state = expanded;
-      var section = el('details', { cls: 'pn-details pq-details', 'data-quick-section': key,
+      var section = el('details', { cls: 'pn-details pq-details' + (className ? ' ' + className : ''), 'data-quick-section': key,
         open: state[key] === undefined ? initiallyOpen : state[key] }, [
         el('summary', { 'data-fk': 'section:' + key }, [title]), el('div', { cls: 'pq-details-body' }, content)]);
       section.addEventListener('toggle', function () { if (section.isConnected) state[key] = section.open; });
@@ -203,6 +211,74 @@
         foot: [btn('pn-btn', '확인으로', 'quick-review', { disabled: busy })]
       };
     }
+    function environmentKnown() {
+      var detected = diagnostics && diagnostics.incident;
+      return !!(form.device && form.device !== 'UNKNOWN' || form.screen || form.date || form.time ||
+        detected && (detected.device || detected.screen || detected.at));
+    }
+    function impactKnown() { return !!(form.urgent.length || (form.customerScope && form.customerScope !== 'UNKNOWN')); }
+    function draftInput() { return { text: form.oneLine, detail: form.detail, fields: form.draftFields }; }
+    function draftField(key, label) {
+      return el('div', { cls: 'pn-field' }, [el('label', { for: 'quick-draft-' + key }, [label]),
+        el('textarea', { id: 'quick-draft-' + key, maxlength: '500', 'data-draft-field': key, 'data-fk': 'draft:' + key,
+          placeholder: '모르면 비워 두세요' }, [(form.draftFields || {})[key] || ''])]);
+    }
+    function missingDraft() {
+      return draftRules.unknown(form.draftFields || {}, environmentKnown(), impactKnown());
+    }
+    function draftView() {
+      var stage = draftSession, prepared = stage.preview || {};
+      var controls = stage.state === 'questions' ?
+        [btn('pn-btn-2', '일반 접수로', 'quick-draft-return'), btn('pn-btn', '초안 확인', 'quick-draft-review')] :
+        [btn('pn-btn-2', '초안 없이 접수', 'quick-draft-review'),
+          stage.state === 'preview' && !prepared.failed ? btn('pn-btn', '이 내용으로 질문 받기', 'quick-draft-generate') : null];
+      return {
+        body: [
+          el('h3', { tabindex: '-1' }, ['AI와 접수 초안 만들기']),
+          errorText(),
+          stage.state === 'questions' ? el('p', { cls: 'pn-lead' }, ['필요한 것만 최대 세 가지 여쭤봐요. 답하기 어려운 질문은 비워 두세요.']) : null,
+          stage.state === 'questions' ? el('div', { cls: 'pn-card' }, stage.questions.length ?
+            stage.questions.map(function (q) { return draftField(q.key, q.label); }) :
+            [el('p', null, ['더 여쭤볼 내용이 없어요. 초안을 확인해 주세요.'])]) : null,
+          stage.state === 'waiting' ? el('p', { role: 'status' }, ['필요한 질문을 확인하고 있어요. 지금 바로 접수할 수도 있어요.']) : null,
+          stage.state === 'failed' || prepared.failed ? note('', 'i-info', 'AI 질문을 불러오지 못했어요', '작성하신 내용을 그대로 접수할 수 있어요.') : null,
+          stage.state === 'preview' && !prepared.failed ? el('div', { cls: 'pn-card' }, [
+            el('p', { cls: 'pn-card-title' }, ['AI에 전달되는 내용']),
+            el('p', null, [prepared.text]), prepared.detail ? el('p', null, [prepared.detail]) : null,
+            rows(draftRules.fields.filter(function (field) { return prepared.fields && prepared.fields[field[0]]; })
+              .map(function (field) { return [field[1], prepared.fields[field[0]]]; })),
+            el('p', { cls: 'pn-lead' }, ['가려진 내용과 작성한 설명을 확인하세요. 고객번호와 첨부 이미지는 보내지 않아요.'])
+          ]) : null
+        ],
+        foot: controls
+      };
+    }
+    function generateDraft(st) {
+      var stage = draftSession, prepared = stage.preview, snapshot = form;
+      stage.state = 'waiting';
+      ui.paint(st);
+      if (st.llm === 'slow') return;
+      return A.planIntakeDraft({ text: prepared.text, detail: prepared.detail, fields: prepared.fields,
+        attempted: form.attemptedWorkaround, environmentKnown: environmentKnown(), impactKnown: impactKnown() }, st.llm)
+        .catch(function () { return { failed: true }; }).then(function (result) {
+          if (form !== snapshot || draftSession !== stage || ui.read().step !== 'ai-draft') return;
+          if (result.failed) stage.state = 'failed';
+          else {
+            stage.state = 'questions';
+            stage.questions = result.questions;
+            form.draftFields = result.fields;
+            form.draftSource = form.oneLine;
+            form.business = form.business || result.business || '';
+          }
+          ui.paint(st);
+        });
+    }
+    function draftReview() {
+      if (form.draftFields) expanded.draft = true;
+      draftSession = null;
+      return ui.go({ step: form.business ? 'review' : 'problem' });
+    }
+
     function review(st) {
       var scope = options.scope.map(function (pair) { return pair[0] === 'MANY' ? [pair[0], '여러 고객'] : pair; });
       var canAi = st.mode === 'B' && !form.source;
@@ -213,10 +289,19 @@
             ['업무', ui.labelOf(meta.businesses, form.business)], ['한 줄 설명', form.oneLine],
             form.detail ? ['상세 설명', form.detail] : null,
             form.attemptedWorkaround ? ['시도한 임시 방법', form.attemptedWorkaround] : null,
-            form.symptom ? ['대표 증상', ui.labelOf(symptoms, form.symptom)] : null,
+            form.symptom || form.draftFields ? ['대표 증상', ui.labelOf(symptoms, form.symptom) || '미확인'] : null,
             form.extraSymptoms.length ? ['추가 증상', form.extraSymptoms.map(function (code) { return ui.labelOf(symptoms, code); }).join(', ')] : null,
             form.urgent.length ? ['우선 확인 요청', options.urgency.filter(function (pair) { return form.urgent.includes(pair[0]); })
               .map(function (pair) { return pair[1]; }).join(' · ')] : null])]),
+          form.draftFields ? details('draft', 'AI 접수 초안 확인·수정', [
+            el('p', { cls: 'pn-lead' }, ['고객 진술과 직접 확인한 사실을 나눠 작성해 주세요. 수정한 내용으로 접수해요.']),
+            form.draftSource !== form.oneLine ? el('p', { cls: 'pn-lead' }, ['한 줄 설명이 바뀌었어요. 초안도 다시 확인해 주세요.']) : null,
+            el('p', { id: 'quick-draft-unknown' }, ['미확인 · ' + (missingDraft().join(', ') || '없음')])
+          ].concat(draftRules.fields.map(function (item) { return draftField(item[0], item[1]); })), true) : null,
+          details('attachment', form.attachment ? '화면 이미지 첨부됨' : '화면 이미지 첨부 (선택)',
+            attachment.view(form.attachment, function (value) { form.attachment = value; }, function () {
+              if (ui.read().step === 'review') { expanded.attachment = true; ui.paint(ui.read()); }
+            }), false, 'pq-attachment'),
           details('diagnostics', diagnostics && diagnostics.failed ? '진단 수집 실패 · 첨부 내용 보기' : '첨부되는 진단정보 보기', [
             diagnostics && diagnostics.failed ? note('', 'i-info', '발생 환경을 자동으로 가져오지 못했어요',
               '적으신 내용으로 접수할 수 있어요. 아는 정보는 아래에서 보완해 주세요.') : null,
@@ -245,7 +330,7 @@
           details('review-ai', canAi ? '개인정보 확인 및 AI 정리 (선택)' : '개인정보 확인 (선택)', [
             details('privacy', '가려지는 정보 보기', [
               el('p', null, ['고객번호는 AI와 접수 내역에 보내지 않아요. 이름과 번호는 설명에서 빼고 적어 주세요.']),
-              rows([['정리에 사용하는 설명', form.oneLine], form.detail ? ['상세 설명', form.detail] : null])
+              rows([['정리에 사용하는 설명', draftRules.mask(form.oneLine)], form.detail ? ['상세 설명', draftRules.mask(form.detail)] : null])
             ], false),
             canAi ? aiSection() : null,
             st.mode === 'B' ? select('finalType', '문의 유형 (선택)', types, '담당자가 확인해 주세요') : null
@@ -301,6 +386,8 @@
               ['현재 상태', receipt.kind === 'ME_TOO' ? '같은 오류를 겪었다고 알렸어요' : '접수 완료 · 담당자 확인 대기'],
               receipt.urgent && receipt.urgent.length ? ['우선 확인 요청', '긴급 사정을 함께 남겼어요'] : null,
               receipt.attemptedWorkaround ? ['시도한 임시 방법', receipt.attemptedWorkaround] : null,
+              receipt.hasAttachment ? ['화면 첨부', '확인한 이미지 1장'] : null,
+              receipt.aiDraft ? ['AI 접수 초안', '확인하고 수정한 내용으로 접수했어요'] : null,
               receipt.department ? ['담당 창구', receipt.department] : null,
               ['연락', receipt.contact === 'PHONE' ? '전화 희망' +
                 (receipt.contactTime ? ' · ' + options.time.find(function (pair) { return pair[0] === receipt.contactTime; })[1] : '') : 'SFA 내 접수내역'],
@@ -319,13 +406,14 @@
           btn('pn-btn-2', '저장 없이 닫기', 'quick-discard')],
         foot: [btn('pn-btn-2', '계속 작성', 'quick-keep'), btn('pn-btn', '저장하고 닫기', 'quick-save')]
       };
+      if (st.step === 'ai-draft') return draftView();
       if (st.step === 'review') return review(st);
       if (st.step === 'receipt') return done();
       return problem();
     }
     function hasContent() {
       return !!(form.business || form.oneLine || form.detail || form.urgent.length || form.extraSymptoms.length ||
-        form.symptom || form.customerScope || form.customerNo || form.screen || form.device || form.date || form.time || form.contact);
+        form.symptom || form.customerScope || form.customerNo || form.screen || form.device || form.date || form.time || form.contact || form.attachment || attachment.pending());
     }
     function restoreDraft() {
       var draft = drafts.get(actor);
@@ -359,7 +447,7 @@
         screen: form.screen, contact: form.contact, contactTime: form.contact === 'PHONE' ? form.contactTime : '',
         finalType: st.mode === 'A' ? 'UNCLASSIFIED' : form.finalType, evidence: evidence(), guideId: match ? match.id : null,
         attemptedWorkaround: form.attemptedWorkaround, diagnosticMode: st.diagnostics,
-        diagnosticCapturedAt: diagnostics && diagnostics.capturedAt
+        diagnosticCapturedAt: diagnostics && diagnostics.capturedAt, aiDraft: form.draftFields
       };
     }
     function focusError(st, key, message) {
@@ -373,14 +461,22 @@
       }
     }
     function submit(st) {
+      if (attachment.pending()) {
+        expanded.attachment = true;
+        return focusError(st, '', '최종 이미지를 확인해 첨부하거나 이미지를 삭제하고 접수해 주세요.');
+      }
       var snapshot = form;
-      var req = request(st);
+      var req = Object.assign(request(st), { attachment: form.attachment, simulateAttachmentFailure: st.attachment === 'fail' });
       busy = true;
       ui.paint(st);
       return A.postQuickIntake(req, st.submit === 'fail').then(function (result) {
         if (form !== snapshot) return;
         busy = false;
-        if (result.blocked) return focusError(st, '', '설명이나 화면 이름에서 번호·이메일을 지우고 다시 보내 주세요.');
+        if (result.attachmentError) {
+          expanded.attachment = true;
+          return focusError(st, '', result.attachmentError);
+        }
+        if (result.blocked) return focusError(st, '', '설명이나 초안에서 번호·이메일을 지우고 다시 보내 주세요.');
         if (result.failed) return focusError(st, '', '접수하지 못했어요. 작성하신 내용은 남아 있어요. 다시 눌러 주세요.');
         finish(result);
       }).catch(function () {
@@ -393,7 +489,8 @@
       if (restored) drafts.delete(actor);
       receipt = report;
       offer = confirming = wide = false;
-      ui.go({ step: 'receipt', submit: '' });
+      attachment.reset();
+      ui.go({ step: 'receipt', submit: '', attachment: '' });
     }
     function askAi(st) {
       var snapshot = form;
@@ -427,6 +524,9 @@
       if (busy) return;
       var section = button && button.closest('[data-quick-section]');
       if (section) expanded[section.getAttribute('data-quick-section')] = section.open;
+      if (action === 'draft-return') { draftSession = null; return ui.go({ step: 'problem' }); }
+      if (action === 'draft-review') return draftReview();
+      if (action === 'draft-generate') return generateDraft(st);
       if (action === 'review') {
         if (!form.business) return focusError(st, 'business', '어떤 업무인지 골라 주세요.');
         if (!form.oneLine.trim()) return focusError(st, 'oneLine', '무슨 일이 있었는지 적어 주세요.');
@@ -518,6 +618,13 @@
       form.condition = '';
     }
     function change(st, target, eventType) {
+      var draftKey = target.getAttribute('data-draft-field');
+      if (draftKey) {
+        form.draftFields = Object.assign({}, form.draftFields, { [draftKey]: target.value });
+        var missing = document.getElementById('quick-draft-unknown');
+        if (missing) missing.textContent = '미확인 · ' + (missingDraft().join(', ') || '없음');
+        return;
+      }
       var key = target.getAttribute('data-quick');
       if (!key) return;
       if (key === 'business' && form.business !== target.value) form.attemptedWorkaround = '';

@@ -196,10 +196,16 @@
           r.evidence ? ['추가 확인', r.evidence] : null,
           r.detail ? ['상세 설명', r.detail] : null,
           r.attemptedWorkaround ? ['시도한 임시 방법', r.attemptedWorkaround] : null,
+          r.hasAttachment ? ['화면 첨부', '확인한 이미지 1장'] : null,
           r.incident && r.incident.screen ? ['오류 화면', r.incident.screen] : null,
           r.incident && (r.incident.date || r.incident.time) ? ['발생 시각', [r.incident.date, r.incident.time].filter(Boolean).join(' ')] : null,
           d ? planOf(d) : null
         ]),
+        r.aiDraft ? el('details', { cls: 'pn-details' }, [
+          el('summary', null, ['확인하고 보낸 AI 접수 초안']),
+          rows(window.IntakeDraftRules.fields.map(function (field) {
+            return [field[1], r.aiDraft[field[0]] || '미확인'];
+          }))]) : r.hasAiDraft ? el('p', { cls: 'pn-lead' }, ['AI 접수 초안을 확인하고 보낸 건이에요.']) : null,
         r.diagnostics ? diagnosticDetails(r.diagnostics) : null,
         !r.resolution && related ? (related.workaround === r.attemptedWorkaround ? null : publicGuide(related)) :
           !r.resolution && d && d.workaround ? rows([['지금 해볼 방법', d.workaround]]) : null,

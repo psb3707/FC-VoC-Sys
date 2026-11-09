@@ -144,13 +144,13 @@
 /* AI 전달 내용 미리보기 (마스킹 발생 시 자동 펼침) */
 .pn-details { margin: 16px 0 0; background: var(--pn-bg); border: 0; border-radius: var(--pn-card-radius);
   box-shadow: var(--pn-card-shadow); overflow: hidden; }
-.pn-details summary { display: flex; align-items: center; gap: 12px; min-height: var(--pn-btn-h); padding: 0 24px; font-weight: 700;
+.pn-details > summary { display: flex; align-items: center; gap: 12px; min-height: var(--pn-btn-h); padding: 0 24px; font-weight: 700;
   color: var(--pn-accent); cursor: pointer; list-style: none; }
-.pn-details summary::-webkit-details-marker { display: none; }
-.pn-details summary::after { content: ""; flex: none; margin-left: auto; width: 10px; height: 10px;
+.pn-details > summary::-webkit-details-marker { display: none; }
+.pn-details > summary::after { content: ""; flex: none; margin-left: auto; width: 10px; height: 10px;
   border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-3px) rotate(45deg); }
-.pn-details[open] summary::after { transform: translateY(3px) rotate(-135deg); }
-.pn-details[open] summary { border-bottom: 1px solid var(--pn-line-soft); }
+.pn-details[open] > summary::after { transform: translateY(3px) rotate(-135deg); }
+.pn-details[open] > summary { border-bottom: 1px solid var(--pn-line-soft); }
 .pn-details .pn-rows { margin: 0; padding: 16px 24px; }
 .pn-mask { padding: 0 4px; border-radius: 4px; background: var(--pn-selected-bg); outline: 1px dashed var(--pn-accent); font-weight: 700; }
 .pn-tag { display: inline-block; margin-left: 6px; padding: 0 10px; border: 0; border-radius: 999px;
