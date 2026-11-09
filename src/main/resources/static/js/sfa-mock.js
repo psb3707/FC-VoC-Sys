@@ -137,16 +137,19 @@
 
   function renderAlarm(st, items) {
     var badge = $('alarm-badge');
-    badge.textContent = String(items.length);
-    badge.hidden = items.length === 0;
-    $('alarm-btn').setAttribute('aria-label', items.length ? '알림 ' + items.length + '건' : '알림');
+    var unread = items.filter(function (n) { return !n.read; }).length;
+    badge.textContent = String(unread);
+    badge.hidden = unread === 0;
+    $('alarm-btn').setAttribute('aria-label', unread ? '새 알림 ' + unread + '건' : '알림');
 
     var ul = $('alarm-list');
     ul.innerHTML = '';
     items.forEach(function (n) {
-      var b = el('button', 'alarm-item', [n.bodySnapshot, el('span', 'when', [fmtWhen(n.at)])]);
+      var b = el('button', 'alarm-item', [n.bodySnapshot, el('span', 'when', [fmtWhen(n.at) + (n.read ? ' · 읽음' : '')])]);
       b.type = 'button';
       b.setAttribute('data-kn-defect', n.defectId);   // 누르면 S3 패널 [내 신고] (js/known-panel.js)
+      b.setAttribute('data-kn-notice', n.id);
+      if (n.reportId) b.setAttribute('data-kn-report', n.reportId);
       b.setAttribute('aria-haspopup', 'dialog');
       ul.appendChild(el('li', null, [b]));
     });
@@ -156,14 +159,14 @@
   }
 
   function render() {
-    var st = readHash();
+    var st = readHash(), hash = location.hash;
     document.body.classList.toggle('demo', st.demo === '1');
     var userId = renderRole(st);
     renderBoard(st);
     $('notice-text').textContent = noticeText || DEFAULT_NOTICE;
     $('notice-box').hidden = st.notice !== 'next';
     return window.ApiClient.getNotifications(userId).then(function (items) {
-      renderAlarm(st, items);
+      if (location.hash === hash) renderAlarm(st, items);
     });
   }
 
@@ -196,6 +199,13 @@
       if (e.key === 'Escape') update({ popup: '', notice: '' });
     });
     window.addEventListener('hashchange', render);
+    window.ApiClient.watchIntakeUpdates(function () {
+      var st = readHash(), hash = location.hash;
+      var cur = usersOf(st.role).find(function (u) { return u.id === st.user; }) || usersOf(st.role)[0];
+      window.ApiClient.getNotifications(cur ? cur.id : null).then(function (items) {
+        if (location.hash === hash) renderAlarm(st, items);
+      });
+    });
   }
 
   if (/[?&]compare=1(&|$)/.test(location.search)) document.documentElement.classList.add('compare');

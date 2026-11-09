@@ -265,7 +265,7 @@
     }
     if (quick.isStep(st.step)) {
       if (st.known === 'off') go({ step: '1' });
-      else quick.enter(st);
+      else return Promise.resolve(quick.enter(st));
       return Promise.resolve();
     }
     if (form.fromAssistant && st.step === 'done' && !res.report) {
@@ -940,8 +940,14 @@
     meta = r[0]; ctx = r[1]; known = r[2] || []; users = r[3] || []; suggestions = r[4];
     quick = window.createQuickIntake({ el: el, btn: btn, note: note, rows: rows, labelOf: labelOf, successMark: successMark,
       fmtWhen: fmtWhen, fmtDate: fmtDate, user: proxyUser, read: read, go: go, paint: paint, close: close, copy: window.SfaCopy },
-      { meta: meta, context: ctx, catalog: r[5], options: r[6] });
+      { meta: meta, catalog: r[5], options: r[6] });
     bind();
+    A.watchIntakeUpdates(function () {
+      A.getQuickIntakeCatalog().then(function (catalog) {
+        quick.updateCatalog(catalog);
+        if (read().panel === 'intake' && read().step === 'problem') quick.refreshAdvice();
+      });
+    });
     return render();
   });
 })();

@@ -8,7 +8,7 @@
     var meta = data.meta, options = data.options, catalog = data.catalog;
     var symptoms = meta.symptoms.concat(options.symptoms);
     var drafts = new Map();
-    var serial = 0, actor, form, receipt, confirming, offer, error, invalid, busy, wide, ai, restored;
+    var actor, form, receipt, diagnostics, confirming, offer, error, invalid, busy, wide, ai, restored;
     var steps = ['problem', 'review'];
     var expanded;
     var types = [['UNCLASSIFIED', '담당자가 확인해 주세요'], ['DEFECT', '전산 오류'],
@@ -23,14 +23,17 @@
       reset();
     }
     function reset() {
-      form = { requestId: ++serial, business: '', oneLine: '', symptom: '', detail: '', extraSymptoms: [], urgent: [],
+      form = { requestId: requestId(), business: '', oneLine: '', symptom: '', detail: '', extraSymptoms: [], urgent: [],
         customerScope: '', customerNo: '', device: '', screen: '', date: '', time: '', contact: '', contactTime: '',
         finalType: 'UNCLASSIFIED', onBehalf: '', condition: '', source: '', attemptedWorkaround: '' };
-      receipt = null;
+      receipt = diagnostics = null;
       confirming = busy = wide = restored = false;
       error = invalid = '';
       ai = null;
       expanded = {};
+    }
+    function requestId() {
+      return window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : Date.now() + '-' + Math.random();
     }
     function owner(st) {
       var user = ui.user(st);
@@ -41,6 +44,15 @@
       if (actor !== owner(st)) start(owner(st));
       if (st.step === 'receipt' && !receipt) return ui.go({ step: 'problem' });
       if (st.step === 'review' && (!form.business || !form.oneLine.trim())) return ui.go({ step: 'problem' });
+      var mode = st.diagnostics || '';
+      if (st.step === 'review' && (!diagnostics || diagnostics.mode !== mode)) {
+        var snapshot = form;
+        return A.getIntakeDiagnostics(mode).catch(function () { return { failed: true }; }).then(function (result) {
+          if (snapshot !== form || ui.read().panel !== 'intake' || ui.read().step !== 'review') return;
+          diagnostics = Object.assign({}, result, { mode: mode });
+          ui.paint(st);
+        });
+      }
       ui.paint(st);
     }
     function open(st) { start(owner(st)); }
@@ -205,12 +217,19 @@
             form.extraSymptoms.length ? ['추가 증상', form.extraSymptoms.map(function (code) { return ui.labelOf(symptoms, code); }).join(', ')] : null,
             form.urgent.length ? ['우선 확인 요청', options.urgency.filter(function (pair) { return form.urgent.includes(pair[0]); })
               .map(function (pair) { return pair[1]; }).join(' · ')] : null])]),
+          details('diagnostics', diagnostics && diagnostics.failed ? '진단 수집 실패 · 첨부 내용 보기' : '첨부되는 진단정보 보기', [
+            diagnostics && diagnostics.failed ? note('', 'i-info', '발생 환경을 자동으로 가져오지 못했어요',
+              '적으신 내용으로 접수할 수 있어요. 아는 정보는 아래에서 보완해 주세요.') : null,
+            el('h4', null, ['접수하는 환경']),
+            rows(window.IntakeDiagnosticsRows(diagnostics && diagnostics.submission, ui.fmtWhen)),
+            el('h4', null, ['오류가 발생한 환경']),
+            rows(window.IntakeDiagnosticsRows(diagnostics && diagnostics.incident, ui.fmtWhen)),
+            el('p', { cls: 'pn-lead' }, ['고객번호, 화면에 입력한 값, 비밀번호와 접속 토큰은 진단정보에 포함되지 않아요.'])
+          ]),
           details('extra', '고객 범위·발생 환경·연락 방법 추가 (선택)', [
             select('customerScope', '한 고객에게만 발생했나요? (선택)', scope, '답을 몰라도 접수할 수 있어요'),
             form.customerScope === 'ONE' ? field('customerNo', '고객번호 (선택 · 번호 없이 접수할 수 있어요)', { maxlength: '40' }) : null,
-            details('incident', '자동으로 확인한 정보와 오류가 난 환경', [
-              rows([['접수하는 기기', data.context.reportedFrom.device + ' · ' + data.context.reportedFrom.browser],
-                ['접수 화면', data.context.screenName], ['접수 시각', ui.fmtWhen(data.context.occurredAt)]]),
+            details('incident', '오류가 난 환경 보완 (선택)', [
               select('device', '오류가 난 기기 (선택)', devices),
               field('screen', '오류가 난 화면 (선택)', { maxlength: '80' }),
               el('div', { cls: 'pq-grid' }, [
@@ -310,7 +329,7 @@
     }
     function restoreDraft() {
       var draft = drafts.get(actor);
-      form = Object.assign({}, draft.form, { requestId: ++serial, customerNo: '' });
+      form = Object.assign({}, draft.form, { requestId: requestId(), customerNo: '' });
       ai = draft.ai;
       restored = true;
       offer = false;
@@ -339,7 +358,8 @@
         incident: { device: form.device, screen: form.screen, date: form.date, time: form.time },
         screen: form.screen, contact: form.contact, contactTime: form.contact === 'PHONE' ? form.contactTime : '',
         finalType: st.mode === 'A' ? 'UNCLASSIFIED' : form.finalType, evidence: evidence(), guideId: match ? match.id : null,
-        attemptedWorkaround: form.attemptedWorkaround
+        attemptedWorkaround: form.attemptedWorkaround, diagnosticMode: st.diagnostics,
+        diagnosticCapturedAt: diagnostics && diagnostics.capturedAt
       };
     }
     function focusError(st, key, message) {
@@ -425,7 +445,7 @@
       }
       if (action === 'copy' && receipt) {
         var guideId = button.getAttribute('data-guide');
-        var message = guideId ? catalog.find(function (d) { return d.id === guideId; }).guide.customerMessage : receipt.id;
+        var message = guideId ? button.previousElementSibling.textContent : receipt.id;
         return ui.copy(message, document.getElementById('quick-copy-status'), guideId ? button.previousElementSibling : document.getElementById('quick-receipt-id'));
       }
       if (action === 'participate') {
@@ -525,6 +545,7 @@
     return { steps: steps, isStep: isStep, open: open, enter: enter, handoff: handoff, view: view, act: act,
       change: change, close: close, refreshAdvice: refreshAdvice, isWide: function () { return wide; },
       canSwitch: function () { return !confirming && !busy; },
+      updateCatalog: function (items) { catalog = items; },
       questionSeed: function (st) { return actor === owner(st) ? form.oneLine : ''; },
       onBehalf: function (st, value) {
         if (actor !== owner(st)) start(owner(st));

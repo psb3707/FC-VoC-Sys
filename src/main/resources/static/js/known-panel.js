@@ -200,8 +200,13 @@
           r.incident && (r.incident.date || r.incident.time) ? ['발생 시각', [r.incident.date, r.incident.time].filter(Boolean).join(' ')] : null,
           d ? planOf(d) : null
         ]),
-        related ? (related.workaround === r.attemptedWorkaround ? null : publicGuide(related)) :
-          d && d.workaround ? rows([['지금 해볼 방법', d.workaround]]) : null,
+        r.diagnostics ? diagnosticDetails(r.diagnostics) : null,
+        !r.resolution && related ? (related.workaround === r.attemptedWorkaround ? null : publicGuide(related)) :
+          !r.resolution && d && d.workaround ? rows([['지금 해볼 방법', d.workaround]]) : null,
+        r.resolution ? el('div', { cls: 'pn-note' }, [icon('i-check'), el('div', null, [
+          el('b', null, ['수정 완료 안내']),
+          rows([['적용 시각', fmtWhen(r.resolution.appliedAt)], ['적용 범위', r.resolution.scope],
+            ['바뀐 동작', r.resolution.change], ['기존 건 처리', r.resolution.action]])])]) :
         r.fcNotice && r.fcNotice.approvedText
           ? el('div', { cls: 'pn-note' }, [icon('i-info'), el('div', null, [el('b', null, ['담당자 안내']), r.fcNotice.approvedText])])
           : el('p', { cls: 'kn-none' }, [d ? '담당자 안내는 아직 없어요' : '접수 완료 · 담당자 확인 대기']),
@@ -217,6 +222,14 @@
       el('h4', null, ['받은 알림']),
       alarms.length ? el('div', { cls: 'pn-card' }, [rows(alarms, 'kn-alarms')])
         : el('div', { cls: 'pn-card kn-empty' }, [el('p', null, ['받은 알림이 없어요'])])];
+  }
+
+  function diagnosticDetails(diagnostics) {
+    return el('details', { cls: 'pn-details' }, [
+      el('summary', null, ['첨부된 진단정보']),
+      rows([['접수하는 환경', diagnostics.submission.device || '미확인']].concat(window.IntakeDiagnosticsRows(diagnostics.submission, fmtWhen))),
+      rows([['오류가 발생한 환경', diagnostics.incident.device || '미확인']].concat(window.IntakeDiagnosticsRows(diagnostics.incident, fmtWhen)))
+    ]);
   }
 
   function followupView(r) {
@@ -363,9 +376,14 @@
     $('alarm-list').addEventListener('click', function (e) {
       var b = e.target.closest('[data-kn-defect]');
       if (!b) return;
-      var d = b.getAttribute('data-kn-defect');
-      var r = cache.mine.filter(function (x) { return x.defectId === d; })[0];
-      open('mine', r ? r.id : '', $('alarm-btn'));
+      var st = read(), me = currentUser(st), hash = location.hash;
+      var d = b.getAttribute('data-kn-defect'), reportId = b.getAttribute('data-kn-report');
+      if (!me) return;
+      A.markNotificationRead(b.getAttribute('data-kn-notice'), me.id).then(function (marked) {
+        if (!marked || location.hash !== hash) return;
+        var r = cache.mine.find(function (x) { return x.defectId === d; });
+        open('mine', reportId || (r ? r.id : ''), $('alarm-btn'));
+      });
     });
     $('known-panel').addEventListener('click', function (e) {
       var followup = e.target.closest('[data-followup]');
@@ -381,6 +399,14 @@
     $('kn-close').addEventListener('click', close);
     document.addEventListener('keydown', onKey);
     window.addEventListener('hashchange', render);
+    A.watchIntakeUpdates(function () {
+      A.getQuickIntakeCatalog().then(function (catalog) {
+        known = catalog;
+        if (document.activeElement && document.activeElement.matches('#kn-body textarea')) return;
+        cache.userId = null;
+        render();
+      });
+    });
   }
 
   window.SFA_READY = (window.SFA_READY || Promise.resolve()).then(function () {

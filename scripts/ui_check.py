@@ -85,6 +85,7 @@ LEDGER_STATES = ["role=SALES", "role=IT&grade=IMMEDIATE", "role=SALES&status=RES
                  LD + "dstep=pick", LD + "to=FIX_PLANNED&dstep=pick",
                  LD + "to=FIX_PLANNED&dstep=detail", LD + "to=FIX_PLANNED&dstep=detail&err=1",
                  LD + "to=FIX_PLANNED&dstep=preview&date=2026-11-25",
+                 LD + "to=RESOLVED&dstep=detail",
                  LD + "to=WONT_FIX&dstep=detail&reason=ETC&memo=" + "%EC%83%81%ED%92%88%20%EB%8B%A8%EC%A2%85",
                  LD + "to=WONT_FIX&dstep=preview&reason=NEW_SFA",
                  LD + "to=CAUSE_FOUND&dstep=detail&memo=" + "%EC%9E%AC%ED%99%95%EC%9D%B8",
