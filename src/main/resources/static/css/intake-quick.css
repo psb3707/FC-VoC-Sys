@@ -1,0 +1,57 @@
+/* ADR-019. 카드, 입력란, 알약, 펼침 영역은 접수 패널의 토큰을 재사용한다. */
+#intake-panel { --pq-wide: 760px; }
+.pq-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.pq-details .pq-details-body { padding: 16px 24px; }
+.pq-details-body > :first-child { margin-top: 0; }
+.pq-details-body > :last-child { margin-bottom: 0; }
+.pq-details .pn-rows { padding: 0; }
+.pq-details .pn-chip, .pq-actions .pn-btn-2 { min-width: 0; }
+.pq-actions .pn-btn-2 + .pn-btn-2 { margin-left: 8px; }
+.pq-wide-toggle, .pq-status { margin-top: 16px; }
+#pn-mode-toggle { min-width: 0; padding: 0 12px; color: var(--pn-accent); white-space: nowrap; }
+.pq-related { margin-top: 16px; }
+.pq-related:empty { display: none; }
+.pq-inline-guide { background: var(--pn-info-bg); border: 1px solid var(--pn-info-edge); box-shadow: none; }
+.pq-inline-guide > summary { padding-block: 12px; color: var(--pn-ink); }
+.pq-guide-summary { display: grid; gap: 2px; font-weight: 400; }
+.pq-guide-more { color: var(--pn-accent); font-weight: 700; }
+.pq-related-case + .pq-related-case { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--pn-line-soft); }
+.pq-details-body > .pn-details { box-shadow: none; border: 1px solid var(--pn-line); }
+.pq-guide-steps { margin: 0 0 12px; padding-left: 1.5em; }
+.pq-urgency { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pq-urgency .pn-chip { width: 100%; padding: 8px; line-height: 1.35; }
+.pq-urgency .pn-chip[aria-pressed="true"] { padding: 7px; }
+#pn-body .pn-card, #kn-body .pq-followup { overflow-wrap: anywhere; }
+#kn-body .pq-followup .pn-btn-2 { min-width: 0; }
+.pq-followup .pn-chips { margin-bottom: 12px; }
+@media (min-width: 1280px) {
+  #intake-panel.pq-wide { width: var(--pq-wide); }
+}
+@media (max-width: 1279.98px) {
+  .pq-wide-toggle { display: none; }
+}
+@media (max-width: 480px) {
+  #intake-panel.pq-mode-switch .pn-head { gap: 8px; padding-inline: 16px; }
+  #intake-panel.pq-mode-switch .pn-head > .pn-ico,
+  #intake-panel.pq-mode-switch #pn-close span { display: none; }
+  #intake-panel.pq-mode-switch #pn-close { padding-inline: 12px; }
+  .pq-summary .pn-rows dt { flex-basis: 86px; }
+  .pq-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .pq-actions .pn-btn-2 + .pn-btn-2 { margin: 8px 0 0; }
+  .pq-actions .pn-btn-2 { width: 100%; }
+}
+
+/* 확인한 이미지와 편집 중인 이미지의 영역을 구분한다. */
+.pq-image-stage { position: relative; width: fit-content; max-width: 100%; margin: 12px 0; }
+.pq-image-editor, .pq-image-preview {
+  display: block; max-width: 100%; height: auto; border: 1px solid var(--pn-line); border-radius: var(--pn-btn-radius);
+}
+.pq-image-editor { cursor: crosshair; touch-action: none; }
+.pq-image-selection { position: absolute; border: 2px dashed var(--pn-accent); background: var(--pn-scrim); pointer-events: none; }
+.pq-image-tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.pq-attachment .pn-btn-2 { min-width: 0; margin: 8px 8px 0 0; }
+.pq-attachment .pq-image-tools .pn-btn-2 { margin: 0; padding-inline: 12px; }
+.pq-image-tools [aria-pressed="true"] { border-color: var(--pn-accent); color: var(--pn-accent); }
+.pq-attachment .pn-input[type="file"] { margin-bottom: 12px; padding-block: 10px; }
+.pq-attachment .pn-input::file-selector-button { font: inherit; margin-inline-end: 8px; }
+.pq-attachment .pq-image-preview { margin-bottom: 12px; }

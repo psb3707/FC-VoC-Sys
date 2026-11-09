@@ -51,7 +51,7 @@
   var listed = [], shownReports = [];
   var users = [], defects = [], unlinked = [], unlinkedFor = null, detail = null, preview = null, similar = null;
   var draft = { date: '', reason: '', memo: '' };   // 대화상자 입력 중인 값 (주소에는 [다음]을 누를 때 적음)
-  var draftKey = '';
+  var draftKey = '', resolutionLabels, statusResult = null, statusError = '';
   var opener = null;
 
   /* ---- 작은 도우미 ---- */
@@ -125,7 +125,7 @@
   function userName(id) { var u = users.filter(function (x) { return x.id === id; })[0]; return u ? u.name : id; }
   function isBack(from, to) { return from === WONT_FIX || stageIndex(to) < stageIndex(from); }
   function notifiable(from, to) { return !isBack(from, to) && NOTIFY.indexOf(to) >= 0; }
-  function needsDetail(from, to) { return to === 'FIX_PLANNED' || to === WONT_FIX || isBack(from, to); }
+  function needsDetail(from, to) { return to === 'FIX_PLANNED' || to === 'RESOLVED' || to === WONT_FIX || isBack(from, to); }
 
   function statusTag(code) {
     var cls = code === 'RESOLVED' ? ' is-ok' : code === WONT_FIX ? ' is-dim' : '';
@@ -156,7 +156,7 @@
 
   /* ---- 주소 상태 (06번 11절) ---- */
   var KEYS = ['role', 'user', 'popup', 'tab', 'status', 'grade', 'type', 'q', 'item', 'for', 'dialog', 'report', 'link', 'to', 'dstep',
-    'date', 'reason', 'memo', 'err', 'llm'];
+    'date', 'reason', 'memo', 'err', 'llm', 'notify'];
   function read() {
     var st = {};
     location.hash.replace(/^#/, '').split('&').forEach(function (kv) {
@@ -468,12 +468,71 @@
       aiCard(r, st),
       el('p', { cls: 'pn-help' }, [icon('i-info'), el('span', null, ['AI에게는 가린 신고 문장과 업무·문제 유형, 대표 결함 제목·우회법만 보내요. 고객번호와 보낸 사람은 보내지 않아요.'])]),
       el('h4', null, ['신고 내용']),
+      r.diagnostics ? diagnosticDetails(r.diagnostics) : null,
+      r.hasAttachment ? attachmentDetails(r, st) : null,
+      draftSummaryCard(r),
       el('div', { cls: 'pn-card' }, [
         rows([['업무', BUSINESS[r.business] || r.business], ['문제 유형', SYMPTOM[r.symptom] || r.symptom],
           ['종류', TYPE[r.finalType] || r.finalType], ['처리 등급', [gradeTag(r.grade)]], ['담당 부서', DEPT[r.departmentCode] || r.departmentCode]])])
     ].forEach(function (n) { if (n) body.appendChild(n); });
     foot.appendChild(btn('pn-btn', [icon('i-link'), '묶을 결함 고르기'], 'link-pick', { 'aria-haspopup': 'dialog' }));
     return true;
+  }
+
+  function diagnosticDetails(diagnostics) {
+    return el('details', { cls: 'pn-details' }, [
+      el('summary', null, ['첨부된 진단정보']),
+      rows([['접수하는 환경', diagnostics.submission.device || '미확인']].concat(window.IntakeDiagnosticsRows(diagnostics.submission, fmtWhen))),
+      rows([['오류가 발생한 환경', diagnostics.incident.device || '미확인']].concat(window.IntakeDiagnosticsRows(diagnostics.incident, fmtWhen)))
+    ]);
+  }
+
+  function draftSummaryCard(report) {
+    var summary = report.aiDraftSummary;
+    if (!summary) return null;
+    return el('details', { cls: 'pn-details' }, [
+      el('summary', null, ['AI 접수 초안 확인 항목']),
+      rows([['고객 진술', summary.customerReported ? '있음' : '미확인'],
+        ['설계사 확인', summary.verifiedProvided ? '별도 내용 있음' : '미확인'],
+        ['추가 확인', summary.missing.join(', ') || '없음']])
+    ]);
+  }
+
+  function attachmentDetails(report, st) {
+    var slot = el('div', { cls: 'pq-details-body', role: 'status' });
+    var details = el('details', { cls: 'pn-details pq-details pq-attachment' }, [
+      el('summary', null, ['확인된 화면 첨부 보기']), slot
+    ]);
+    details.addEventListener('toggle', function () {
+      if (!details.open || !details.isConnected) return;
+      slot.textContent = '첨부 이미지를 불러오고 있어요.';
+      var agent = viewer(st);
+      A.getReportAttachment(report.id, agent ? agent.id : null).then(function (image) {
+        if (!details.isConnected || !details.open) return;
+        slot.textContent = '';
+        if (image) slot.appendChild(el('img', { src: image, cls: 'pq-image-preview', alt: '설계사가 확인하고 첨부한 이미지' }));
+        else slot.textContent = '첨부를 열 수 없어요.';
+      }).catch(function () {
+        if (details.isConnected) slot.textContent = '첨부를 열지 못했어요. 닫았다 다시 열어 주세요.';
+      });
+    });
+    return details;
+  }
+
+  function resolutionRows(resolution) {
+    return rows([['적용 시각', fmtWhen(resolution.appliedAt)], ['적용 범위', resolution.scope],
+      ['바뀐 동작', resolution.change], ['기존 건 처리', resolution.action]]);
+  }
+
+  function deliveryCard(d) {
+    if (!d.resolution || !d.delivery) return null;
+    var delivery = d.delivery;
+    var text = { FAILED: '발송 실패', SENT: '발송 완료', NONE: '발송 대상 없음' };
+    return el('div', { cls: 'pn-card' }, [
+      el('p', { cls: 'pn-card-title' }, ['해결 안내와 발송 결과']), resolutionRows(d.resolution),
+      rows([['알림', text[delivery.delivery]], ['대상', delivery.notificationCount + '명'], ['시도 횟수', delivery.attempts + '회']]),
+      delivery.delivery === 'FAILED' ? btn('pn-btn-2', '알림 다시 보내기', 'retry-notice', { 'data-history': delivery.historyId }) : null
+    ]);
   }
 
   function paintPanel(st) {
@@ -493,7 +552,14 @@
     var reports = (d.reports || []).map(function (r) {
       var who = (r.reporter ? r.reporter.name + ' · ' + r.reporter.branchName : '') + ' · ' + fmtDate(r.createdAt);
       return el('li', null, [el('span', { cls: 'ld-id' }, [r.id]), el('span', null, [r.maskedText || '"나도 겪었어요"로 보냄']),
-        el('span', { cls: 'ld-who' }, [who.replace(/^ · /, '')])]);
+        el('span', { cls: 'ld-who' }, [who.replace(/^ · /, '')]),
+        r.diagnostics ? diagnosticDetails(r.diagnostics) : null,
+        r.hasAttachment ? attachmentDetails(r, st) : null,
+        draftSummaryCard(r),
+        (r.followups || []).length ? el('ul', { cls: 'pn-plain' }, r.followups.map(function (entry) {
+          var labels = { RECURRED: '다시 발생했어요', STILL: '아직 안 돼요', ADD: '추가 내용', URGENT: '긴급 사정 추가' };
+          return el('li', null, [labels[entry.action], ' · ', fmtWhen(entry.at)]);
+        })) : null]);
     });
     [el('h3', { tabindex: '-1' }, [d.title]),
       el('p', { cls: 'pn-lead' }, ['마지막 변경 ' + fmtWhen(d.updatedAt)]),
@@ -511,8 +577,8 @@
       el('h4', null, ['상태 이력']),
       el('div', { cls: 'pn-card' }, [rows(historyRows(d), 'ld-hist')]),
       el('h4', null, ['안내문']),
-      noticeCard(d)
-    ].forEach(function (n) { body.appendChild(n); });
+      noticeCard(d), deliveryCard(d)
+    ].forEach(function (n) { if (n) body.appendChild(n); });
     var foot = $('ld-foot');
     foot.innerHTML = '';
     foot.appendChild(btn('pn-btn-2', [icon('i-link'), '신고 연결'], 'to-link'));
@@ -523,20 +589,28 @@
   /* ---- ④ 대화상자: 상태 바꾸기 ---- */
   function syncDraft(st) {
     var key = st.dialog + '|' + st.item + '|' + st.to + '|' + st.report;
-    if (key !== draftKey) { draftKey = key; draft = { date: '', reason: '', memo: '' }; }
+    if (key !== draftKey) {
+      draftKey = key;
+      draft = { date: '', reason: '', memo: '', applied: '', scope: '', change: '', action: '', approved: false,
+        eventId: window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : Date.now() + '-' + Math.random() };
+      statusError = '';
+    }
     if (st.date) draft.date = st.date;
     if (st.reason) draft.reason = st.reason;
     if (st.memo) draft.memo = st.memo;
   }
   function statusSteps(st) {
     var steps = [['pick', '다음 상태 고르기']];
-    if (st.to && needsDetail(detail.status, st.to)) steps.push(['detail', st.to === 'FIX_PLANNED' ? '예정일 적기' : '이유 적기']);
+    if (st.to && needsDetail(detail.status, st.to)) steps.push(['detail', st.to === 'FIX_PLANNED' ? '예정일 적기' : st.to === 'RESOLVED' ? '해결 안내 확인' : '이유 적기']);
     steps.push(['preview', '알림 미리보기']);
     return steps;
   }
   function missing(st) {
     var from = detail.status, to = st.to;
     if (!to) return '다음 상태를 골라 주세요';
+    if (to === 'RESOLVED' && (!draft.applied || !draft.scope || !draft.change.trim() || !draft.action || !draft.approved)) {
+      return '적용 시각, 적용 범위, 바뀐 동작, 기존 건 처리 방법을 적고 공개 안내를 확인해 주세요.';
+    }
     if (to === 'FIX_PLANNED' && !isBack(from, to) && !/^\d{4}-\d{2}-\d{2}$/.test(draft.date)) return '고칠 예정일을 골라 주세요';
     if (to === WONT_FIX && !draft.reason) return '고치지 않는 이유를 골라 주세요';
     if (to === WONT_FIX && draft.reason === 'ETC' && !draft.memo.trim()) return '기타 이유를 적어 주세요';
@@ -550,6 +624,7 @@
     if (isBack(from, to)) return '되돌리기 · 기록만';
     if (to === 'FIX_PLANNED') return '예정일 필요 · 알림 가요';
     if (to === WONT_FIX) return '이유 필요 · 알림 가요';
+    if (to === 'RESOLVED') return '해결 안내 확인 · 알림 가요';
     return notifiable(from, to) ? '알림 가요' : '기록만 해요';
   }
   function pickView(st) {
@@ -569,7 +644,12 @@
   function detailView(st) {
     var from = detail.status, to = st.to, err = st.err === '1' ? missing(st) : '';
     var out = [el('h3', { tabindex: '-1' }, [stageLabel(from) + ' → ' + stageLabel(to)])];
-    if (isBack(from, to)) {
+    if (to === 'RESOLVED') {
+      out = out.concat(resolutionFields());
+      if (isBack(from, to)) out.push(el('div', { cls: 'pn-field' }, [
+        el('label', { for: 'ld-memo' }, ['이전 결정을 바꾸는 이유']),
+        el('textarea', { id: 'ld-memo', 'data-draft': 'memo' }, [draft.memo])]));
+    } else if (isBack(from, to)) {
       out.push(el('p', { cls: 'pn-lead' }, ['앞 단계로 되돌려요. 되돌리기는 기록만 하고 알리지 않아요.']));
       out.push(el('div', { cls: 'pn-field' }, [el('label', { 'for': 'ld-memo' }, ['되돌리는 이유']),
         el('textarea', { id: 'ld-memo', 'data-draft': 'memo', 'aria-invalid': err ? 'true' : null, 'aria-describedby': err ? 'ld-err' : null }, [draft.memo])]));
@@ -591,6 +671,34 @@
     out.push(el('p', { cls: 'pn-err', id: 'ld-err', role: 'alert', hidden: !err }, [err]));
     return out;
   }
+  function resolutionFields() {
+    function input(label, key, field) {
+      return el('div', { cls: 'pn-field' }, [el('label', { for: 'ld-resolution-' + key }, [label]), field]);
+    }
+    function select(label, key, options) {
+      return input(label, key, el('select', { id: 'ld-resolution-' + key, 'data-draft': key },
+        [el('option', { value: '' }, ['골라 주세요'])].concat(Object.keys(options).map(function (code) {
+          return el('option', { value: code, selected: draft[key] === code }, [options[code]]);
+        }))));
+    }
+    return [
+      el('p', { cls: 'pn-lead' }, ['설계사가 고객에게 안내할 수 있는 내용만 적어 주세요. 고객 이름과 번호는 넣지 마세요.']),
+      input('적용 시각 (한국 시간)', 'applied', el('input', { id: 'ld-resolution-applied', type: 'datetime-local',
+        cls: 'pn-input', 'data-draft': 'applied', value: draft.applied })),
+      select('적용 범위', 'scope', resolutionLabels.scope),
+      input('바뀐 동작', 'change', el('textarea', { id: 'ld-resolution-change', 'data-draft': 'change', maxlength: '300' }, [draft.change])),
+      select('기존 건 처리 방법', 'action', resolutionLabels.action),
+      btn('pn-chip', '공개 안내를 확인했어요', 'approve-resolution', { 'aria-pressed': String(draft.approved) })
+    ];
+  }
+  function statusRequest(st) {
+    var me = viewer(st);
+    return { from: detail.status, to: st.to, plannedFixDate: draft.date || null, eventId: draft.eventId,
+      actorId: me ? me.id : null, simulateFailure: st.notify === 'fail',
+      wontFixReasonCode: st.to === WONT_FIX ? draft.reason : null, wontFixReasonText: st.to === WONT_FIX ? reasonText() : null,
+      resolution: st.to === 'RESOLVED' ? { appliedAt: draft.applied ? draft.applied + ':00+09:00' : null,
+        scope: draft.scope, change: draft.change, action: draft.action, approved: draft.approved } : null };
+  }
   function previewView(st) {
     var from = detail.status, to = st.to, p = preview || {};
     var change = rows([['바뀌는 상태', stageLabel(from) + ' → ' + stageLabel(to)],
@@ -605,7 +713,7 @@
             : '문제 확인·원인 파악은 "확인 중" 알림이 반복되지 않도록 기록만 남겨요.'])])];
     }
     return [el('h3', { tabindex: '-1' }, ['묶인 신고자 ' + p.recipientCount + '명에게 알림']),
-      el('div', { cls: 'pn-card' }, [change]),
+      el('div', { cls: 'pn-card' }, [change, p.resolution ? resolutionRows(p.resolution) : null]),
       el('div', { cls: 'pn-card' }, [el('p', { cls: 'pn-card-title' }, ['알림 문구']), el('p', { cls: 'ld-quote' }, [p.body])]),
       el('div', { cls: 'pn-card' }, [el('p', { cls: 'pn-card-title' }, ['받는 사람 ' + p.recipientCount + '명']),
         el('ul', { cls: 'ld-recipients' }, p.recipients.map(function (r) {
@@ -618,8 +726,9 @@
     var p = preview || {};
     return [el('div', { cls: 'pn-end' }, [el('span', { cls: 'pn-ico is-ok' }, [icon('i-check')]),
       el('h3', { tabindex: '-1' }, ['상태를 "' + stageLabel(st.to) + '"' + ro(stageLabel(st.to)) + ' 바꿨어요']),
-      el('p', { cls: 'pn-lead' }, [p.notifiable
-        ? '묶인 신고자 ' + p.recipientCount + '명에게 알림을 보냈어요. FC는 SFA 화면 알림을 눌러 내 신고에서 확인해요.'
+      el('p', { cls: 'pn-lead' }, [statusResult && statusResult.delivery === 'FAILED' ? '상태는 기록했어요. 알림 발송은 실패했어요. 다시 보낼 수 있어요.' :
+        (statusResult ? statusResult.delivery === 'SENT' : p.notifiable)
+        ? '묶인 신고자 ' + (statusResult ? statusResult.notificationCount : p.recipientCount) + '명에게 SFA 알림을 보냈어요.'
         : '알림 없이 상태 이력에 기록만 남겼어요.'])])];
   }
 
@@ -692,19 +801,24 @@
       steps = statusSteps(st);
       var step = st.to ? st.dstep || 'pick' : 'pick';
       if (step === 'detail' && !needsDetail(detail.status, st.to)) step = 'preview';
-      if ((step === 'preview' || done) && missing(st)) step = needsDetail(detail.status, st.to) ? 'detail' : 'pick';
+      if ((step === 'preview' || (done && !statusResult)) && missing(st)) step = needsDetail(detail.status, st.to) ? 'detail' : 'pick';
       if (step !== st.dstep && st.dstep) done = false;
       at = done ? steps.length : steps.map(function (s) { return s[0]; }).indexOf(step);
       view = done ? doneView(st) : step === 'pick' ? pickView(st) : step === 'detail' ? detailView(st) : previewView(st);
       if (done) {
         // 알림이 간 변경이면 주 버튼으로 SFA 알림까지 순환을 잇고, 기록만 했으면 [닫기]가 주 버튼
-        if (preview && preview.notifiable) {
+        if (statusResult && statusResult.delivery === 'FAILED') {
           foot.appendChild(btn('pn-btn-2', '닫기', 'close-dialog'));
-          foot.appendChild(el('a', { cls: 'pn-btn', href: 'index.html#role=FC&popup=alarm' }, [icon('i-bell'), 'SFA 화면에서 알림 확인']));
+          foot.appendChild(btn('pn-btn', '알림 다시 보내기', 'retry-notice', { 'data-history': statusResult.historyId }));
+        } else if (statusResult ? statusResult.delivery === 'SENT' : preview && preview.notifiable) {
+          foot.appendChild(btn('pn-btn-2', '닫기', 'close-dialog'));
+          var recipient = statusResult && statusResult.recipientId;
+          foot.appendChild(el('a', { cls: 'pn-btn', href: 'index.html#role=FC' + (recipient ? '&user=' + recipient : '') + '&popup=alarm' }, [icon('i-bell'), 'SFA 화면에서 알림 확인']));
         } else {
           foot.appendChild(btn('pn-btn', '닫기', 'close-dialog'));
         }
       } else {
+        if (statusError) view.push(el('p', { cls: 'pn-err', role: 'alert' }, [statusError]));
         foot.appendChild(at > 0 ? btn('pn-btn-2', '이전', 'prev') : btn('pn-btn-2', '취소', 'close-dialog'));
         foot.appendChild(btn('pn-btn', step === 'preview' ? '확정' : '다음', step === 'preview' ? 'confirm' : 'next', { 'data-step': step }));
       }
@@ -723,7 +837,7 @@
     var total = steps.length;
     $('ld-dlg-steps-text').innerHTML = '';
     $('ld-dlg-steps-text').appendChild(done && at >= total
-      ? el('span', null, [el('b', null, ['끝']), kind === 'status' && preview && preview.notifiable ? ' · 알림을 보냈어요' : ' · 기록했어요'])
+      ? el('span', null, [el('b', null, ['끝']), kind === 'status' && preview && preview.notifiable && (!statusResult || statusResult.delivery === 'SENT') ? ' · 알림을 보냈어요' : ' · 기록했어요'])
       : el('span', null, [total + '단계 중 ' + (at + 1) + '단계 · ', el('b', null, [steps[at][1]])]));
     $('ld-dlg-track').innerHTML = '';
     steps.forEach(function (s, i) {
@@ -761,8 +875,7 @@
     }).then(function () {
       if (st.dialog === 'status' && detail && st.to) {
         syncDraft(st);
-        return A.postStatusPreview(detail.id, { from: detail.status, to: st.to, plannedFixDate: draft.date || null,
-          wontFixReasonText: st.to === WONT_FIX ? reasonText() : null });
+        return A.postStatusPreview(detail.id, statusRequest(st));
       }
       return null;
     }).then(function (p) {
@@ -799,6 +912,8 @@
     var st = read();
     // 신고를 묶고 끝 화면에서 닫으면 그 신고 패널도 닫는다(프론트 단계는 저장하지 않아 목록은 그대로)
     var linked = st.dialog === 'link' && st.dstep === 'done';
+    if (linked) unlinkedFor = null;
+    statusResult = null;
     go(closeDialogPatch(linked && isReportId(st.item) ? { item: '' } : null));
     setTimeout(function () {
       var panelOpen = !$('ledger-panel').hidden;
@@ -855,7 +970,7 @@
     var act = b.getAttribute('data-act'), st = read();
     if (act === 'reset') go({ status: '', grade: '', type: '' });
     else if (act === 'q-clear') { go({ q: '' }); setTimeout(function () { if ($('ld-q')) $('ld-q').focus(); }, 0); }
-    else if (act === 'status') { opener = b; go({ dialog: 'status', to: '', dstep: '', err: '' }); }
+    else if (act === 'status') { opener = b; statusResult = null; go({ dialog: 'status', to: '', dstep: '', err: '' }); }
     else if (act === 'to-link') go(closeDialogPatch({ tab: 'unlinked', item: '', 'for': st.item }));
     else if (act === 'link') go({ dialog: 'link', report: b.getAttribute('data-report'), link: st['for'] || '', dstep: '', err: '' });
     // 신고 패널에서: AI 후보의 [이 결함에 묶기]는 그 결함을 미리 고른 신고 묶기, 주 버튼은 미리 고르지 않음 (연결은 [묶기]에서 사람이)
@@ -863,22 +978,44 @@
     else if (act === 'link-pick') go({ dialog: 'link', report: st.item, link: st['for'] || '', dstep: '', err: '' });
     else if (act === 'link-confirm') {
       if (!st.link) { go({ err: '1' }); return; }
-      A.postLinkReport(st.link, st.report).then(function () { go({ dstep: 'done', err: '' }); });
+      A.postLinkReport(st.link, st.report).then(function (result) { if (result) go({ dstep: 'done', err: '' }); });
     }
     else if (act === 'close-dialog') closeDialog();
     else if (act === 'next') nextStep(b.getAttribute('data-step'));
     else if (act === 'prev') prevStep();
+    else if (act === 'approve-resolution') {
+      draft.approved = !draft.approved;
+      b.setAttribute('aria-pressed', String(draft.approved));
+    }
+    else if (act === 'retry-notice') {
+      b.disabled = true;
+      A.retryStatusNotification(b.getAttribute('data-history')).then(function (result) {
+        if (st.dialog === 'status' && result) statusResult = result;
+        render();
+      });
+    }
     else if (act === 'confirm') {
-      A.postStatus(detail.id, { from: detail.status, to: st.to, plannedFixDate: draft.date || null,
-        wontFixReasonCode: st.to === WONT_FIX ? draft.reason : null, wontFixReasonText: st.to === WONT_FIX ? reasonText() : null,
-        reason: isBack(detail.status, st.to) ? draft.memo : null }).then(function () { go({ dstep: 'done' }); });
+      if (missing(st)) { go({ dstep: 'detail', err: '1' }); return; }
+      b.disabled = true;
+      A.postStatus(detail.id, statusRequest(st)).then(function (result) {
+        if (result.error) { statusError = result.error; return render(); }
+        statusResult = result;
+        go({ dstep: 'done' });
+      });
     }
   }
   function onInput(e) {
     var k = e.target.getAttribute && e.target.getAttribute('data-draft');
-    if (k) draft[k] = e.target.value;
+    if (!k || draft[k] === e.target.value) return;
+    draft[k] = e.target.value;
+    if (['applied', 'scope', 'change', 'action'].includes(k)) {
+      draft.approved = false;
+      var approval = document.querySelector('[data-act="approve-resolution"]');
+      if (approval) approval.setAttribute('aria-pressed', 'false');
+    }
   }
   function onChange(e) {
+    onInput(e);
     var f = e.target.getAttribute && e.target.getAttribute('data-filter');
     if (f) { var p = {}; p[f] = e.target.value; go(p); }
   }
@@ -933,10 +1070,15 @@
     $('ld-dlg-close').addEventListener('click', closeDialog);
     $('ld-scrim').addEventListener('click', closePanel);
     window.addEventListener('hashchange', render);
+    A.watchIntakeUpdates(function () {
+      if (read().dialog) return;
+      unlinkedFor = null;
+      A.getDefects().then(function (items) { defects = items; render(); });
+    });
   }
 
-  window.SFA_READY = Promise.all([A.getUsers(), A.getDefects()]).then(function (r) {
-    users = r[0] || []; defects = r[1] || [];   // 안 묶인 신고는 보는 담당자 기준이라 render() 에서 읽는다
+  window.SFA_READY = Promise.all([A.getUsers(), A.getDefects(), A.getResolutionLabels()]).then(function (r) {
+    users = r[0] || []; defects = r[1] || []; resolutionLabels = r[2];   // 안 묶인 신고는 보는 담당자 기준이라 render() 에서 읽는다
     bind();
     return render();
   });

@@ -203,9 +203,13 @@
       var steps = pn.querySelector('.pn-steps'), body = pn.querySelector('.pn-body');
       if (!steps || !body || body.contains(steps) || steps.getBoundingClientRect().bottom > body.getBoundingClientRect().top + EPS) pf.push('단계 표시줄이 상단 고정 아님');
       if (body && !/auto|scroll/.test(cs(body).overflowY)) pf.push('본문 스크롤 영역 아님');
-      if (!(document.getElementById('pn-steps-text') || {}).textContent) pf.push('단계 글자 표시 없음(색만으로 전달)');
+      var asking = !!document.getElementById('pn-assist-form');
+      if (asking && (!steps.hidden || !body.querySelector('.pn-assist-suggestions, .pn-assist-result'))) {
+        pf.push('AI 문의의 단계 표시줄 또는 본문 구성 확인');
+      }
+      if (!asking && !(document.getElementById('pn-steps-text') || {}).textContent) pf.push('단계 글자 표시 없음(색만으로 전달)');
       // 주 행동 버튼: 한 화면 하나, 56px·모서리 12px·강조색 #0077b3
-      var prim = all('#intake-panel .pn-foot .pn-btn');
+      var prim = all(asking ? '#intake-panel .pn-btn' : '#intake-panel .pn-foot .pn-btn');
       if (prim.length > 1) pf.push('주 행동 버튼 ' + prim.length + '개');
       prim.forEach(function (b) {
         var r = b.getBoundingClientRect(), s = cs(b);

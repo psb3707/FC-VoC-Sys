@@ -137,3 +137,25 @@ window.FIXTURES.intake = {
     "unclassifiedLogin": { "reportId": "R-006", "type": "UNCLASSIFIED", "grade": "NORMAL", "departmentCode": "LOGIN_SUPPORT", "closedAsGuidance": false }
   }
 };
+
+/* 두 화면 접수의 선택지와 공개 임시 안내 시연 데이터 (ADR-019). */
+window.FIXTURES.intake.quick = {
+  departments: {
+    LOGIN: '영업지원팀', SUBSCRIPTION: '청약업무팀', CUSTOMER_LOOKUP: '고객관리팀',
+    DESIGN: '상품설계지원팀', CONTRACT_LOOKUP: '계약관리팀', ETC: '영업지원팀'
+  },
+  guides: {
+    'D-2026-001': { steps: ['문자로 서명 링크를 보낼 수 있는 화면을 여세요.', '해당 고객에게 서명 링크를 문자로 보내 주세요.'],
+      customerMessage: '현재 서명 알림톡 연결 오류를 확인 중입니다. 문자로 보내드린 서명 링크를 이용해 주세요.' },
+    'D-2026-004': { steps: ['브라우저 설정에서 인터넷 사용 기록 삭제를 여세요.', '쿠키 및 사이트 데이터를 선택해 삭제한 뒤 다시 로그인해 주세요.'] },
+    'D-2026-005': { steps: ['고객 목록에서 해당 고객의 줄을 확인해 주세요.', '이름 대신 같은 줄의 성별 칸을 눌러 상세를 열어 주세요.'] }
+  },
+  options: {
+    urgency: [['CONSULTING', '고객 상담 중'], ['BLOCKED', '청약 진행 불가'], ['DEADLINE', '오늘 처리 마감']],
+    scope: [['ONE', '한 고객'], ['MANY', '여러 고객'], ['UNKNOWN', '아직 모르겠어요']],
+    symptoms: [{ code: 'SLOW', label: '느리거나 계속 로딩돼요' }, { code: 'LOST', label: '저장한 내용이 사라졌어요' },
+      { code: 'DIFFERENT', label: '금액이나 내용이 달라요' }, { code: 'PRINT', label: '출력이 안 돼요' }],
+    contact: [['SFA', 'SFA에서 답변'], ['PHONE', '전화 희망']],
+    time: [['AM', '오전'], ['PM', '오후'], ['ANY', '시간 무관']]
+  }
+};

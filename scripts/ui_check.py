@@ -48,7 +48,9 @@ EXTRA_UI_WORDS = {"사용자", "안내가", "부서가", "오류와", "설계일
                   # S3 알려진 오류·내 신고(index.html, js/fixtures/reports.js·notifications.js) 문구
                   "고르기", "고치지", "문자로", "문제를", "이어서", "원인을", "전에는", "반응이",
                   # S4 결함 대장(ledger.html, js/fixtures/defects.js) 문구
-                  "원인의", "신고를", "보험료", "나와요", "고객이", "이력이"}
+                  "원인의", "신고를", "보험료", "나와요", "고객이", "이력이",
+                  # S2 두 화면 접수의 임시조치와 고객 안내 문구
+                  "여세요", "오류를", "이용해", "사이트", "선택해"}
 
 BROWSERS = [
     Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
@@ -62,7 +64,7 @@ STATES = ["role=FC", "role=MANAGER", "role=SALES", "role=FC&popup=alarm", "role=
 SIZES = [(1280, 800), (1888, 952), (1920, 1080)]   # 1888×952: 기준 스크린샷 크기(ADR-012)
 # S2 접수 패널: 단계 0~7, 끝 화면, 분기 7종, A/B, 대리 접수 (js/intake-panel.js 주소 키, 06번 11절 시연 주소 목록)
 P = "role=FC&panel=intake&"
-PANEL_STATES = [P + "step=0", P + "step=1", P + "case=customer&step=2", P + "case=defect&step=3",
+PANEL_STATES = [P + "step=problem", P + "step=0", P + "step=assistant", P + "step=1", P + "case=customer&step=2", P + "case=defect&step=3",
                 P + "case=blocked&step=4&alert=blocked", P + "step=5", P + "llm=slow&step=5", P + "llm=fail&step=5",
                 P + "case=customer&step=6", P + "mode=A&case=customer&step=6", P + "step=7", P + "mode=A&step=7",
                 P + "step=done", P + "step=metoo", P + "case=usage&step=usage", P + "known=off&step=1",
@@ -83,6 +85,7 @@ LEDGER_STATES = ["role=SALES", "role=IT&grade=IMMEDIATE", "role=SALES&status=RES
                  LD + "dstep=pick", LD + "to=FIX_PLANNED&dstep=pick",
                  LD + "to=FIX_PLANNED&dstep=detail", LD + "to=FIX_PLANNED&dstep=detail&err=1",
                  LD + "to=FIX_PLANNED&dstep=preview&date=2026-11-25",
+                 LD + "to=RESOLVED&dstep=detail",
                  LD + "to=WONT_FIX&dstep=detail&reason=ETC&memo=" + "%EC%83%81%ED%92%88%20%EB%8B%A8%EC%A2%85",
                  LD + "to=WONT_FIX&dstep=preview&reason=NEW_SFA",
                  LD + "to=CAUSE_FOUND&dstep=detail&memo=" + "%EC%9E%AC%ED%99%95%EC%9D%B8",
@@ -340,6 +343,128 @@ def selftest(chrome: Chrome, w: int, h: int, url: str) -> dict:
         return {"ok": False, "checks": [{"name": "selftest-json", "pass": False, "detail": str(e)}]}
 
 
+def quick_intake_check(chrome: Chrome, page: str) -> None:
+    """두 화면 접수의 안내·모드 전환·복구·재시도·내역 연결을 확인한다."""
+    chrome.open(page + "#role=FC&panel=intake&step=problem&submit=fail", 390, 780)
+    chrome.send("Emulation.setVirtualTimePolicy", {"policy": "advance"}, chrome.session)
+    flow = """(async () => {
+      const find = (selector) => document.querySelector(selector);
+      const wait = async (selector) => {
+        for (let i = 0; i < 40; i++) {
+          if (find(selector)) return find(selector);
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        throw Error('누락된 요소 ' + selector + ' ' + location.hash);
+      };
+      const click = (selector) => find(selector).click();
+      const action = (name) => click('[data-act="' + name + '"]');
+      const message = '서명 알림톡을 열면 초대장이 떠요';
+      await window.SFA_READY;
+      const work = await wait('#quick-business');
+      if (find('[data-quick-section="urgent"]').open || find('[data-quick-section="description"]').open) {
+        throw Error('첫 화면에서 추가 입력이 기본으로 열림');
+      }
+      work.value = 'SUBSCRIPTION';
+      work.dispatchEvent(new Event('change', { bubbles: true }));
+      if (find('[data-quick-section="related"]').open) throw Error('업무만 선택했을 때 오류 상세가 열림');
+      const line = await wait('#quick-oneLine');
+      line.focus();
+      line.value = message;
+      line.dispatchEvent(new Event('input', { bubbles: true }));
+      if (!find('#quick-related').innerText.includes('지금 해볼 방법') || document.activeElement !== line) {
+        throw Error('입력 중 임시 방법이나 포커스 확인 실패');
+      }
+      click('.pn-head #pn-mode-toggle');
+      if ((await wait('#pn-assist-text')).value !== message) throw Error('AI 모드에서 질문 초안 유실');
+      click('.pn-head #pn-mode-toggle');
+      if ((await wait('#quick-oneLine')).value !== message) throw Error('AI 모드 왕복 뒤 설명 유실');
+      click('[data-quick-section="urgent"] > summary');
+      action('quick-toggle');
+      click('#pn-close');
+      await wait('#quick-confirm');
+      action('quick-save');
+      await wait('#intake-panel[hidden]');
+      click('[data-panel="intake"]');
+      await wait('[data-act="quick-restore"]');
+      action('quick-restore');
+      if (find('#quick-oneLine').value !== message) throw Error('임시저장 복구 실패');
+      window.SfaHash.update({ submit: 'fail' });
+      click('[data-quick-section^="method-"] > summary');
+      action('quick-tried');
+      await wait('#quick-customerScope');
+      if (find('[data-quick-section="extra"]').open || !find('#pn-body').innerText.includes('시도한 임시 방법')) {
+        throw Error('접수 확인에서 시도한 방법 또는 기본 접힘 확인 실패');
+      }
+      click('.pn-head #pn-mode-toggle');
+      await wait('#pn-assist-text');
+      click('.pn-head #pn-mode-toggle');
+      await wait('#quick-customerScope');
+      action('quick-submit');
+      await wait('#quick-error');
+      if (!find('#pn-body').innerText.includes(message)) throw Error('제출 실패 뒤 설명 유실');
+      action('quick-submit');
+      await wait('#quick-receipt-id');
+      if (!find('.pn-receipt-enter .pn-success-mark svg')) throw Error('접수 완료 체크 누락');
+      action('quick-mine');
+      const record = await wait('#kn-body .is-target[data-id]');
+      if (!record.innerText.includes(message) || !record.innerText.includes('고객 상담 중') ||
+          !record.innerText.includes('시도한 임시 방법')) {
+        throw Error('접수 상세에서 입력과 긴급 사정 확인 실패');
+      }
+      return 'ok';
+    })()"""
+    result = chrome.send("Runtime.evaluate",
+                         {"expression": flow, "awaitPromise": True, "returnByValue": True}, chrome.session)
+    if result.get("result", {}).get("value") != "ok":
+        detail = result.get("exceptionDetails", {})
+        raise RuntimeError(detail.get("exception", {}).get("description", "두 화면 접수 동작 실패"))
+
+
+def assistant_motion_check(chrome: Chrome, page: str) -> None:
+    """모션 설정에 따라 답변이 실제로 나뉘거나 한 번에 표시되는지 확인한다."""
+    flow = """(async () => {
+      const find = (selector) => document.querySelector(selector);
+      const wait = async (condition) => {
+        for (let i = 0; i < 100; i++) {
+          if (condition()) return;
+          await new Promise(resolve => setTimeout(resolve, 25));
+        }
+        throw Error('AI 응답 상태가 전환되지 않음');
+      };
+      await window.SFA_READY;
+      const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const animation = getComputedStyle(find('.pn-assist-enter h3')).animationName;
+      if (animation !== (reduced ? 'none' : 'pn-assist-appear')) throw Error('AI 진입 모션 설정 오류');
+      find('[data-index="1"]').click();
+      let partial = 0;
+      if (!reduced) {
+        if (!find('.pn-assist-thinking .pn-assist-dots') || !find('#pn-assist-status').textContent) {
+          throw Error('답변 준비 표시 누락');
+        }
+        await wait(() => find('.pn-assist-result[aria-busy="true"] #pn-assist-reply')?.textContent.length);
+        partial = find('#pn-assist-reply').textContent.length;
+        if (find('[data-act="assistant-handoff"]')) throw Error('답변 표시 중에 접수 동작이 노출됨');
+      }
+      await wait(() => find('.pn-assist-result[aria-busy="false"]'));
+      const answer = find('#pn-assist-reply');
+      if (answer.textContent.length <= partial || !answer.textContent.includes('문자로 서명 링크') ||
+          answer.hasAttribute('aria-hidden') || !find('[data-act="assistant-handoff"]')) {
+        throw Error('완성된 답변과 접수 동작 확인 실패');
+      }
+      return 'ok';
+    })()"""
+    for preference in ("no-preference", "reduce"):
+        chrome.send("Emulation.setEmulatedMedia",
+                    {"features": [{"name": "prefers-reduced-motion", "value": preference}]}, chrome.session)
+        chrome.open(page + "#role=FC&panel=intake&step=assistant", 390, 780)
+        chrome.send("Emulation.setVirtualTimePolicy", {"policy": "advance"}, chrome.session)
+        result = chrome.send("Runtime.evaluate",
+                             {"expression": flow, "awaitPromise": True, "returnByValue": True}, chrome.session)
+        if result.get("result", {}).get("value") != "ok":
+            detail = result.get("exceptionDetails", {})
+            raise RuntimeError(detail.get("exception", {}).get("description", "AI 답변 표시 실패"))
+
+
 def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -403,6 +528,15 @@ def main() -> int:
             print(f"  {st:<26}{f'{w}x{h}':<11}{'PASS' if ok else 'FAIL'}", flush=True)
             for c in bad:
                 print(f"      - {c.get('name')}: {c.get('detail')}")
+        if only in "index.html":
+            try:
+                quick_intake_check(chrome, base)
+                print("  두 화면 접수 복구·재시도·내역 연결 PASS")
+                assistant_motion_check(chrome, base)
+                print("  AI 답변 준비·순차 표시·모션 줄이기 PASS")
+            except (RuntimeError, OSError) as e:
+                print(f"  접수·AI 문의 동작 검사 FAIL: {e}")
+                failed = True
     except (RuntimeError, OSError) as e:
         print(f"FAIL: 브라우저 시작·연결 실패: {e}")
         failed = True

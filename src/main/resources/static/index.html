@@ -7,6 +7,8 @@
 <link rel="stylesheet" href="css/sfa-tokens.css">
 <link rel="stylesheet" href="css/app.css">
 <link rel="stylesheet" href="css/panel.css">
+<link rel="stylesheet" href="css/intake-assistant.css">
+<link rel="stylesheet" href="css/intake-quick.css">
 <link rel="stylesheet" href="css/known.css">
 </head>
 <body>
@@ -64,7 +66,7 @@
       </button>
       <button type="button" class="icon-btn" aria-label="로그아웃"><svg><use href="#i-power"/></svg></button>
       <div class="alarm-pop" id="alarm-pop" role="dialog" aria-label="알림" hidden>
-        <div class="alarm-head" data-a11y="new">내 신고 경과</div>
+        <div class="alarm-head" data-a11y="new">내 접수 경과</div>
         <ul class="alarm-list" id="alarm-list" data-a11y="new"></ul>
         <p class="alarm-empty" id="alarm-empty" data-a11y="new" hidden>새 알림이 없어요</p>
       </div>
@@ -132,7 +134,7 @@
             <li><button type="button" class="tab" data-sfa="tab" data-board="system">시스템공지</button></li>
             <li><button type="button" class="tab" data-sfa="tab" data-board="ceo">CEO 메시지</button></li>
             <li><button type="button" class="tab" data-sfa="tab" data-board="sales">영업자료실</button></li>
-            <li><button type="button" class="tab tab-auto" data-sfa="tab" data-entry="tab" data-board="known">알려진 오류·내 신고</button></li>
+            <li><button type="button" class="tab tab-auto" data-sfa="tab" data-entry="tab" data-board="known">오류 현황·내 접수내역</button></li>
           </ul>
           <ul class="board" id="board" data-a11y="replica"></ul>
         </section>
@@ -177,16 +179,18 @@
   <header class="pn-head">
     <span class="pn-ico"><svg aria-hidden="true"><use href="#i-alert"/></svg></span>
     <h2 id="pn-title">전산 오류 접수</h2>
-    <button type="button" class="pn-close" id="pn-close"><svg aria-hidden="true"><use href="#i-close"/></svg>닫기</button>
+    <button type="button" class="pn-btn-2 pq-mode" id="pn-mode-toggle" data-act="assistant" hidden>AI 모드</button>
+    <button type="button" class="pn-close" id="pn-close" aria-label="닫기"><svg aria-hidden="true"><use href="#i-close"/></svg><span>닫기</span></button>
   </header>
   <div class="pn-proxy" id="pn-proxy" hidden>
-    <label for="pn-proxy-select">누구의 신고인가요?</label>
+    <label for="pn-proxy-select">누구의 접수인가요?</label>
     <select id="pn-proxy-select"></select>
   </div>
-  <div class="pn-steps">
+  <div class="pn-steps" id="pn-steps">
     <p class="pn-steps-text" id="pn-steps-text" aria-live="polite"></p>
     <ol class="pn-track" id="pn-track" aria-hidden="true"></ol>
   </div>
+  <span class="pn-sr-only" id="pn-assist-status" role="status"></span>
   <div class="pn-body" id="pn-body"></div>
   <div class="pn-foot" id="pn-foot"></div>
 </section>
@@ -196,12 +200,12 @@
 <section class="pn kn" id="known-panel" role="dialog" aria-modal="true" aria-labelledby="kn-title" data-a11y="new" hidden>
   <header class="pn-head">
     <span class="pn-ico"><svg aria-hidden="true"><use href="#i-bell"/></svg></span>
-    <h2 id="kn-title">알려진 오류·내 신고</h2>
+    <h2 id="kn-title">오류 현황·내 접수내역</h2>
     <button type="button" class="pn-close" id="kn-close"><svg aria-hidden="true"><use href="#i-close"/></svg>닫기</button>
   </header>
   <div class="kn-tabs" role="tablist" aria-label="보기 고르기">
-    <button type="button" role="tab" class="kn-tab" id="kn-tab-known" data-tab="known" aria-controls="kn-body">알려진 오류</button>
-    <button type="button" role="tab" class="kn-tab" id="kn-tab-mine" data-tab="mine" aria-controls="kn-body">내 신고</button>
+    <button type="button" role="tab" class="kn-tab" id="kn-tab-known" data-tab="known" aria-controls="kn-body">오류 현황</button>
+    <button type="button" role="tab" class="kn-tab" id="kn-tab-mine" data-tab="mine" aria-controls="kn-body">내 접수내역</button>
   </div>
   <div class="pn-body" id="kn-body" role="tabpanel" tabindex="-1"></div>
 </section>
@@ -210,9 +214,17 @@
 <script src="js/fixtures/notifications.js"></script>
 <script src="js/fixtures/sfa-home.js"></script>
 <script src="js/fixtures/intake.js"></script>
+<script src="js/fixtures/defects.js"></script>
+<script src="js/fixtures/intake-assistant.js"></script>
 <script src="js/fixtures/reports.js"></script>
+<script src="js/fixtures/intake-diagnostics.js"></script>
+<script src="js/intake-demo-store.js"></script>
+<script src="js/intake-diagnostics-view.js"></script>
+<script src="js/intake-draft-rules.js"></script>
 <script src="js/api-client.js"></script>
 <script src="js/sfa-mock.js"></script>
+<script src="js/intake-attachment.js"></script>
+<script src="js/intake-quick.js"></script>
 <script src="js/intake-panel.js"></script>
 <script src="js/known-panel.js"></script>
 <script>

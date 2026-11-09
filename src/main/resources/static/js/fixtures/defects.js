@@ -33,7 +33,7 @@ window.FIXTURES.ledger = {
     { "id": "D-2026-003", "title": "가입설계에서 보험료 계산이 늦게 나와요", "type": "DEFECT", "systemGen": "NEW",
       "grade": "BATCH", "status": "CAUSE_FOUND", "departmentCode": "DESIGN_SUPPORT",
       "workaround": null, "plannedFixDate": null,
-      "wontFixReasonCode": null, "wontFixReasonText": null, "published": false, "updatedAt": "2026-11-03T11:00:00+09:00" },
+      "wontFixReasonCode": null, "wontFixReasonText": null, "published": true, "updatedAt": "2026-11-03T11:00:00+09:00" },
     { "id": "D-2026-004", "title": "로그인할 때 글자가 다르게 들어가요", "type": "DEFECT", "systemGen": "OLD",
       "grade": "NORMAL", "status": "WORKAROUND", "departmentCode": "LOGIN_SUPPORT",
       "workaround": "인터넷 기록(쿠키)을 지우고 다시 접속하면 잠시 괜찮아져요", "plannedFixDate": "2026-11-20",
