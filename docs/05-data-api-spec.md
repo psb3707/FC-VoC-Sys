@@ -151,6 +151,13 @@
 [{"id":"D-2026-004","title":"로그인할 때 글자가 다르게 들어가요","matchedIn":["REPORT"],"matchedReportIds":["R-…"], "...":"Defect 키"}]
 ```
 
+### `GET /api/defects` 목록 항목의 계산 필드 (S4 "확인할 것", 02번 5-2절)
+저장하지 않고 응답 때 붙인다. `reports`(묶인 신고, 신고자 지점·후속 포함)는 지금처럼 붙인다.
+- `statusChangedAt`: 마지막 상태 이력 시각(없으면 `updatedAt`).
+- `workaroundAt`: 마지막으로 `WORKAROUND`가 된 이력 시각(없으면 `null`).
+- `fcNoticeStatus`: FC용 안내문 상태 `APPROVED` `DRAFT` 또는 `null`.
+- 프론트 단계: "지금"은 `FIXTURES.ledger.asOf`(고정 기준 시각)를 쓴다. 시연 날짜와 관계없이 같은 경과일이 나오게 하려는 것이며 `ApiClient.getLedgerAsOf()`로 읽는다. 백엔드 단계에서는 서버 시각.
+
 ### POST `/api/reports/{id}/similar-defects` 응답 (07번 ⑤, ADR-017)
 요청 본문 없음(서버가 신고·대장을 읽어 마스킹본만 LLM에 보낸다). 후보는 최대 3개, 대장에 있는 결함만, 비슷함 순. 화면 표시용 `title`·`status`는 서버가 대장에서 붙인다(LLM 응답에서 받지 않음).
 ```json
