@@ -49,7 +49,7 @@
   --ld-flag-ink: var(--pn-sub);
   --ld-flag-icon: 20px;
   /* 정보 알약 (0-3 "정보 알약"): 신·구·유형 태그. 상태 알약과 구분되게 연한 바탕 + 안쪽 1px 선 + 보조 글자 */
-  --ld-info-bg: var(--pn-surface);
+  --ld-info-bg: var(--pn-bg);                  /* 흰 바탕 + 선: 흐린 상태 알약(#e6ebf0 바탕)과 구분 */
   --ld-info-line: var(--pn-line-soft);
 }
 
@@ -133,6 +133,9 @@ body.ld-page:has(.pn:not([hidden])) { overflow-y: hidden; }
 .ld-tag.is-ok { background: var(--ld-tag-ok-bg); color: var(--ld-tag-ok-ink); }
 .ld-tag.is-dim { background: var(--ld-tag-dim-bg); color: var(--ld-tag-dim-ink); }
 .ld-tag.is-info { background: var(--ld-info-bg); box-shadow: inset 0 0 0 1px var(--ld-info-line); color: var(--ld-sub); font-weight: 500; }
+/* 마우스를 올린·연 줄 바탕(#f2f9fd)이 강조 알약 바탕과 같아 알약이 사라지므로, 그 줄에서는 강조 알약을 흰 바탕으로 (디자인 리뷰) */
+.ld-table tbody tr:is(:hover, .is-open) .ld-tag:not(.is-warn, .is-ok, .is-dim, .is-info) { background: var(--ld-bg); }
+.ld-nowrap { white-space: nowrap; }
 
 /* 결함 칸: ID + 신·구·유형 정보 알약 / 제목 / 작은 보조 줄(업무 · 담당 부서). 보조 줄도 18px(본문 18px 이상) */
 .ld-idline { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
@@ -164,8 +167,10 @@ body.ld-page:has(.pn:not([hidden])) { overflow-y: hidden; }
 .ld-reports-sum { margin: 0 0 12px; padding-bottom: 12px; border-bottom: 1px solid var(--ld-line-soft); }
 .ld-reports .ld-materials { margin-top: 8px; box-shadow: inset 0 0 0 1px var(--ld-line-soft); }
 /* 패널 머리 요약 두 줄 (요약 카드 대신) */
-.ld-panel-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-bottom: 4px; }
+.ld-panel-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.ld-panel .ld-panel-meta { margin: 0 0 4px; font-weight: 500; }   /* .pn p(12px)보다 우선해 두 줄을 한 덩어리로 */
 .ld-panel .ld-panel-meta2 { margin: 0 0 16px; }
+.ld-panel .kn-now b { color: inherit; }   /* 상태는 카드 머리 알약이 강조하므로 글자 쪽 강조색은 빼서 중복을 없앤다 */
 .ld-panel .ld-progress { margin-bottom: 12px; }
 .ld-flag-note .ld-flags { margin-top: 4px; }
 /* 원인과 상태 이력: 사유가 적힌 마지막 이력을 위에 한 줄로 */

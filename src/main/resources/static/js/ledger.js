@@ -193,7 +193,7 @@
     if (d.status === 'RECEIVED' && stuck > 1) out.push({ warn: true, text: '접수 ' + stuck + '일째 그대로' });
     if (left !== null && left >= 0 && left <= 3) out.push({ text: left ? '예정일 D-' + left : '예정일 오늘' });
     if (f.notice === 'DRAFT') out.push({ text: '안내문 승인 대기' });
-    if (d.published === false && (d.workaround || d.plannedFixDate)) out.push({ text: '알려진 오류에 안 보임' });
+    if (d.published === false && (d.workaround || d.plannedFixDate)) out.push({ text: '알려진 오류 목록에 안 올라감' });
     return out;
   }
   /* bare: 상자 아이콘이 이미 수준을 보이면(신호가 모두 같은 수준) 줄마다 같은 아이콘을 되풀이하지 않는다 */
@@ -447,16 +447,19 @@
     return null;
   }
   function historyRows(d) {
+    var top = reasonEntry(d);
     return (d.statusHistory || []).slice().reverse().map(function (h) {
       var what = (h.from ? stageLabel(h.from) + ' → ' : '') + stageLabel(h.to);
+      // "최근 사유"로 위에 올린 이력은 같은 사유를 되풀이하지 않는다
       return [fmtWhen(h.at), [el('span', null, [what + ' · ' + userName(h.actorId)]),
         el('span', { cls: 'ld-tag' + (h.notifiable ? '' : ' is-dim') }, [h.notifiable ? '알림 보냄' : '기록만']),
-        h.reason ? el('span', { cls: 'ld-why' }, ['사유: ' + h.reason]) : null]];
+        h.reason ? el('span', { cls: 'ld-why' }, [h === top ? '사유: 위 "최근 사유"' : '사유: ' + h.reason]) : null]];
     });
   }
+  function reasonEntry(d) { return (d.statusHistory || []).filter(function (x) { return x.reason; }).pop() || null; }
   /* 원인 단서는 이력 사유에 들어 있다: 사유가 적힌 마지막 이력을 이력 위에 한 줄로 */
   function latestReason(d) {
-    var h = (d.statusHistory || []).filter(function (x) { return x.reason; }).pop();
+    var h = reasonEntry(d);
     return h ? el('p', { cls: 'ld-reason' }, [el('b', null, ['최근 사유']), h.reason,
       el('span', { cls: 'ld-sub' }, [stageLabel(h.to) + ' · ' + fmtDate(h.at) + ' · ' + userName(h.actorId)])]) : null;
   }
@@ -633,8 +636,11 @@
         byBranch[b] += 1;
       });
       items.push(el('li', { cls: 'ld-metoo' }, [el('b', null, ['"나도 겪었어요" ' + metoo.length + '명']),
-        el('span', { cls: 'ld-who' }, [order.map(function (b) { return b + ' ' + byBranch[b] + '명'; }).join(' · ') +
-          ' · 최근 ' + fmtDate(metoo[0].createdAt)])]));
+        // 지점 이름 안에서 줄이 바뀌지 않게 항목마다 묶는다
+        el('span', { cls: 'ld-who' }, order.map(function (b) {
+          return el('span', { cls: 'ld-nowrap' }, [b + ' ' + byBranch[b] + '명']);
+        }).reduce(function (acc, s) { return acc.concat(acc.length ? [' · ', s] : [s]); }, [])
+          .concat([' · ', el('span', { cls: 'ld-nowrap' }, ['최근 ' + fmtDate(metoo[0].createdAt)])]))]));
     }
     return el('div', { cls: 'pn-card' }, [
       el('p', { cls: 'ld-sub ld-reports-sum' }, ['신고자 ' + reporterCount(d) + '명 · 지점 ' + branchCount(d) + '곳 · 최근 ' + fmtDate(lastReportAt(d))]),
