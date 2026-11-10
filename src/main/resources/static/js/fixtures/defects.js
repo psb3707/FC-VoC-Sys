@@ -12,6 +12,9 @@
    업무 코드는 intake.js metaForm, 등급·부서 코드는 intake-panel.js 와 같다. 모든 값은 가상이다. */
 window.FIXTURES = window.FIXTURES || {};
 window.FIXTURES.ledger = {
+  /* 프론트 단계 기준 시각(05번 4절): 경과일·예정일·"확인할 것"(02번 5-2절)을 이 시각으로 센다. 시드의 마지막 신고 직후 */
+  "asOf": "2026-11-04T10:00:00+09:00",
+
   "branches": [
     { "id": "B-01", "name": "해오름지점(가상)", "regionGroup": "수도권" },
     { "id": "B-02", "name": "푸른솔지점(가상)", "regionGroup": "수도권" },

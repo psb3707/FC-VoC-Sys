@@ -327,8 +327,10 @@
         var lfoot = document.getElementById('ld-foot');
         if (!lfoot || !near(lfoot.getBoundingClientRect().bottom, lr.bottom)) lf.push('행동 줄이 패널 맨 아래 아님');
         if (all('#ledger-panel .pn-btn').length !== 1) lf.push('패널 주 버튼 ' + all('#ledger-panel .pn-btn').length + '개 (1 필요)');
+        // 대표 결함 패널은 단계 이름 줄 없이 글자 한 줄("N단계 중 M단계 · …")로 뜻을 전한다(06번 6절). 신고 패널에는 진행 표시가 없다
         all('#ledger-panel .kn-progress').forEach(function (p) {
-          if (!p.querySelector('.kn-now') || !p.querySelector('[aria-current="step"]')) lf.push('진행 단계 글자·aria-current 없음');
+          var now = p.querySelector('.kn-now');
+          if (!now || !/단계/.test(now.textContent)) lf.push('진행 단계 글자 없음');
         });
       }
       // 가운데 대화상자: 화면 안, 가운데, 모서리 24px, 단계 글자, 주 버튼 하나(56px·#0077b3)
@@ -399,6 +401,35 @@
         af.push('"담당자가 확인" 안내 없음');
       }
       add('s4-ai', af);
+
+      // 정보 배치 (06번 6절, 02번 5-2절): 목록 5열·경과·확인할 것, 보조 줄도 18px, 패널 요약 카드·단계 이름 줄 없음, 역할별 순서
+      var df = [];
+      var dtable = document.querySelector('.ld-table[aria-label^="대표 결함 목록"]');
+      if (dtable) {
+        var heads = all('.ld-table[aria-label^="대표 결함 목록"] thead th').map(function (th) { return th.textContent.trim(); });
+        if (heads.join('|') !== '대표 결함|영향|처리 등급|상태|확인할 것') df.push('목록 열 ' + heads.join('|'));
+        Array.prototype.forEach.call(dtable.querySelectorAll('tbody tr'), function (tr) {
+          var c = tr.children;
+          if (!c[3] || !/지남|바뀜/.test(c[3].textContent)) df.push(tr.getAttribute('data-id') + ' 경과 없음');
+          if (!c[4] || !c[4].textContent.trim()) df.push(tr.getAttribute('data-id') + ' 확인할 것 칸 빔');
+        });
+      }
+      all('.ld-sub, .ld-flags li').forEach(function (s) {
+        if (px(cs(s).fontSize) < 18 - EPS) df.push(label(s) + ' 글자 ' + cs(s).fontSize);
+      });
+      all('.ld-flags:not(.is-bare) li').forEach(function (li) {
+        var use = li.querySelector('use'), want = li.classList.contains('is-warn') ? '#i-warn' : '#i-info';
+        if (!use || use.getAttribute('href') !== want) df.push(label(li) + ' 수준 아이콘 없음');
+      });
+      var lpBody = document.getElementById('ld-body');
+      if (lp && visible(lp) && /^대표 결함/.test((document.getElementById('ld-panel-title') || {}).textContent || '')) {
+        if (lpBody.querySelector('.kn-stages')) df.push('패널 단계 이름 줄 남음');
+        if (all('#ld-body .pn-card-title').some(function (t) { return t.textContent.trim() === '요약'; })) df.push('패널 요약 카드 남음');
+        var h4s = all('#ld-body > h4').map(function (h) { return h.textContent.trim(); });
+        var first = /role=IT/.test(location.hash) ? '원인과 상태 이력' : '안내문';
+        if (h4s[0] !== first) df.push('역할별 첫 덩어리 ' + h4s[0] + ' (기대 ' + first + ')');
+      }
+      add('s4-density', df);
     }
 
     var result = { ok: checks.every(function (c) { return c.pass; }), url: location.hash, checks: checks };

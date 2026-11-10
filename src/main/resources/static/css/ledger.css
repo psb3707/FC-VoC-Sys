@@ -44,6 +44,13 @@
   /* 글자 찾기 (REQ-LG-08, 0-3 "찾은 낱말 표시"): 연한 노랑 바탕 + 진한 글자 --pn-ink #292d33 (대비 약 12) */
   --ld-mark-bg: #fff0a8;
   --ld-search-w: 272px;                        /* 찾기 입력란 폭: 1280px 폭 기본 화면에서 필터 줄이 한 줄에 들어가게(디자인 리뷰) */
+  /* 확인할 것 신호 (02번 5-2절, 0-3 "확인할 것 신호"): 경고 = 경고 아이콘 + 진한 빨강 글자, 참고 = 정보 아이콘 + 보조 글자 */
+  --ld-flag-warn-ink: var(--pn-warn-ink);      /* #a1221a: 흰 바탕·#f2f9fd 위 대비 6 이상 */
+  --ld-flag-ink: var(--pn-sub);
+  --ld-flag-icon: 20px;
+  /* 정보 알약 (0-3 "정보 알약"): 신·구·유형 태그. 상태 알약과 구분되게 연한 바탕 + 안쪽 1px 선 + 보조 글자 */
+  --ld-info-bg: var(--pn-surface);
+  --ld-info-line: var(--pn-line-soft);
 }
 
 /* SFA 홈은 화면 고정(스크롤 없음)이지만 결함 대장은 문서처럼 세로로 스크롤한다 */
@@ -68,7 +75,6 @@ body.ld-page:has(.pn:not([hidden])) { overflow-y: hidden; }
 
 /* ---- ② 목록 ---- */
 .ld-main { max-width: var(--ld-max-w); margin: 0 auto; padding: 24px var(--ld-gutter) 32px; }
-.ld-lead { margin: 0 0 20px; color: var(--ld-sub); }
 
 /* 탭: 홈 공지 탭 구조(위 모서리 12px, 1px 연한 테두리, 선택 탭 흰 바탕·굵게)를 18px·56px로. 선택은 ✓ 로도 알림 */
 .ld-tabs { display: flex; gap: 0; border-bottom: 2px solid var(--ld-tab-rule); }
@@ -126,6 +132,19 @@ body.ld-page:has(.pn:not([hidden])) { overflow-y: hidden; }
 .ld-tag.is-warn { background: var(--ld-tag-warn-bg); color: var(--ld-tag-warn-ink); }
 .ld-tag.is-ok { background: var(--ld-tag-ok-bg); color: var(--ld-tag-ok-ink); }
 .ld-tag.is-dim { background: var(--ld-tag-dim-bg); color: var(--ld-tag-dim-ink); }
+.ld-tag.is-info { background: var(--ld-info-bg); box-shadow: inset 0 0 0 1px var(--ld-info-line); color: var(--ld-sub); font-weight: 500; }
+
+/* 결함 칸: ID + 신·구·유형 정보 알약 / 제목 / 작은 보조 줄(업무 · 담당 부서). 보조 줄도 18px(본문 18px 이상) */
+.ld-idline { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+.ld-idline .ld-id { display: inline; }
+.ld-sub { display: block; color: var(--ld-sub); font-weight: 500; }
+.ld-table td > .ld-tag + .ld-sub { margin-top: 2px; }
+/* 확인할 것 신호: 바탕·테두리 없이 아이콘 + 글자 한 줄씩 (알약처럼 보이지 않게) */
+.ld-flags { margin: 0; padding: 0; list-style: none; }
+.ld-flags li { display: flex; align-items: flex-start; gap: 6px; color: var(--ld-flag-ink); font-weight: 500; }
+.ld-flags li.is-warn { color: var(--ld-flag-warn-ink); }
+.ld-page .ld-flags svg { width: var(--ld-flag-icon); height: var(--ld-flag-icon); margin-top: 3px; color: currentColor; }
+.ld-table .ld-flag-cell { min-width: 220px; }
 
 /* 아직 안 묶인 신고 줄의 [묶기] 보조 버튼 */
 .ld-table .pn-btn-2 { min-width: 96px; white-space: nowrap; }
@@ -142,6 +161,16 @@ body.ld-page:has(.pn:not([hidden])) { overflow-y: hidden; }
 .ld-reports li:first-child { padding-top: 0; }
 .ld-reports li:last-child { padding-bottom: 0; }
 .ld-reports .ld-who { display: block; color: var(--ld-sub); }
+.ld-reports-sum { margin: 0 0 12px; padding-bottom: 12px; border-bottom: 1px solid var(--ld-line-soft); }
+.ld-reports .ld-materials { margin-top: 8px; box-shadow: inset 0 0 0 1px var(--ld-line-soft); }
+/* 패널 머리 요약 두 줄 (요약 카드 대신) */
+.ld-panel-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-bottom: 4px; }
+.ld-panel .ld-panel-meta2 { margin: 0 0 16px; }
+.ld-panel .ld-progress { margin-bottom: 12px; }
+.ld-flag-note .ld-flags { margin-top: 4px; }
+/* 원인과 상태 이력: 사유가 적힌 마지막 이력을 위에 한 줄로 */
+.ld-reason { margin: 0 0 12px; padding-bottom: 12px; border-bottom: 1px solid var(--ld-line-soft); }
+.ld-reason b { display: block; }
 .ld-panel .pn-foot .pn-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 .ld-panel .pn-foot .pn-btn-2 { flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 

@@ -80,6 +80,8 @@ KNOWN_PANEL_STATES = [K + "tab=known", K + "tab=known&item=D-2026-005", K + "tab
 # 상태 바꾸기 대화상자 단계별(고르기·예정일·사유·되돌림·막힘·알림 미리보기·기록만·끝)·신고 묶기
 LD = "role=SALES&item=D-2026-001&dialog=status&"
 LEDGER_STATES = ["role=SALES", "role=IT&grade=IMMEDIATE", "role=SALES&status=RESOLVED",
+                 # 정보 배치(06번 6절): IT 담당 순서(원인·이력 먼저), 확인할 것 경고·참고, 나도 겪었어요 묶음
+                 "role=IT&item=D-2026-001", "role=IT&item=D-2026-004", "role=SALES&item=D-2026-002",
                  "role=SALES&tab=unlinked", "role=SALES&tab=unlinked&for=D-2026-001",
                  "role=SALES&item=D-2026-001", "role=SALES&item=D-2026-005", "role=SALES&item=D-2026-006",
                  LD + "dstep=pick", LD + "to=FIX_PLANNED&dstep=pick",

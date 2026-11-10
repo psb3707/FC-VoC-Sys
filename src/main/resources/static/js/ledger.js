@@ -53,6 +53,7 @@
   var draft = { date: '', reason: '', memo: '' };   // 대화상자 입력 중인 값 (주소에는 [다음]을 누를 때 적음)
   var draftKey = '', resolutionLabels, statusResult = null, statusError = '';
   var opener = null;
+  var asOf = '';   // "지금"(05번 4절): 프론트 단계는 고정 기준 시각, 경과일·예정일·확인할 것을 센다
 
   /* ---- 작은 도우미 ---- */
   function el(tag, attrs, kids) {
@@ -148,6 +149,67 @@
     return Object.keys(seen).length;
   }
   function score(d) { return branchCount(d) * (GRADE_WEIGHT[d.grade] || 1); }
+
+  /* ---- 날짜 차이·확인할 것 (02번 5-2절). 날짜 차이는 한국 시간 날짜로 센다 ---- */
+  var DAY = 86400000, KST = 9 * 3600000;
+  function dayNo(iso) {
+    var t = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? Date.parse(iso + 'T00:00:00+09:00') : Date.parse(iso);
+    return Math.floor((t + KST) / DAY);
+  }
+  function daysSince(iso) { return iso && asOf ? dayNo(asOf) - dayNo(iso) : 0; }
+  var CLOSED = ['RESOLVED', WONT_FIX];
+  /* 목록 항목(계산 필드 있음)과 상세(이력·안내문 있음) 어느 쪽이든 같은 값을 꺼낸다 */
+  function facts(d) {
+    var hist = d.statusHistory || [];
+    var toW = hist.filter(function (h) { return h.to === 'WORKAROUND'; }).pop();
+    return {
+      changedAt: d.statusChangedAt || (hist.length ? hist[hist.length - 1].at : d.updatedAt),
+      workaroundAt: d.workaroundAt !== undefined ? d.workaroundAt : toW ? toW.at : null,
+      notice: d.fcNoticeStatus !== undefined ? d.fcNoticeStatus : d.fcNotice ? d.fcNotice.status : null
+    };
+  }
+  function elapsedText(d) {
+    var n = Math.max(daysSince(facts(d).changedAt), 0);
+    return n ? n + '일 지남' : '오늘 바뀜';
+  }
+  function lastReportAt(d) {
+    return (d.reports || []).reduce(function (m, r) { return r.createdAt > m ? r.createdAt : m; }, '');
+  }
+  /* 경고 먼저, 같은 수준은 02번 5-2절 표 순서 */
+  function flags(d) {
+    var f = facts(d), out = [], reports = d.reports || [], closed = CLOSED.indexOf(d.status) >= 0;
+    var again = reports.filter(function (r) {
+      return (r.followups || []).some(function (x) { return x.action === 'RECURRED' || x.action === 'STILL'; });
+    }).length;
+    if (!closed && (d.status === 'WORKAROUND' || d.status === 'FIX_PLANNED') && f.workaroundAt) {
+      var after = reports.filter(function (r) { return r.createdAt > f.workaroundAt; }).length;
+      if (after) out.push({ warn: true, text: '임시조치 뒤 신고 ' + after + '건' });
+    }
+    if (again) out.push({ warn: true, text: '다시 생겼다는 신고 ' + again + '건' });
+    if (closed) return out;
+    var left = d.plannedFixDate ? -daysSince(d.plannedFixDate) : null;
+    if (left !== null && left < 0) out.push({ warn: true, text: '예정일 ' + -left + '일 지남' });
+    var stuck = daysSince(f.changedAt);
+    if (d.status === 'RECEIVED' && stuck > 1) out.push({ warn: true, text: '접수 ' + stuck + '일째 그대로' });
+    if (left !== null && left >= 0 && left <= 3) out.push({ text: left ? '예정일 D-' + left : '예정일 오늘' });
+    if (f.notice === 'DRAFT') out.push({ text: '안내문 승인 대기' });
+    if (d.published === false && (d.workaround || d.plannedFixDate)) out.push({ text: '알려진 오류에 안 보임' });
+    return out;
+  }
+  /* bare: 상자 아이콘이 이미 수준을 보이면(신호가 모두 같은 수준) 줄마다 같은 아이콘을 되풀이하지 않는다 */
+  function flagList(list, bare) {
+    return el('ul', { cls: 'ld-flags' + (bare ? ' is-bare' : '') }, list.map(function (x) {
+      // 수준은 아이콘 모양으로 보이고, 화면 읽기 프로그램에는 글자로 알린다(색만으로 알리지 않음)
+      return el('li', { cls: x.warn ? 'is-warn' : null }, [bare ? null : icon(x.warn ? 'i-warn' : 'i-info'),
+        el('span', null, [el('span', { cls: 'pn-sr-only', 'data-clip-ok': true }, [x.warn ? '주의: ' : '참고: ']), x.text])]);
+    }));
+  }
+  /* 결함의 업무: 묶인 신고에서 가장 많은 업무 (대표 결함에는 업무 필드가 없다) */
+  function mainBusiness(d) {
+    var n = {}, best = '';
+    (d.reports || []).forEach(function (r) { n[r.business] = (n[r.business] || 0) + 1; if (!best || n[r.business] > n[best]) best = r.business; });
+    return best ? BUSINESS[best] || best : '';
+  }
   function sorted(list) {
     return list.slice().sort(function (a, b) {
       return score(b) - score(a) || (b.reports || []).length - (a.reports || []).length || (a.id < b.id ? -1 : 1);
@@ -274,20 +336,27 @@
       body = el('div', { cls: 'ld-card ld-empty' }, [el('p', null, ['조건에 맞는 대표 결함이 없어요']),
         btn('pn-btn-2', '조건 지우기', 'reset')]);
     } else {
-      var head = el('tr', null, ['대표 결함', '유형', '신·구', '영향 지점', '신고', '처리 등급', '상태', '담당 부서'].map(function (h, i) {
-        return el('th', { scope: 'col', cls: i >= 3 && i <= 4 ? 'is-num' : null }, [h]);
+      // 5열(06번 6절): 판단에 덜 쓰는 유형·신·구·부서는 결함 칸 안 태그·작은 줄로, 경과·최근 신고·확인할 것은 바로 보이게
+      var head = el('tr', null, ['대표 결함', '영향', '처리 등급', '상태', '확인할 것'].map(function (h) {
+        return el('th', { scope: 'col' }, [h]);
       }));
       var trs = list.map(function (d) {
+        var fl = flags(d), last = lastReportAt(d);
+        var sub = [mainBusiness(d), DEPT[d.departmentCode] || d.departmentCode].filter(Boolean).join(' · ');
         return el('tr', { 'data-id': d.id, cls: st.item === d.id ? 'is-open' : null }, [
           el('td', null, [el('button', { type: 'button', cls: 'ld-open', 'data-open': d.id, 'aria-haspopup': 'dialog' }, [
-            el('span', { cls: 'ld-id' }, marked(d.id, st.q)), el('span', { cls: 'ld-title' }, marked(d.title, st.q)), hitLine(d)])]),
-          el('td', { cls: 'is-nowrap' }, [TYPE[d.type] || d.type]),
-          el('td', { cls: 'is-nowrap' }, [GEN[d.systemGen] || d.systemGen]),
-          el('td', { cls: 'is-num' }, [branchCount(d) + '곳']),
-          el('td', { cls: 'is-num' }, [(d.reports || []).length + '건']),
+            el('span', { cls: 'ld-idline' }, [el('span', { cls: 'ld-id' }, marked(d.id, st.q)),
+              el('span', { cls: 'ld-tag is-info' }, [GEN[d.systemGen] || d.systemGen]),
+              d.type !== 'DEFECT' ? el('span', { cls: 'ld-tag is-info' }, [TYPE[d.type] || d.type]) : null]),
+            el('span', { cls: 'ld-title' }, marked(d.title, st.q)),
+            sub ? el('span', { cls: 'ld-sub' }, [sub]) : null, hitLine(d)])]),
+          el('td', { cls: 'is-nowrap' }, [branchCount(d) + '곳 · ' + (d.reports || []).length + '건',
+            last ? el('span', { cls: 'ld-sub' }, ['최근 ' + fmtDate(last)]) : null]),
           el('td', null, [gradeTag(d.grade)]),
-          el('td', null, [statusTag(d.status)]),
-          el('td', { cls: 'is-nowrap' }, [DEPT[d.departmentCode] || d.departmentCode])]);
+          el('td', { cls: 'is-nowrap' }, [statusTag(d.status), el('span', { cls: 'ld-sub' }, [elapsedText(d)])]),
+          el('td', { cls: 'ld-flag-cell' }, fl.length ? [flagList(fl.slice(0, 2)),
+            fl.length > 2 ? el('span', { cls: 'ld-sub' }, ['외 ' + (fl.length - 2) + '건']) : null]
+            : [el('span', { cls: 'ld-sub' }, ['없음'])])]);
       });
       body = el('div', { cls: 'ld-card' }, [el('table', { cls: 'ld-table', 'aria-label': '대표 결함 목록, 영향 지점 수 × 업무 중요도 순' }, [
         el('thead', null, [head]), el('tbody', null, trs)])]);
@@ -363,19 +432,14 @@
       var h = (d.statusHistory || []).filter(function (x) { return x.to === WONT_FIX; }).pop();
       at = h ? stageIndex(h.from) : 0;
     }
-    var now = el('p', { cls: 'kn-now' }, wont
+    // 담당자용이라 단계 이름 줄 없이 글자 한 줄 + 막대(장식)만 (06번 6절). 단계 목록은 상태 바꾸기 대화상자에 있다
+    var now = el('p', { cls: 'kn-now' }, (wont
       ? [el('b', null, [WONT_FIX_LABEL]), ' · ' + STAGES[Math.max(at, 0)][1] + ' 단계에서 끝났어요']
-      : [STAGES.length + '단계 중 ' + (at + 1) + '단계 · ', el('b', null, [stageLabel(code)])]);
+      : [STAGES.length + '단계 중 ' + (at + 1) + '단계 · ', el('b', null, [stageLabel(code)])]).concat([' · ' + elapsedText(d)]));
     var track = el('ol', { cls: 'pn-track', 'aria-hidden': 'true' }, STAGES.map(function (s, i) {
       return el('li', { cls: wont ? (i <= at ? 'is-done' : null) : (i < at ? 'is-done' : i === at ? 'is-now' : null) });
     }));
-    var names = STAGES.map(function (s, i) {
-      var cur = !wont && i === at;
-      return el('li', { cls: cur ? 'is-now' : null, 'aria-current': cur ? 'step' : null }, [s[1] + (cur ? '(지금)' : '')]);
-    });
-    names.push(el('li', { cls: 'is-alt' + (wont ? ' is-now' : ''), 'aria-current': wont ? 'step' : null },
-      [WONT_FIX_LABEL + (wont ? '(지금)' : '')]));
-    return el('div', { cls: 'kn-progress' }, [now, track, el('ol', { cls: 'kn-stages', 'aria-label': '처리 단계' }, names)]);
+    return el('div', { cls: 'kn-progress ld-progress' }, [now, track]);
   }
   function planRow(d) {
     if (d.status === WONT_FIX) return ['고치지 않는 이유', d.wontFixReasonText || REASON_TEXT[d.wontFixReasonCode] || ''];
@@ -389,6 +453,12 @@
         el('span', { cls: 'ld-tag' + (h.notifiable ? '' : ' is-dim') }, [h.notifiable ? '알림 보냄' : '기록만']),
         h.reason ? el('span', { cls: 'ld-why' }, ['사유: ' + h.reason]) : null]];
     });
+  }
+  /* 원인 단서는 이력 사유에 들어 있다: 사유가 적힌 마지막 이력을 이력 위에 한 줄로 */
+  function latestReason(d) {
+    var h = (d.statusHistory || []).filter(function (x) { return x.reason; }).pop();
+    return h ? el('p', { cls: 'ld-reason' }, [el('b', null, ['최근 사유']), h.reason,
+      el('span', { cls: 'ld-sub' }, [stageLabel(h.to) + ' · ' + fmtDate(h.at) + ' · ' + userName(h.actorId)])]) : null;
   }
   function noticeCard(d) {
     var n = d.fcNotice;
@@ -503,6 +573,11 @@
     var details = el('details', { cls: 'pn-details pq-details pq-attachment' }, [
       el('summary', null, ['확인된 화면 첨부 보기']), slot
     ]);
+    loadAttachmentOnOpen(details, slot, report, st);
+    return details;
+  }
+  /* 펼칠 때만 첨부 이미지를 불러온다(신고 패널의 첨부 펼치기, 대표 결함 패널의 "확인 자료 보기" 공통) */
+  function loadAttachmentOnOpen(details, slot, report, st) {
     details.addEventListener('toggle', function () {
       if (!details.open || !details.isConnected) return;
       slot.textContent = '첨부 이미지를 불러오고 있어요.';
@@ -516,7 +591,54 @@
         if (details.isConnected) slot.textContent = '첨부를 열지 못했어요. 닫았다 다시 열어 주세요.';
       });
     });
+  }
+  /* 묶인 신고 한 건의 확인 자료(진단정보·첨부·AI 초안 확인 항목)를 펼치기 하나에 모은다 (06번 6절) */
+  function reportMaterials(r, st) {
+    var names = [r.diagnostics ? '진단정보' : '', r.hasAttachment ? '첨부' : '', r.aiDraftSummary ? 'AI 초안 확인' : ''].filter(Boolean);
+    if (!names.length) return null;
+    var dg = r.diagnostics, sm = r.aiDraftSummary;
+    var slot = r.hasAttachment ? el('div', { cls: 'pq-details-body', role: 'status' }) : null;
+    var details = el('details', { cls: 'pn-details ld-materials' }, [el('summary', null, ['확인 자료 보기 (' + names.join(' · ') + ')']),
+      dg ? rows([['접수하는 환경', dg.submission.device || '미확인']].concat(window.IntakeDiagnosticsRows(dg.submission, fmtWhen))) : null,
+      dg ? rows([['오류가 발생한 환경', dg.incident.device || '미확인']].concat(window.IntakeDiagnosticsRows(dg.incident, fmtWhen))) : null,
+      sm ? rows([['고객 진술', sm.customerReported ? '있음' : '미확인'], ['설계사 확인', sm.verifiedProvided ? '별도 내용 있음' : '미확인'],
+        ['추가 확인', sm.missing.join(', ') || '없음']]) : null,
+      slot].filter(Boolean));
+    if (slot) loadAttachmentOnOpen(details, slot, r, st);
     return details;
+  }
+  var FOLLOWUP = { RECURRED: '다시 발생했어요', STILL: '아직 안 돼요', ADD: '추가 내용', URGENT: '긴급 사정 추가' };
+  /* 묶인 신고: 문장·자료·후속이 있는 신고는 한 건씩, 문장 없는 "나도 겪었어요"는 한 줄로 묶는다 */
+  function linkedReportsCard(d, st) {
+    var all = d.reports || [];
+    if (!all.length) return el('div', { cls: 'pn-card' }, [el('p', null, ['아직 묶인 신고가 없어요'])]);
+    var plain = function (r) {
+      return r.kind === 'ME_TOO' && !r.maskedText && !(r.followups || []).length && !r.diagnostics && !r.hasAttachment && !r.aiDraftSummary;
+    };
+    var each = all.filter(function (r) { return !plain(r); }), metoo = all.filter(plain);
+    var items = each.map(function (r) {
+      var who = (r.reporter ? r.reporter.name + ' · ' + r.reporter.branchName + ' · ' : '') + fmtDate(r.createdAt);
+      return el('li', null, [el('span', { cls: 'ld-id' }, [r.id]), el('span', null, [r.maskedText || '"나도 겪었어요"로 보냄']),
+        el('span', { cls: 'ld-who' }, [who]), reportMaterials(r, st),
+        (r.followups || []).length ? el('ul', { cls: 'pn-plain' }, r.followups.map(function (entry) {
+          return el('li', null, [FOLLOWUP[entry.action] || entry.action, ' · ', fmtWhen(entry.at)]);
+        })) : null]);
+    });
+    if (metoo.length) {
+      // 문장이 없는 신고라 이름·날짜를 늘어놓지 않고 지점별 인원과 최근 날짜만 (받는 사람 명단은 알림 미리보기에 있다)
+      var byBranch = {}, order = [];
+      metoo.forEach(function (r) {
+        var b = r.reporter ? r.reporter.branchName : '지점 모름';
+        if (!byBranch[b]) { byBranch[b] = 0; order.push(b); }
+        byBranch[b] += 1;
+      });
+      items.push(el('li', { cls: 'ld-metoo' }, [el('b', null, ['"나도 겪었어요" ' + metoo.length + '명']),
+        el('span', { cls: 'ld-who' }, [order.map(function (b) { return b + ' ' + byBranch[b] + '명'; }).join(' · ') +
+          ' · 최근 ' + fmtDate(metoo[0].createdAt)])]));
+    }
+    return el('div', { cls: 'pn-card' }, [
+      el('p', { cls: 'ld-sub ld-reports-sum' }, ['신고자 ' + reporterCount(d) + '명 · 지점 ' + branchCount(d) + '곳 · 최근 ' + fmtDate(lastReportAt(d))]),
+      el('ul', { cls: 'pn-plain ld-reports' }, items)]);
   }
 
   function resolutionRows(resolution) {
@@ -549,36 +671,27 @@
     var d = detail, body = $('ld-body');
     $('ld-panel-title').textContent = '대표 결함 ' + d.id;
     body.innerHTML = '';
-    var reports = (d.reports || []).map(function (r) {
-      var who = (r.reporter ? r.reporter.name + ' · ' + r.reporter.branchName : '') + ' · ' + fmtDate(r.createdAt);
-      return el('li', null, [el('span', { cls: 'ld-id' }, [r.id]), el('span', null, [r.maskedText || '"나도 겪었어요"로 보냄']),
-        el('span', { cls: 'ld-who' }, [who.replace(/^ · /, '')]),
-        r.diagnostics ? diagnosticDetails(r.diagnostics) : null,
-        r.hasAttachment ? attachmentDetails(r, st) : null,
-        draftSummaryCard(r),
-        (r.followups || []).length ? el('ul', { cls: 'pn-plain' }, r.followups.map(function (entry) {
-          var labels = { RECURRED: '다시 발생했어요', STILL: '아직 안 돼요', ADD: '추가 내용', URGENT: '긴급 사정 추가' };
-          return el('li', null, [labels[entry.action], ' · ', fmtWhen(entry.at)]);
-        })) : null]);
-    });
-    [el('h3', { tabindex: '-1' }, [d.title]),
-      el('p', { cls: 'pn-lead' }, ['마지막 변경 ' + fmtWhen(d.updatedAt)]),
+    var fl = flags(d), warn = fl.some(function (x) { return x.warn; });
+    // 목록과 같은 값(유형·신·구·등급·부서·지점·신고)은 카드 대신 제목 아래 두 줄로 (06번 6절)
+    var head = [el('h3', { tabindex: '-1' }, [d.title]),
+      el('p', { cls: 'pn-lead ld-panel-meta' }, [gradeTag(d.grade),
+        el('span', null, [[(GEN[d.systemGen] || '') + ' 시스템', TYPE[d.type] || d.type, DEPT[d.departmentCode] || d.departmentCode].join(' · ')])]),
+      el('p', { cls: 'ld-sub ld-panel-meta2' }, ['지점 ' + branchCount(d) + '곳 · 신고 ' + (d.reports || []).length + '건(신고자 ' + reporterCount(d) +
+        '명) · 마지막 변경 ' + fmtWhen(facts(d).changedAt)]),
       el('div', { cls: 'pn-card' }, [
         el('div', { cls: 'kn-card-head' }, [el('p', { cls: 'pn-card-title' }, ['지금 상태']), statusTag(d.status)]),
         progress(d),
         rows([d.workaround ? ['임시로 이렇게', d.workaround] : ['임시로 이렇게', '아직 없어요'], planRow(d)])]),
-      el('div', { cls: 'pn-card' }, [el('p', { cls: 'pn-card-title' }, ['요약']),
-        rows([['유형', TYPE[d.type] || d.type], ['신·구 시스템', (GEN[d.systemGen] || '') + ' 시스템'],
-          ['처리 등급', [gradeTag(d.grade)]], ['담당 부서', DEPT[d.departmentCode] || d.departmentCode],
-          ['영향 지점', branchCount(d) + '곳'], ['묶인 신고', (d.reports || []).length + '건 (신고자 ' + reporterCount(d) + '명)']])]),
-      el('h4', null, ['묶인 신고 ' + (d.reports || []).length + '건']),
-      el('div', { cls: 'pn-card' }, [reports.length ? el('ul', { cls: 'pn-plain ld-reports' }, reports)
-        : el('p', null, ['아직 묶인 신고가 없어요'])]),
-      el('h4', null, ['상태 이력']),
-      el('div', { cls: 'pn-card' }, [rows(historyRows(d), 'ld-hist')]),
-      el('h4', null, ['안내문']),
-      noticeCard(d), deliveryCard(d)
-    ].forEach(function (n) { if (n) body.appendChild(n); });
+      fl.length ? el('div', { cls: 'pn-note ld-flag-note' + (warn ? ' pn-warn' : '') }, [icon(warn ? 'i-warn' : 'i-info'),
+        el('div', null, [el('b', null, ['확인할 것 ' + fl.length + '건']),
+          flagList(fl, fl.every(function (x) { return !!x.warn === warn; }))])]) : null];
+    var cause = [el('h4', null, ['원인과 상태 이력']),
+      el('div', { cls: 'pn-card' }, [latestReason(d), rows(historyRows(d), 'ld-hist')])];
+    var linked = [el('h4', null, ['묶인 신고 ' + (d.reports || []).length + '건']), linkedReportsCard(d, st)];
+    var notice = [el('h4', null, ['안내문']), noticeCard(d), deliveryCard(d)];
+    // 역할별 순서: IT 담당은 원인·이력을, 영업팀은 FC 안내문·발송 결과를 먼저 본다
+    var order = st.role === 'IT' ? [cause, linked, notice] : [notice, cause, linked];
+    head.concat.apply(head, order).forEach(function (n) { if (n) body.appendChild(n); });
     var foot = $('ld-foot');
     foot.innerHTML = '';
     foot.appendChild(btn('pn-btn-2', [icon('i-link'), '신고 연결'], 'to-link'));
@@ -1077,8 +1190,8 @@
     });
   }
 
-  window.SFA_READY = Promise.all([A.getUsers(), A.getDefects(), A.getResolutionLabels()]).then(function (r) {
-    users = r[0] || []; defects = r[1] || []; resolutionLabels = r[2];   // 안 묶인 신고는 보는 담당자 기준이라 render() 에서 읽는다
+  window.SFA_READY = Promise.all([A.getUsers(), A.getDefects(), A.getResolutionLabels(), A.getLedgerAsOf()]).then(function (r) {
+    users = r[0] || []; defects = r[1] || []; resolutionLabels = r[2]; asOf = r[3] || '';   // 안 묶인 신고는 보는 담당자 기준이라 render() 에서 읽는다
     bind();
     return render();
   });

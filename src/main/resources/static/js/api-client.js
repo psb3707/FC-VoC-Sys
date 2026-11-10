@@ -273,14 +273,20 @@
     /* ---- S4 결함 대장 (fixtures/defects.js). 영향 지점 수·신고 수는 내려주지 않고 화면이 센다(REQ-LG-01) ---- */
     /* GET /api/defects?status=&grade=&type=&q=  -> Defect[] + reports(묶인 신고, 신고자 지점 포함)
        q: 글자 찾기(REQ-LG-08, 05번 4절). AI 없이 id·title·workaround·묶인 신고 maskedText 에 들어갔는지만 본다(대소문자 무시).
-       필터와 모두 만족(AND). q 가 있으면 각 건에 matchedIn(ID|TITLE|WORKAROUND|REPORT)·matchedReportIds 를 붙인다 */
+       필터와 모두 만족(AND). q 가 있으면 각 건에 matchedIn(ID|TITLE|WORKAROUND|REPORT)·matchedReportIds 를 붙인다.
+       계산 필드(05번 4절, 02번 5-2절 "확인할 것"): statusChangedAt·workaroundAt·fcNoticeStatus */
     getDefects: function (q) {
       q = q || {};
       var word = norm(q.q), state = store.read();
       var list = ledgerDefects(state).filter(function (d) {
         return (!q.status || d.status === q.status) && (!q.grade || d.grade === q.grade) && (!q.type || d.type === q.type);
       }).map(function (d) {
-        var x = copy(d);
+        var x = copy(d), hist = defectHistory(d.id, state);
+        var toWorkaround = hist.filter(function (h) { return h.to === 'WORKAROUND'; }).pop();
+        var notice = (L.fcNotices || []).filter(function (n) { return n.defectId === d.id; })[0];
+        x.statusChangedAt = hist.length ? hist[hist.length - 1].at : d.updatedAt;
+        x.workaroundAt = toWorkaround ? toWorkaround.at : null;
+        x.fcNoticeStatus = notice ? notice.status : null;
         x.reports = linkedReports(d.id, state);
         if (word) {
           x.matchedIn = [['ID', d.id], ['TITLE', d.title], ['WORKAROUND', d.workaround]]
@@ -299,10 +305,13 @@
       if (!d) return Promise.resolve(null);
       var x = copy(d);
       x.reports = linkedReports(id, state);
-      x.statusHistory = copy((L.statusHistory || []).concat(state.history.map(historyView)).filter(function (h) { return h.defectId === id; })
-        .sort(function (a, b) { return a.at < b.at ? -1 : 1; }));
+      x.statusHistory = copy(defectHistory(id, state));
       x.fcNotice = copy((L.fcNotices || []).filter(function (n) { return n.defectId === id; })[0] || null);
       return Promise.resolve(x);
+    },
+    /* 프론트 단계 기준 시각(05번 4절): 경과일·예정일·"확인할 것"을 시연 날짜와 관계없이 같게 센다. 백엔드 단계는 서버 시각 */
+    getLedgerAsOf: function () {
+      return Promise.resolve(L.asOf || nowKst());
     },
     /* GET /api/reports/unlinked?userId=&q=  -> 아직 대표 결함에 안 묶인 신고(defectId 없음), 최신 순.
        opt.q: 글자 찾기(REQ-LG-08). 신고 id·maskedText 에 들어간 것만(대소문자 무시). isNew 는 찾기와 관계없음.
@@ -614,6 +623,11 @@
     var b = u && (L.branches || []).find(function (v) { return v.id === u.branchId; });
     x.reporter = u ? { id: u.id, name: u.name, branchId: u.branchId, branchName: b ? b.name : '' } : null;
     return x;
+  }
+  /* 대표 결함의 상태 이력(고정 이력 + 이 브라우저에서 바꾼 이력), 오래된 순 */
+  function defectHistory(defectId, state) {
+    return (L.statusHistory || []).concat(state.history.map(historyView)).filter(function (h) { return h.defectId === defectId; })
+      .sort(function (a, b) { return a.at < b.at ? -1 : 1; });
   }
   function linkedReports(defectId, state) {
     return ledgerReports(state || store.read()).filter(function (r) { return r.defectId === defectId; }).map(withReporter)
