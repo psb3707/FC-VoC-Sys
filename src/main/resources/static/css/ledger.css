@@ -202,3 +202,74 @@ body.ld-page:has(.pn:not([hidden])) { overflow-y: hidden; }
 /* 대화상자의 AI 후보 선택 버튼: 글자 2줄 선택 버튼 + 셋째 줄 이유 */
 .ld-dlg .pn-choice .ld-choice-why { color: var(--ld-sub); font-weight: 500; }
 .ld-dlg .pn-choice[aria-pressed="true"] .ld-choice-why { color: var(--ld-ink); }
+
+/* ADR-023: 공용 카드·입력·표 토큰을 사용하는 공동 대응 화면. */
+.wf-scope, .wf-actions, .wf-heading, .wf-question-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.wf-scope { justify-content: space-between; align-items: flex-end; }
+.wf-scope > .pn-btn, .wf-question-row > .pn-btn { flex: none; width: auto; min-width: 144px; }
+.wf-actions > .pn-btn, .wf-actions > .pn-btn-2, .wf-card > .pn-btn-2 { flex: none; margin-right: 8px; }
+.wf-heading { justify-content: space-between; }
+.wf-heading h2 { margin: 0; font-size: var(--pn-title); }
+#wf-toolbar { margin-bottom: 24px; }
+.wf-ai { padding: 24px; margin-bottom: 24px; }
+.wf-ai label { display: block; margin: 16px 0 8px; font-weight: 700; }
+.wf-ai .wf-actions { margin-top: 16px; }
+.wf-question-row input { flex: 1; min-width: 240px; }
+.wf-question-row input, .wf-card input:not([type="checkbox"]), .wf-card select, .wf-card textarea {
+  min-height: var(--pn-btn-h); width: 100%; padding: 12px 16px; border: 1px solid var(--ld-field-line);
+  border-radius: var(--ld-btn-radius); background: var(--ld-bg); box-sizing: border-box;
+}
+.wf-question-row input { width: auto; }
+.wf-card textarea { resize: vertical; line-height: 1.5; }
+.wf-card h4 { margin: 0 0 12px; font-size: var(--pn-text); }
+.wf-card p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.wf-card .wf-actions { margin-top: 16px; }
+.wf-ai .wf-card { margin-top: 20px; }
+.wf-guidance { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--ld-line-soft); }
+.wf-guidance .wf-answer-lead { margin: 16px 0 12px; font-size: var(--pn-title); line-height: 1.5; max-width: 48em; }
+.wf-guidance > p, .wf-guide-step p { max-width: 64em; margin: 0; line-height: 1.7; }
+.wf-guide-step { margin-top: 24px; }
+.wf-guide-step h4 { margin: 0 0 8px; font-size: var(--pn-text); }
+.wf-guide-step ol { margin: 0; padding-left: 28px; }
+.wf-guide-step li { margin-top: 8px; padding-left: 4px; line-height: 1.7; }
+.wf-evidence { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--ld-line-soft); }
+.wf-ai .wf-details { margin-top: 20px; }
+.wf-clarify { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--ld-line-soft); }
+.wf-clarify h3 { font-size: var(--pn-title); margin: 0 0 12px; }
+.wf-related-record { padding: 16px 0; }
+.wf-related-record p { margin: 0 0 8px; }
+.wf-filters { align-items: flex-end; }
+.wf-table { overflow: hidden; }
+.wf-table .ld-table { table-layout: fixed; }
+.wf-table th:first-child { width: 31%; }
+.wf-table th:nth-child(2) { width: 15%; }
+.wf-table th:nth-child(3) { width: 26%; }
+.wf-table td { overflow-wrap: anywhere; vertical-align: top; }
+.wf-table td p { margin: 6px 0 0; }
+.wf-table .ld-open { width: 100%; text-align: left; }
+.wf-warning { color: var(--pn-warn-ink); font-weight: 700; }
+.wf-summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.wf-impact { font-weight: 700; }
+.wf-details > :not(summary) { margin: 16px 0 0; }
+.wf-source { padding: 16px 0; border-bottom: 1px solid var(--ld-line-soft); }
+.wf-source p { margin: 0 0 8px; }
+.wf-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.wf-compare > div { min-width: 0; }
+.wf-check { display: flex; align-items: flex-start; gap: 12px; min-height: var(--pn-btn-h); margin: 16px 0; }
+.wf-check input { width: 24px; height: 24px; flex: none; margin: 3px 0; }
+.wf-message { color: var(--ld-accent); font-weight: 700; }
+.pn.ld-panel { width: 760px; }
+.ld-panel .pn-foot { flex-wrap: wrap; gap: 12px; }
+.ld-panel .pn-foot > button { min-width: 0; }
+.wf-card .pn-field { margin-top: 16px; }
+@media (max-width: 1279px) { .pn.ld-panel { width: 100%; } }
+@media (max-width: 720px) {
+  .ld-top { flex-wrap: wrap; padding-top: 12px; padding-bottom: 12px; }
+  .ld-brand { flex-basis: calc(100% - 64px); }
+  .ld-tabs { flex-wrap: wrap; }
+  .ld-page .ld-tab { padding: 0 12px; }
+  .wf-table { overflow: auto; }
+  .wf-table .ld-table { min-width: 680px; }
+  .wf-compare { grid-template-columns: 1fr; }
+  .wf-question-row input { min-width: 0; flex-basis: 100%; }
+}

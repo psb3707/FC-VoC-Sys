@@ -297,7 +297,7 @@
       if (!brand || px(cs(brand).fontSize) < 24 - EPS) lf.push('페이지 제목 24px 미만');
       var ltabs = all('.ld-tabs [role="tab"]');
       if (!document.querySelector('.ld-tabs[role="tablist"]')) lf.push('role=tablist 없음');
-      if (ltabs.length !== 2) lf.push('목록 탭 ' + ltabs.length + '개 (2 필요)');
+      if (ltabs.length !== 3) lf.push('목록 탭 ' + ltabs.length + '개 (3 필요)');
       var lsel = ltabs.filter(function (b) { return b.getAttribute('aria-selected') === 'true'; });
       if (lsel.length !== 1) lf.push('선택된 탭 ' + lsel.length + '개');
       lsel.forEach(function (b) { if (parseInt(cs(b).fontWeight, 10) < 700) lf.push('선택 탭 굵게 아님'); });
@@ -318,7 +318,7 @@
       // 상세 패널: S2와 같은 틀(오른쪽 520px, 1280 미만 100%)
       var lp = document.getElementById('ledger-panel');
       if (lp && visible(lp)) {
-        var lr = lp.getBoundingClientRect(), lw = window.innerWidth < 1280 ? lvw : 520;
+        var lr = lp.getBoundingClientRect(), lw = window.innerWidth < 1280 ? lvw : 760;
         if (!near(lr.width, lw)) lf.push('패널 폭 ' + lr.width.toFixed(1) + ' (기대 ' + lw + ')');
         if (!near(lr.right, lvw) || !near(lr.top, 0)) lf.push('패널 위치 오른쪽·위 아님');
         if (lp.getAttribute('role') !== 'dialog' || lp.getAttribute('aria-modal') !== 'true') lf.push('패널 role=dialog/aria-modal 없음');
@@ -350,8 +350,11 @@
         });
         var dfoot = document.getElementById('ld-dlg-foot');
         if (!dfoot || !near(dfoot.getBoundingClientRect().bottom, dr.bottom)) lf.push('행동 줄이 대화상자 맨 아래 아님');
-      } else if (!(lp && visible(lp)) && all('.ld-main .pn-btn').length > 1) {
-        lf.push('목록 주 버튼 ' + all('.ld-main .pn-btn').length + '개');
+      } else if (!(lp && visible(lp))) {
+        // AI 진입점과 열린 질문 양식은 별도 행동 영역이다. 영역마다 주 행동은 하나다.
+        ['.wf-scope', '#wf-ai-form', '#ld-view'].forEach(function (selector) {
+          if (all(selector + ' .pn-btn').length > 1) lf.push(selector + ' 주 행동 여러 개');
+        });
       }
       add('s4-ledger-token', lf, lvw + 'px');
 
@@ -382,7 +385,7 @@
         if (!/\d/.test(b.textContent)) af.push(label(b) + ' 숫자 없음');
       });
       var alarm = document.getElementById('ld-alarm');
-      if (alarm && !/새 신고/.test(alarm.textContent)) af.push('알림 버튼 글자 없음');
+      if (alarm && !/새 신고|새 접수/.test(alarm.textContent)) af.push('알림 버튼 글자 없음');
       all('.ld-ai').forEach(function (c) {
         var tag = c.querySelector('.kn-card-head .ld-tag'), load = c.querySelector('.pn-loading');
         if (!load && (!tag || !/AI 추천|규칙 후보/.test(tag.textContent))) af.push('AI 추천 카드에 "AI 추천" 표시 없음');
@@ -399,6 +402,14 @@
         af.push('"담당자가 확인" 안내 없음');
       }
       add('s4-ai', af);
+      var wf = [];
+      if (!document.querySelector('#wf-business') || !document.querySelector('[data-wf="ai"]')) wf.push('업무 선택 또는 AI 진입점 없음');
+      all('.wf-table thead tr').forEach(function (tr) { if (tr.children.length !== 4) wf.push('업무 목록 핵심 열 4개 아님'); });
+      all('#wf-ai-result .wf-guidance').forEach(function (answer) {
+        if (!answer.querySelector('[data-wf="source"]') || !/먼저 확인해 주세요/.test(answer.textContent)) wf.push('답변의 근거·확인 행동 없음');
+        if (answer.querySelectorAll('.wf-guide-step').length !== 3 || !answer.querySelector('.wf-answer-lead')) wf.push('핵심 답·조건별 행동 누락');
+      });
+      add('s4-workflow', wf);
     }
 
     var result = { ok: checks.every(function (c) { return c.pass; }), url: location.hash, checks: checks };

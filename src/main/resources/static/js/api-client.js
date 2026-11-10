@@ -54,7 +54,18 @@
       var state = store.read(), defects = ledgerDefects(state);
       var list = visibleReports(userId, state).map(function (r) {
         var item = copy(r);
-        var id = state.links[r.id] || r.defectId;
+        var id = Object.hasOwn(state.links, r.id) ? state.links[r.id] : r.defectId;
+        if (id !== r.defectId) {
+          item.defectId = id || null;
+          item.defect = null;
+          item.fcNotice = null;
+          item.resolution = null;
+          item.statusHistory = id ? (L.statusHistory || []).filter(function (h) { return h.defectId === id; }).map(function (h) {
+            return { from: h.from, to: h.to, at: h.at };
+          }) : [{ from: null, to: 'RECEIVED', at: r.createdAt }];
+          var notice = id && (L.fcNotices || []).find(function (n) { return n.defectId === id && n.status === 'APPROVED'; });
+          if (notice) item.fcNotice = copy(notice);
+        }
         if (id) {
           var d = defects.find(function (entry) { return entry.id === id; });
           item.defectId = id;
@@ -548,7 +559,7 @@
     state = state || store.read();
     var latest = new Map();
     state.history.forEach(function (event) { latest.set(event.defectId, event); });
-    return (L.defects || []).map(function (d) {
+    return (L.defects || []).concat(state.managedDefects || []).map(function (d) {
       var h = latest.get(d.id);
       return h ? Object.assign({}, d, { status: h.to, updatedAt: h.at, plannedFixDate: h.plannedFixDate,
         wontFixReasonCode: h.wontFixReasonCode, wontFixReasonText: REASON_TEXT[h.wontFixReasonCode] || null,
@@ -563,7 +574,7 @@
   }
   function ledgerReports(state) {
     return (L.reports || []).concat(state.reports).filter(function (r) { return !state.cancelled[r.id]; }).map(function (r) {
-      return Object.assign({}, r, { defectId: state.links[r.id] || r.defectId,
+      return Object.assign({}, r, { defectId: Object.hasOwn(state.links, r.id) ? state.links[r.id] : r.defectId,
         maskedText: r.maskedText || (r.kind === 'FULL' ? r.title : null), followups: reportFollowups(state, r.id) });
     });
   }

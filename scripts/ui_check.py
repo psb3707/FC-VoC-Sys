@@ -112,6 +112,12 @@ LEDGER_STATES = ["role=SALES", "role=IT&grade=IMMEDIATE", "role=SALES&status=RES
                  "role=SALES&tab=unlinked&q=" + quote("알림톡"), "role=SALES&tab=unlinked&q=" + quote("환급"),
                  "role=SALES&q=" + quote("알림톡") + "&item=D-2026-001"]
 
+# ADR-023: 새 업무 범위·대기 조건·완료 기록·AI 진입 화면. 응답/행동은 별도 브라우저 과업 검사.
+LEDGER_STATES += ["role=SALES&business=ALL&tab=defects", "role=SALES&business=DESIGN&tab=defects",
+                  "role=SALES&business=CUSTOMER_LOOKUP&tab=cases", "role=IT&business=ALL&mine=1&tab=defects",
+                  "role=SALES&business=ALL&queue=WAITING", "role=IT&business=ALL&queue=OVERDUE&tab=defects",
+                  "role=SALES&ai=1", "role=SALES&ai=1&llm=fail", "role=SALES&business=ALL&queue=REVIEW&tab=defects"]
+
 VIRTUAL_TIME_MS = 3000   # 화면마다 흘리는 가상 시간 (예전 --virtual-time-budget=3000)
 CMD_TIMEOUT = 90         # DevTools 명령·기다림 하나의 최대 초
 
@@ -138,7 +144,10 @@ def static_checks() -> list[str]:
     files = [p for p in STATIC.rglob("*") if p.is_file() and p.suffix in {".html", ".js", ".css"}]
     if not files:
         return [f"정적 파일 없음: {STATIC}"]
-    allow = UI_WORDS | EXTRA_UI_WORDS
+    # ADR-023 가상 사례의 일반 업무 문구. 이름 검사를 끄지 않고 확인한 낱말만 추가한다.
+    allow = UI_WORDS | EXTRA_UI_WORDS | {"사례에", "이력별", "길어짐", "우회법", "차이를", "유지로", "여부와", "정보가", "경우를", "이력을", "진행을", "문제와", "기기와", "여부를", "전달해", "나누어", "방법은", "표시됨", "문제는", "구분해", "마세요", "조회가"}
+    # ADR-024 대응 문구에서 검토한 일반 낱말.
+    allow |= {"경우에", "보내고", "서명이", "조건이", "정리해", "진행이", "구분이", "기록은", "현상을", "기록과", "보이지", "보이고"}
     for p in files:
         rel = p.relative_to(ROOT).as_posix()
         text = p.read_text(encoding="utf-8")

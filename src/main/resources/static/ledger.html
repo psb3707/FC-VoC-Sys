@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>결함 대장</title>
+<title>업무 문의·오류 관리</title>
 <link rel="stylesheet" href="css/sfa-tokens.css">
 <link rel="stylesheet" href="css/app.css">
 <link rel="stylesheet" href="css/panel.css">
@@ -31,7 +31,7 @@
 <!-- ① 페이지 머리 (SFA 밖 화면: SFA 헤더·파란 탭 바를 흉내 내지 않는다, 06번 0절 3항) -->
 <header class="ld-top" data-a11y="new">
   <span class="pn-ico"><svg aria-hidden="true"><use href="#i-ledger"/></svg></span>
-  <h1 class="ld-brand">결함 대장</h1>
+  <h1 class="ld-brand">업무 문의·오류 관리</h1>
   <!-- 새 신고 알림 (ADR-017): S1 알림 아이콘 + 숫자 배지, 누르면 S1 알림 팝업 모양의 새 신고 목록 -->
   <div class="ld-alarm-wrap">
     <button type="button" class="pn-btn-2 ld-alarm" id="ld-alarm" aria-haspopup="true" aria-expanded="false" aria-controls="ld-alarm-pop">
@@ -48,10 +48,12 @@
 
 <!-- ② 목록 (탭 → 필터 → 표 카드 → 총 건수). 내용은 js/ledger.js 가 그린다 -->
 <main class="ld-main" data-a11y="new">
-  <p class="ld-lead">같은 원인의 신고를 묶어 상태를 관리해요. 상태를 바꾸면 묶인 신고자에게 알림이 가요.</p>
+  <div id="wf-toolbar"></div>
+  <section id="wf-ai" class="ld-card wf-ai" aria-label="이전 처리 방법 찾기" hidden></section>
   <div class="ld-tabs" role="tablist" aria-label="목록 고르기">
-    <button type="button" role="tab" class="ld-tab" id="ld-tab-defects" data-tab="defects" aria-controls="ld-view">대표 결함 <span class="ld-count" id="ld-count-defects"></span></button>
-    <button type="button" role="tab" class="ld-tab" id="ld-tab-unlinked" data-tab="unlinked" aria-controls="ld-view">아직 안 묶인 신고 <span class="ld-count" id="ld-count-unlinked"></span><span class="badge ld-tab-badge" id="ld-new-badge" data-a11y="badge" hidden></span></button>
+    <button type="button" role="tab" class="ld-tab" id="ld-tab-unlinked" data-tab="unlinked" aria-controls="ld-view">검토 대기 접수 <span class="ld-count" id="ld-count-unlinked"></span><span class="badge ld-tab-badge" id="ld-new-badge" data-a11y="badge" hidden></span></button>
+    <button type="button" role="tab" class="ld-tab" id="ld-tab-defects" data-tab="defects" aria-controls="ld-view">진행 건 <span class="ld-count" id="ld-count-defects"></span></button>
+    <button type="button" role="tab" class="ld-tab" id="ld-tab-cases" data-tab="cases" aria-controls="ld-view">처리 사례 <span class="ld-count" id="ld-count-cases"></span></button>
   </div>
   <section class="ld-view" id="ld-view" role="tabpanel"></section>
 </main>
@@ -91,6 +93,9 @@
 <script src="js/intake-diagnostics-view.js"></script>
 <script src="js/intake-draft-rules.js"></script>
 <script src="js/api-client.js"></script>
+<script src="js/fixtures/ledger-workflow.js"></script>
+<script src="js/ledger-api.js"></script>
+<script src="js/ledger-workflow.js"></script>
 <script src="js/ledger.js"></script>
 <script>
   // ?selftest=1 일 때만 화면 자체 검사를 불러온다 (docs/06-ui-spec.md 11절)
