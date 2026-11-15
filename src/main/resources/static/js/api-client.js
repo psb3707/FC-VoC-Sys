@@ -213,6 +213,7 @@
           if (image && Object.values(state.attachments).reduce(function (size, value) { return size + value.length; }, 0) + image.length > 2000000) {
             return { attachmentError: '이 브라우저의 첨부 저장 한도에 도달했어요. 이미지를 빼고 접수할 수 있어요.' };
           }
+          var facts = window.IntakeFacts.clean(req);
           var report = {
             id: 'R-Q' + state.nextReport++, kind: 'FULL', reporterId: req.reporterId, submittedById: req.submittedById,
             createdAt: nowKst(), defectId: null, defect: null, title: req.oneLine, maskedText: req.oneLine,
@@ -223,6 +224,10 @@
             grade: intakeGrade(req), departmentCode: INTAKE_DEPARTMENT[req.business] || 'SALES_SUPPORT',
             hasAttachment: !!image, aiDraft: req.aiDraft ? draftRules.clean(req.aiDraft) : null,
             attemptedWorkaround: req.attemptedWorkaround,
+            // ADR-026: 상담 인계 코드. 대리 접수는 FC 대신 업무 재개를 정하지 않으므로 workOutcome 을 두지 않는다
+            origin: facts.origin, conditions: facts.conditions, factSources: facts.factSources,
+            workOutcome: req.reporterId === req.submittedById ? facts.workOutcome : null,
+            suggestedDefectId: publishedId(req.suggestedDefectId),
             diagnostics: collectDiagnostics(req.diagnosticMode, validDate(req.diagnosticCapturedAt) ? req.diagnosticCapturedAt : nowKst())
           };
           if (report.aiDraft) report.aiDraftSummary = draftSummary(report);
@@ -377,7 +382,8 @@
     /* POST /api/reports/{id}/similar-defects  -> {reportId, llmOutcome, needsHumanReview, candidates:[{defectId, title, status, similarity, reason, matched}]}
        AI 비슷한 대표 결함 후보(07번 ⑤, REQ-LG-06, ADR-017). 프론트 단계: fixtures 고정 응답, 실제 LLM 호출 없음.
        llm=fail 이면 규칙 후보(같은 업무·같은 증상 유형의 신고가 묶인 결함, 최대 3개, similarity=null)로 대체.
-       연결은 하지 않는다(담당자가 postLinkReport). */
+       연결은 하지 않는다(담당자가 postLinkReport).
+       ADR-026: 고정 응답이 없는 새 신고(R-Q…)는 규칙 후보(llmOutcome=RULE, similarity=null, reasons=추천 근거). */
     postSimilarDefects: function (reportId) {
       var r = ledgerReports(store.read()).find(function (x) { return x.id === reportId; });
       if (!r) return Promise.resolve(null);
@@ -390,12 +396,21 @@
         res = { llmOutcome: 'FALLBACK', candidates: hits.map(function (d) {
           return { defectId: d.id, similarity: null, reason: '같은 업무·같은 문제 유형이에요', matched: ['BUSINESS', 'SYMPTOM'] };
         }) };
+      } else if ((L.similar || {})[reportId]) {
+        res = copy(L.similar[reportId]);
+      } else if (store.read().reports.some(function (x) { return x.id === reportId; })) {
+        res = { llmOutcome: 'RULE', candidates: ruleCandidates(r) };   // ADR-026 결정 8: 시연 중 만든 새 신고
       } else {
-        res = copy((L.similar || {})[reportId] || { llmOutcome: 'OK', candidates: [] });
+        res = { llmOutcome: 'OK', candidates: [] };
       }
       res.reportId = reportId;
       res.needsHumanReview = true;
-      res.candidates = (res.candidates || []).filter(function (c) { return byId(c.defectId); }).slice(0, 3).map(function (c) {
+      var seen = new Set();   // 없는 결함 ID·같은 후보는 버린다(07번 ⑤ 후처리)
+      res.candidates = (res.candidates || []).filter(function (c) {
+        if (!byId(c.defectId) || seen.has(c.defectId)) return false;
+        seen.add(c.defectId);
+        return true;
+      }).slice(0, 3).map(function (c) {
         var d = byId(c.defectId);
         c.title = d.title; c.status = d.status;
         return c;
@@ -520,8 +535,12 @@
       !!((report.urgent || []).length || report.customerScope && report.customerScope !== 'UNKNOWN')) };
   }
 
+  function publishedId(id) {
+    return (L.defects || []).some(function (d) { return d.published && d.id === id; }) ? id : null;
+  }
   function storedReport(report, requestId) {
     var meta = I.metaForm || {}, options = quick.options || {}, incident = report.incident || {};
+    var facts = window.IntakeFacts.clean(report);
     var category = (meta.businesses || []).find(function (item) { return item.code === report.business; });
     var symptoms = (meta.symptoms || []).concat(options.symptoms || []).map(function (item) { return item.code; });
     var guide = (L.defects || []).find(function (d) { return d.published && d.id === report.guideId; });
@@ -541,7 +560,10 @@
       contactTime: option('time', report.contactTime), department: report.department, diagnostics: report.diagnostics,
       guideId: guide ? guide.id : null,
       attemptedWorkaround: guide && guide.workaround === report.attemptedWorkaround ? guide.workaround : null,
-      incident: { device: ['SAME', 'PC', 'PHONE', 'TABLET', 'UNKNOWN'].includes(incident.device) ? incident.device : '',
+      // ADR-026: 허용 목록을 다시 거친 코드만 공유 저장소에 둔다(대화 원문·고객 정보 없음)
+      origin: facts.origin, conditions: facts.conditions, workOutcome: facts.workOutcome, factSources: facts.factSources,
+      suggestedDefectId: publishedId(report.suggestedDefectId),
+      incident: { device: window.IntakeFacts.isDevice(incident.device) ? incident.device : '',
         date: validDay(incident.date) ? incident.date : '', time: /^\d{2}:\d{2}$/.test(incident.time) ? incident.time : '',
         screenProvided: !!incident.screen }
     };
@@ -598,10 +620,18 @@
       var d = ledgerDefects().find(function (item) { return item.published && item.id === match.id; });
       if (d) {
         var notice = (L.fcNotices || []).find(function (n) { return n.defectId === d.id && n.status === 'APPROVED'; });
+        // ADR-026: 처리 중인 결함이면 시나리오의 확인 항목(최대 3개)과 임시 방법 결과 질문을 붙인다. 정규식은 여기서만 쓴다
+        var active = d.status !== 'RESOLVED' && d.status !== 'WONT_FIX';
+        var checks = active ? (match.checks || []).slice(0, 3).map(function (c) {
+          var hit = (c.known || []).find(function (rule) { return rule[0].test(question); });
+          return { key: c.key, text: c.text, known: hit ? hit[1] : null,
+            choices: c.choices.map(function (pair) { return { code: pair[0], label: pair[1] }; }) };
+        }) : [];
         return { outcome: 'MATCH', type: d.type, business: match.business, symptom: match.symptom,
           guidance: d.resolution ? d.resolution.change + ' ' + d.resolution.action : notice ? notice.approvedText : null,
           defect: { id: d.id, title: d.title, status: d.status, workaround: d.status === 'RESOLVED' ? null : d.workaround,
-            plannedFixDate: d.plannedFixDate, wontFixReasonText: d.wontFixReasonText } };
+            plannedFixDate: d.plannedFixDate, wontFixReasonText: d.wontFixReasonText },
+          checks: checks, resumeQuestion: active && d.workaround ? match.resumeQuestion || null : null };
       }
     }
     if (!matches.length && asksHow && !hasError && Q.usage && matchesQuestion(question, Q.usage)) {
@@ -730,6 +760,42 @@
     x.reporter = u ? { id: u.id, name: u.name, branchId: u.branchId, branchName: b ? b.name : '' } : null;
     x.submittedBy = r.submittedById && r.submittedById !== r.reporterId ? userBrief(r.submittedById) : null;   // 대신 접수(ADR-025)
     return x;
+  }
+  /* ADR-026 결정 8: 업무+증상이 같거나 AI 문의가 안내한 사례만 후보. 맞은 근거가 많은 순, 점수·비슷함 정도는 만들지 않는다 */
+  function ruleCandidates(r) {
+    var meta = I.metaForm || {};
+    var symptoms = (meta.symptoms || []).concat((quick.options || {}).symptoms || []);
+    function label(list, code) { var hit = (list || []).find(function (x) { return x.code === code; }); return hit ? hit.label : code; }
+    return ledgerDefects().map(function (d) {
+      var scenario = (Q.defects || []).find(function (m) { return m.id === d.id; }) || {};
+      var both = [scenario].concat(linkedReports(d.id)).some(function (x) {
+        return !!r.business && x.business === r.business && !!r.symptom && x.symptom === r.symptom;
+      });
+      var matched = [], reasons = [];
+      if (both) {
+        matched.push('BUSINESS', 'SYMPTOM');
+        reasons.push('업무: ' + label(meta.businesses, r.business), '증상: ' + label(symptoms, r.symptom));
+      }
+      var same = Object.keys(scenario.conditions || {}).filter(function (key) {
+        return (r.conditions || {})[key] === scenario.conditions[key];
+      });
+      if (same.length) {
+        matched.push('CONDITION');
+        same.forEach(function (key) {
+          reasons.push('관련 조건: ' + window.IntakeFacts.CONDITIONS[key].label + ' ' + window.IntakeFacts.conditionLabel(key, r.conditions[key]));
+        });
+      }
+      if (r.attemptedWorkaround && r.attemptedWorkaround === d.workaround) {
+        matched.push('WORKAROUND');
+        reasons.push('시도한 조치: 이 결함의 임시 방법');
+      }
+      if (r.suggestedDefectId === d.id) {
+        matched.push('SUGGESTED');
+        reasons.push('AI 문의에서 안내한 사례');
+      }
+      if (!both && matched.indexOf('SUGGESTED') < 0) return null;
+      return { defectId: d.id, similarity: null, matched: matched, reasons: reasons, reason: reasons.join(' · ') };
+    }).filter(Boolean).sort(function (a, b) { return b.matched.length - a.matched.length; });
   }
   function linkedReports(defectId, state) {
     return ledgerReports(state || store.read()).filter(function (r) { return r.defectId === defectId; }).map(withReporter)

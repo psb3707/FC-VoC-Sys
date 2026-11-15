@@ -185,9 +185,11 @@ body.ld-page:has(.pn:not([hidden])) { overflow-y: hidden; }
 .pn-lead .ld-tag.is-new { display: table; margin: 4px 0 0; }
 
 /* ---- AI 추천 카드 (REQ-LG-06, ADR-017, 0-3 "AI 추천 카드"): 콘텐츠 카드 안 후보 줄, 줄 사이 1px 연한 선 ---- */
-.ld-cands li { padding: 16px 0; border-top: 1px solid var(--ld-line-soft); }
-.ld-cands li:first-child { padding-top: 4px; border-top: 0; }
-.ld-cands li:last-child { padding-bottom: 0; }
+.ld-cands > li { padding: 16px 0; border-top: 1px solid var(--ld-line-soft); }
+.ld-cands > li:first-child { padding-top: 4px; border-top: 0; }
+.ld-cands > li:last-child { padding-bottom: 0; }
+.ld-cands .pn-rows { margin: 8px 0; }
+.ld-reasons > li + li { margin-top: 4px; }   /* 규칙 후보 추천 근거(ADR-026): 한 칸 안 여러 줄 */
 .ld-cands p { margin: 0 0 4px; }
 .ld-cands .ld-cand-says { font-weight: 700; }
 .ld-cands .ld-cand-says .ld-id { display: inline; color: var(--ld-accent); }

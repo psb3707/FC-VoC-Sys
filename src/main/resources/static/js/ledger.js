@@ -418,7 +418,12 @@
     var d = defects.filter(function (x) { return x.id === id; })[0];
     return d ? (d.reports || []).length : 0;
   }
+  function ruleOutcome() { return !!similar && similar.llmOutcome === 'RULE'; }   // ADR-026 결정 8: 새 신고 규칙 후보
   function aiNote() {
+    if (ruleOutcome()) {
+      return el('div', { cls: 'pn-note' }, [icon('i-info'), el('div', null, [el('b', null, ['추천은 참고예요']),
+        '같은 업무·증상·조건으로 찾았어요. 묶을지는 담당자가 확인하고 정해요.'])]);
+    }
     return el('div', { cls: 'pn-note' }, [icon('i-spark'), el('div', null, [el('b', null, ['AI 추천은 참고예요']),
       '묶을지는 담당자가 확인하고 정해요. AI가 스스로 묶지 않아요.'])]);
   }
@@ -429,11 +434,23 @@
         el('p', null, [el('b', null, ['AI가 비슷한 대표 결함을 찾고 있어요'])]),
         el('p', { cls: 'ld-meta' }, ['기다리지 않고 아래 [묶을 결함 고르기]로 바로 고를 수도 있어요.'])])]);
     }
-    var fallback = s.llmOutcome === 'FALLBACK', list = s.candidates || [];
+    var fallback = s.llmOutcome === 'FALLBACK', rule = s.llmOutcome === 'RULE', list = s.candidates || [];
     var head = el('div', { cls: 'kn-card-head' }, [
-      el('p', { cls: 'pn-card-title' }, [list.length ? (fallback ? '같은 업무·문제 유형의 대표 결함 ' : '비슷해 보이는 대표 결함 ') + list.length + '건'
-        : (fallback ? '같은 업무·문제 유형의 결함도 없어요' : '비슷한 대표 결함을 찾지 못했어요')]),
-      el('span', { cls: 'ld-tag' + (fallback ? ' is-dim' : '') }, [fallback ? '규칙 후보' : 'AI 추천'])]);
+      el('p', { cls: 'pn-card-title' }, [list.length
+        ? (fallback ? '같은 업무·문제 유형의 대표 결함 ' : rule ? '같은 조건의 대표 결함 ' : '비슷해 보이는 대표 결함 ') + list.length + '건'
+        : (fallback ? '같은 업무·문제 유형의 결함도 없어요' : rule ? '같은 조건의 대표 결함이 없어요' : '비슷한 대표 결함을 찾지 못했어요')]),
+      el('span', { cls: 'ld-tag' + (fallback || rule ? ' is-dim' : '') }, [fallback || rule ? '규칙 후보' : 'AI 추천'])]);
+    if (rule) {   // 비슷함 정도 없이 추천 근거만 글로 보인다
+      return el('div', { cls: 'pn-card ld-ai' }, [head, list.length ? el('ul', { cls: 'pn-plain ld-cands' }, list.map(function (c) {
+        return el('li', null, [
+          el('div', { cls: 'ld-cand-head' }, [el('p', { cls: 'ld-cand-says' }, [el('b', { cls: 'ld-id' }, [c.defectId]), ' · 담당자 확인 필요'])]),
+          el('p', { cls: 'ld-cand-title' }, ['「' + c.title + '」']),
+          rows([['추천 근거', el('ul', { cls: 'pn-plain ld-reasons' }, (c.reasons || []).map(function (why) { return el('li', null, [why]); }))]]),
+          el('p', { cls: 'ld-meta' }, ['지금 상태 ' + stageLabel(c.status) + ' · 묶인 신고 ' + linkedCount(c.defectId) + '건']),
+          btn('pn-btn-2 ld-cand-btn', [icon('i-link'), '이 결함에 묶기'], 'link-ai', { 'data-ai-link': c.defectId, 'aria-haspopup': 'dialog',
+            'aria-label': c.defectId + '에 묶기' })]);
+      })) : el('p', null, ['대표 결함 목록에서 직접 골라 주세요. 같은 원인이 없으면 새 대표 결함으로 만들어요.'])]);
+    }
     if (!list.length) {
       return el('div', { cls: 'pn-card ld-ai' }, [head,
         el('p', null, [fallback ? '대표 결함 목록에서 직접 골라 주세요.'
@@ -463,11 +480,14 @@
     [el('h3', { tabindex: '-1' }, [r.maskedText || '"나도 겪었어요" 신고']),
       el('p', { cls: 'pn-lead' }, [who, r.isNew ? el('span', { cls: 'ld-tag is-new' }, ['새로 들어옴']) : null]),
       // 이 패널의 목적은 묶을 결함 찾기라 AI 추천을 먼저, 신고 내용은 아래에 둔다
-      el('h4', null, ['AI 추천']),
+      el('h4', null, [ruleOutcome() ? '비슷한 대표 결함 추천' : 'AI 추천']),
       warn || aiNote(),
       aiCard(r, st),
-      el('p', { cls: 'pn-help' }, [icon('i-info'), el('span', null, ['AI에게는 가린 신고 문장과 업무·문제 유형, 대표 결함 제목·우회법만 보내요. 고객번호와 보낸 사람은 보내지 않아요.'])]),
+      el('p', { cls: 'pn-help' }, [icon('i-info'), el('span', null, [ruleOutcome()
+        ? '규칙 후보는 업무·증상·발생 조건 코드와 시도한 조치만 비교해요. 신고 문장·고객번호·보낸 사람은 쓰지 않아요.'
+        : 'AI에게는 가린 신고 문장과 업무·문제 유형, 대표 결함 제목·우회법만 보내요. 고객번호와 보낸 사람은 보내지 않아요.'])]),
       el('h4', null, ['신고 내용']),
+      factsCard(r),
       r.diagnostics ? diagnosticDetails(r.diagnostics) : null,
       r.hasAttachment ? attachmentDetails(r, st) : null,
       draftSummaryCard(r),
@@ -485,6 +505,41 @@
       rows([['접수하는 환경', diagnostics.submission.device || '미확인']].concat(window.IntakeDiagnosticsRows(diagnostics.submission, fmtWhen))),
       rows([['오류가 발생한 환경', diagnostics.incident.device || '미확인']].concat(window.IntakeDiagnosticsRows(diagnostics.incident, fmtWhen)))
     ]);
+  }
+
+  /* ADR-026: S2 접수와 같은 저장본에서 FC가 알려 준 발생 조건과 출처를 보인다(대화 원문은 저장되지 않음) */
+  function factRows(r, withResumption) {
+    var F = window.IntakeFacts, src = r.factSources || {};
+    var urgency = ((((window.FIXTURES || {}).intake || {}).quick || {}).options || {}).urgency || [];
+    function said(text, key) { return text + ' · ' + F.sourceLabel(src[key]); }
+    var list = [];
+    if (r.incident && r.incident.device) list.push(['오류가 난 기기', said(F.deviceLabel(r.incident.device), 'device')]);
+    Object.keys(r.conditions || {}).forEach(function (key) {
+      list.push([F.CONDITIONS[key].label, said(F.conditionLabel(key, r.conditions[key]), 'conditions')]);
+    });
+    if ((r.urgent || []).length) {
+      list.push(['업무 영향', said(r.urgent.map(function (code) {
+        var hit = urgency.find(function (pair) { return pair[0] === code; });
+        return hit ? hit[1] : code;
+      }).join(' · '), 'urgent')]);
+    }
+    if (r.attemptedWorkaround) list.push(['시도한 조치', r.attemptedWorkaround + ' · ' + F.sourceLabel(src.attempted || 'DEFECT_LEDGER')]);
+    var answer = r.workResumption ? F.outcomeLabel(r.workResumption.result) + ' (' + fmtWhen(r.workResumption.at) + ')' :
+      r.workOutcome ? F.outcomeLabel(r.workOutcome) : '';
+    if (withResumption && answer) list.push(['업무 재개', answer + ' · ' + F.sourceLabel('USER_REPORTED')]);
+    if (r.suggestedDefectId) list.push(['AI 문의 안내 사례', r.suggestedDefectId + ' · 연결은 담당자가 정해요']);
+    return list;
+  }
+  function factsCard(r) {
+    var list = factRows(r, true);
+    if (!list.length) return null;
+    var card = el('div', { cls: 'pn-card' }, [el('p', { cls: 'pn-card-title' }, ['FC가 알려 준 발생 조건']), rows(list)]);
+    card.setAttribute('data-report-facts', '');
+    return card;
+  }
+  function factsDetails(r) {
+    var list = factRows(r, false);
+    return list.length ? el('details', { cls: 'pn-details', 'data-report-facts': '' }, [el('summary', null, ['발생 조건 보기']), rows(list)]) : null;
   }
 
   function draftSummaryCard(report) {
@@ -557,6 +612,7 @@
       return el('li', null, [el('span', { cls: 'ld-id' }, [r.id]), el('span', null, [r.maskedText || '"나도 겪었어요"로 보냄']),
         el('span', { cls: 'ld-who' }, [who.replace(/^ · /, '')]),
         resumed ? el('span', { cls: 'ld-who' }, [resumed]) : null,
+        factsDetails(r),
         r.diagnostics ? diagnosticDetails(r.diagnostics) : null,
         r.hasAttachment ? attachmentDetails(r, st) : null,
         draftSummaryCard(r),
@@ -769,8 +825,10 @@
       // 실패는 지연·없음과 같은 안내 상자 모양(경고)으로 목록 위에 알린다
       aiPart = [fallback ? el('div', { cls: 'pn-note pn-warn' }, [icon('i-warn'), el('div', null, [el('b', null, ['AI 추천을 받지 못했어요']),
           '같은 업무·문제 유형으로 찾은 결함이에요. 담당자가 확인해요.'])]) : null,
-        el('h4', { id: 'ld-link-ai' }, [(fallback ? '같은 업무·문제 유형의 결함 ' : 'AI가 비슷하다고 본 결함 ') + cands.length + '건']),
-        fallback ? null : el('p', { cls: 'pn-help' }, [icon('i-spark'), el('span', null, ['AI 추천 · 참고만 하고 담당자가 확인해요.'])]),
+        el('h4', { id: 'ld-link-ai' }, [(fallback ? '같은 업무·문제 유형의 결함 ' : s.llmOutcome === 'RULE' ? '같은 조건으로 찾은 결함 '
+          : 'AI가 비슷하다고 본 결함 ') + cands.length + '건']),
+        fallback ? null : el('p', { cls: 'pn-help' }, [icon(s.llmOutcome === 'RULE' ? 'i-info' : 'i-spark'), el('span', null,
+          [s.llmOutcome === 'RULE' ? '규칙 후보 · 참고만 하고 담당자가 확인해요.' : 'AI 추천 · 참고만 하고 담당자가 확인해요.'])]),
         el('ul', { cls: 'pn-choices ld-one', role: 'group', 'aria-labelledby': 'ld-link-ai' }, cands.map(function (c) {
           return choice(defects.filter(function (d) { return d.id === c.defectId; })[0] || { id: c.defectId, title: c.title, status: c.status }, c);
         }))];
