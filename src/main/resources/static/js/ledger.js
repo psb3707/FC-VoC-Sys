@@ -550,9 +550,13 @@
     $('ld-panel-title').textContent = '대표 결함 ' + d.id;
     body.innerHTML = '';
     var reports = (d.reports || []).map(function (r) {
-      var who = (r.reporter ? r.reporter.name + ' · ' + r.reporter.branchName : '') + ' · ' + fmtDate(r.createdAt);
+      var who = (r.reporter ? r.reporter.name + ' · ' + r.reporter.branchName : '') + ' · ' + fmtDate(r.createdAt) +
+        (r.submittedBy ? ' · ' + r.submittedBy.name + ' 대신 접수' : '');   // ADR-025
+      var resumed = r.workResumption ? 'FC 업무 재개 회신 · ' + (r.workResumption.result === 'RESUMED' ? '진행했어요' : '아직 안 돼요') +
+        ' (' + fmtWhen(r.workResumption.at) + ')' : null;
       return el('li', null, [el('span', { cls: 'ld-id' }, [r.id]), el('span', null, [r.maskedText || '"나도 겪었어요"로 보냄']),
         el('span', { cls: 'ld-who' }, [who.replace(/^ · /, '')]),
+        resumed ? el('span', { cls: 'ld-who' }, [resumed]) : null,
         r.diagnostics ? diagnosticDetails(r.diagnostics) : null,
         r.hasAttachment ? attachmentDetails(r, st) : null,
         draftSummaryCard(r),
@@ -712,15 +716,21 @@
           isBack(from, to) ? '되돌리기는 기록만 남겨요. 같은 결함에 알림이 여러 번 가지 않게 하려는 규칙이에요.'
             : '문제 확인·원인 파악은 "확인 중" 알림이 반복되지 않도록 기록만 남겨요.'])])];
     }
-    return [el('h3', { tabindex: '-1' }, ['묶인 신고자 ' + p.recipientCount + '명에게 알림']),
+    // ADR-025: 신고자(FC)와 대신 접수한 관리자에게 역할별 문구. 한 사람 1건
+    var submitters = p.recipients.filter(function (r) { return r.audience === 'SUBMITTER'; });
+    return [el('h3', { tabindex: '-1' }, ['묶인 신고자 ' + (p.reporterCount != null ? p.reporterCount : p.recipientCount) + '명' +
+        (submitters.length ? ' · 대신 접수한 관리자 ' + submitters.length + '명' : '') + '에게 알림']),
       el('div', { cls: 'pn-card' }, [change, p.resolution ? resolutionRows(p.resolution) : null]),
-      el('div', { cls: 'pn-card' }, [el('p', { cls: 'pn-card-title' }, ['알림 문구']), el('p', { cls: 'ld-quote' }, [p.body])]),
+      el('div', { cls: 'pn-card' }, [el('p', { cls: 'pn-card-title' }, [submitters.length ? 'FC에게 가는 알림 문구' : '알림 문구']),
+        el('p', { cls: 'ld-quote' }, [p.body])]),
+      submitters.length ? el('div', { cls: 'pn-card' }, [el('p', { cls: 'pn-card-title' }, ['대신 접수한 관리자에게 가는 알림 문구']),
+        el('p', { cls: 'ld-quote' }, [submitters[0].body])]) : null,
       el('div', { cls: 'pn-card' }, [el('p', { cls: 'pn-card-title' }, ['받는 사람 ' + p.recipientCount + '명']),
         el('ul', { cls: 'ld-recipients' }, p.recipients.map(function (r) {
-          return el('li', null, [r.name + ' ', el('span', null, [r.branchName])]);
+          return el('li', null, [r.name + ' ', el('span', null, [r.branchName + (r.audience === 'SUBMITTER' ? ' · 대신 접수 ' + r.count + '건' : '')])]);
         }))]),
-      el('div', { cls: 'pn-note' }, [icon('i-bell'), el('div', null, [el('b', null, ['FC는 SFA 화면 알림에서 봐요']),
-        '실제 문자나 메일은 보내지 않고, 알림 기록만 남겨요. 같은 사람이 여러 번 신고했어도 알림은 한 번이에요.'])])];
+      el('div', { cls: 'pn-note' }, [icon('i-bell'), el('div', null, [el('b', null, ['FC와 관리자는 SFA 화면 알림에서 봐요']),
+        '실제 문자나 메일은 보내지 않고, 알림 기록만 남겨요. 같은 사람이 여러 번 신고했거나 대신 접수했어도 알림은 한 번이에요.'])])];
   }
   function doneView(st) {
     var p = preview || {};
@@ -728,7 +738,7 @@
       el('h3', { tabindex: '-1' }, ['상태를 "' + stageLabel(st.to) + '"' + ro(stageLabel(st.to)) + ' 바꿨어요']),
       el('p', { cls: 'pn-lead' }, [statusResult && statusResult.delivery === 'FAILED' ? '상태는 기록했어요. 알림 발송은 실패했어요. 다시 보낼 수 있어요.' :
         (statusResult ? statusResult.delivery === 'SENT' : p.notifiable)
-        ? '묶인 신고자 ' + (statusResult ? statusResult.notificationCount : p.recipientCount) + '명에게 SFA 알림을 보냈어요.'
+        ? '받는 사람 ' + (statusResult ? statusResult.notificationCount : p.recipientCount) + '명에게 SFA 알림을 보냈어요.'
         : '알림 없이 상태 이력에 기록만 남겼어요.'])])];
   }
 

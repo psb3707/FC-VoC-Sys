@@ -2,7 +2,9 @@
 (function () {
   'use strict';
   var KEY = 'fc-voc-intake-demo-v1', storageUsable = true;
-  function empty() { return { nextReport: 1, reports: [], links: {}, cancelled: {}, followups: {}, attachments: {}, history: [], read: {} }; }
+  /* ADR-025: resumption = FC 업무 재개 회신(신고 ID별 {result, at}), notices = 대리 접수 알림(PROXY_RECEIPT, 설명 원문 없음) */
+  function empty() { return { nextReport: 1, reports: [], links: {}, cancelled: {}, followups: {}, attachments: {}, history: [], read: {},
+    resumption: {}, notices: [] }; }
   var memory = empty();
 
   function read() {
@@ -15,6 +17,8 @@
         if (state && Number.isInteger(state.nextReport) && Array.isArray(state.reports) &&
             Array.isArray(state.history) && state.links && state.cancelled && state.followups && state.read) {
           state.attachments = state.attachments || {};
+          state.resumption = state.resumption || {};
+          state.notices = Array.isArray(state.notices) ? state.notices : [];
           memory = state;
         }
       }

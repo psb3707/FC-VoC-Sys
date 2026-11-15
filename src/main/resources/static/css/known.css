@@ -10,7 +10,6 @@
   --kn-tab-ink: var(--sfa-tab-color);          /* #636e81: 홈 안 고른 탭 글자 (#f7f9fa 대비 4.88) */
   --kn-tab-radius: var(--sfa-tab-radius);      /* 12px: 홈 탭 위 모서리 */
   --kn-target-ring: var(--pn-accent);          /* 알림·요약 줄에서 연 카드: 선택 카드와 같은 2px #0077b3 */
-  --kn-stage-dt: 150px;                        /* 받은 알림 시각 칸 */
 }
 
 /* ---- 공지 카드 요약 줄 (진입점, 기존 공지 목록 줄 .board li 모양 그대로: 48px·14px) ---- */
@@ -55,4 +54,21 @@
 
 .kn .kn-none { margin: 16px 0 0; color: var(--pn-sub); }
 .kn-empty { text-align: center; }
-.kn-alarms dt { flex-basis: var(--kn-stage-dt); }
+
+/* ---- ADR-025: 카드는 세 질문만, 나머지는 [자세히 보기] ---- */
+.kn .kn-handled { margin: -4px 0 0; color: var(--pn-sub); }
+.kn .kn-handled b { color: var(--pn-ink); }
+/* 카드 안 접기([자세히 보기]·후속 조치): 카드 안 카드라 그림자 대신 1px 선(intake-quick.css 의 접힌 영역 안 접힌 영역과 같음),
+   안쪽 여백은 .pq-details-body(16px 24px) */
+.kn-card > .pn-details { margin: 16px 0 0; box-shadow: none; border: 1px solid var(--pn-line); }
+.pn-details .pn-rows:empty { display: none; }
+/* 업무 재개 회신(보조 버튼 = .pn-chip 의 선택 표시) */
+.nt-track > .pq-actions, .nt-track > .kn-resume { margin-top: 16px; }
+.kn-resume .nt-q { margin: 0; }
+.kn-resume .pn-chips { margin-top: 8px; }
+.kn .kn-resume-status { margin: 8px 0 0; color: var(--pn-sub); }
+.kn-resume > .pn-btn-2 { margin-top: 12px; font-weight: 500; }   /* 위 회신 버튼(.pn-chip 500)과 같은 굵기 */
+/* [지점 FC 문의] FC별 줄: 이름 칸이 줄의 주어(사람 이름)라 진한 글자·굵게 (06번 0-3절 "표·정의 목록 줄" 예외) */
+.kn-team dt { font-weight: 700; color: var(--pn-ink); }
+/* 두 갈래 표시와 FC별 줄 사이: 정의 목록 줄과 같은 1px 연한 선 + 16px */
+.kn-card .kn-team { margin: 16px 0 0; padding: 16px 0 0; border-top: 1px solid var(--pn-line-soft); }

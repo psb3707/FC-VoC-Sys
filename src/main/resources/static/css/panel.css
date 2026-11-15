@@ -217,3 +217,17 @@
   from, 20% { stroke-dasharray: 24; stroke-dashoffset: 24; }
   to { stroke-dasharray: 24; stroke-dashoffset: 0; }
 }
+
+/* 두 갈래 진행 표시 (ADR-025, 06번 0-3절 "두 갈래 진행 표시"): 정의 목록 줄처럼 1px 연한 선으로 나누고,
+   답은 문구 미리보기 상자(#f7f9fa·16px·테두리 없음). 새 색·아이콘 없이 글자로만 뜻을 전한다. */
+.nt-tracks { margin: 12px 0 0; }
+.nt-track { padding: 16px 0 0; }
+.nt-track + .nt-track { margin: 16px 0 0; border-top: 1px solid var(--pn-line-soft); }
+.nt-tracks .nt-track:first-child { padding-top: 0; }
+.nt-track .nt-q { margin: 0 0 8px; font-weight: 700; }
+.nt-track .nt-a { margin: 0; padding: 12px 16px; background: var(--pn-surface); border-radius: var(--pn-note-radius); }
+.nt-track .nt-sub { margin: 8px 0 0; color: var(--pn-sub); }
+/* 안내 상자 안 정의 목록: 굵은 제목과 띄우고 상자 아래 여백이 겹치지 않게 */
+.pn-note .pn-rows { margin: 8px 0 0; }
+/* 결함 ID 등 하이픈에서 줄이 바뀌지 않게 */
+.pn-nowrap { white-space: nowrap; }

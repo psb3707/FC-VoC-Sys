@@ -262,10 +262,16 @@
       var ki = kn.querySelector('.pn-head .pn-ico');
       if (!ki || hex(parseColor(cs(ki).backgroundColor)) !== '#0099e6') kf.push('머리 아이콘 원 #0099e6 아님');
       if (document.getElementById('intake-panel') && visible(document.getElementById('intake-panel'))) kf.push('S2 패널과 함께 열림');
-      // 전환 탭: tablist, 2개, 선택 하나, 선택은 굵게(색 아닌 표시)
-      var tl = kn.querySelector('[role="tablist"]'), ktabs = all('#known-panel [role="tab"]');
+      // 전환 탭: tablist, 보이는 탭 2개(관리자는 [지점 FC 문의]까지 3개, ADR-025), 선택 하나, 선택은 굵게(색 아닌 표시)
+      var tl = kn.querySelector('[role="tablist"]'), ktabs = all('#known-panel [role="tab"]').filter(visible);
+      var kneed = window.SfaHash && window.SfaHash.read().role === 'MANAGER' ? 3 : 2;
       if (!tl) kf.push('role=tablist 없음');
-      if (ktabs.length !== 2) kf.push('전환 탭 ' + ktabs.length + '개 (2 필요)');
+      if (ktabs.length !== kneed) kf.push('전환 탭 ' + ktabs.length + '개 (' + kneed + ' 필요)');
+      // 두 갈래 진행 표시(ADR-025): 두 덩어리, 질문 글자가 있음
+      all('#known-panel .nt-tracks').forEach(function (t) {
+        var parts = t.querySelectorAll(':scope > .nt-track > .nt-q');
+        if (parts.length !== 2 || !parts[0].textContent.trim() || !parts[1].textContent.trim()) kf.push('두 갈래 진행 표시가 두 덩어리 아님');
+      });
       var sel = ktabs.filter(function (b) { return b.getAttribute('aria-selected') === 'true'; });
       if (sel.length !== 1) kf.push('선택된 탭 ' + sel.length + '개');
       sel.forEach(function (b) { if (parseInt(cs(b).fontWeight, 10) < 700) kf.push('선택 탭 굵게 아님'); });

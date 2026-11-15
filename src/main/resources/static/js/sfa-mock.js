@@ -147,8 +147,10 @@
     items.forEach(function (n) {
       var b = el('button', 'alarm-item', [n.bodySnapshot, el('span', 'when', [fmtWhen(n.at) + (n.read ? ' · 읽음' : '')])]);
       b.type = 'button';
-      b.setAttribute('data-kn-defect', n.defectId);   // 누르면 S3 패널 [내 신고] (js/known-panel.js)
+      // 누르면 S3 패널: FC 알림은 [내 신고]의 그 접수, 대리 접수자 알림은 [지점 FC 문의]의 그 결함 (js/known-panel.js, ADR-025)
+      if (n.defectId) b.setAttribute('data-kn-defect', n.defectId);
       b.setAttribute('data-kn-notice', n.id);
+      b.setAttribute('data-kn-audience', n.audience || 'REPORTER');
       if (n.reportId) b.setAttribute('data-kn-report', n.reportId);
       b.setAttribute('aria-haspopup', 'dialog');
       ul.appendChild(el('li', null, [b]));
