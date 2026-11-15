@@ -257,7 +257,8 @@
       var key = assistantKey(st);
       if (!assistant || assistant.key !== key) {
         var initialText = assistantReturn === '0' ? '' : quick.questionSeed(st);
-        assistant = { key: key, text: initialText, question: '', result: null, error: '', pending: false, streamStarted: null };
+        assistant = { key: key, text: initialText, question: '', result: null, error: '', pending: false, streamStarted: null,
+          history: [], turns: [], consult: null };
       }
       syncFixture(st);
       paint(st);
@@ -322,6 +323,7 @@
     body.classList.toggle('pn-assist-enter', asking && entering && !assistant.pending && !assistant.result);
     body.classList.toggle('pn-receipt-enter', entering && ['receipt', 'metoo', 'done'].includes(st.step));
     var status = asking ? (assistant.pending || assistant.streamStarted !== null ? '답변을 준비하고 있어요.' :
+      assistant.consult && assistant.consult.stage === 'checking' ? 'AI가 확인할 내용을 여쭤보고 있어요.' :
       assistant.result ? '답변이 준비됐어요.' : '') : '';
     if ($('pn-assist-status').textContent !== status) $('pn-assist-status').textContent = status;
     body.innerHTML = '';
@@ -419,27 +421,52 @@
             'data-index': i, 'data-fk': 'suggestion:' + i
           })]);
         }));
-      var initial = !assistant.pending && !assistant.result;
+      var c = assistant.consult;
+      var initial = !assistant.pending && !assistant.result && !c && !assistant.question;
+      var lastAi = assistant.turns.filter(function (t) { return t.who === 'ai'; }).pop();
+      function turns(after) {
+        return assistant.turns.filter(function (t) { return !!t.after === after; }).map(function (t) {
+          return t.who === 'me' ? el('p', { cls: 'pn-assist-question' }, [t.text]) :
+            el('p', { cls: 'pn-assist-ai', id: t === lastAi ? 'pn-assist-ask' : null, tabindex: t === lastAi ? '-1' : null }, [t.text]);
+        });
+      }
       return {
         body: [el('p', { cls: 'pn-assist-label' }, ['전산 접수 AI']),
-          initial ? el('h3', { tabindex: '-1' }, ['무엇이 궁금하세요?']) : null,
-          initial ? el('p', { cls: 'pn-lead' }, ['사용 방법, 오류 증상, 이미 접수된 오류의 처리 상황을 물어보세요.']) : null,
-          assistant.question ? el('p', { cls: 'pn-assist-question' }, ['내 질문 · ', assistant.question]) : null,
+          initial && !assistant.history.length ? el('h3', { tabindex: '-1' }, ['무엇이 궁금하세요?']) : null,
+          initial && !assistant.history.length ? el('p', { cls: 'pn-lead' }, ['사용 방법, 오류 증상, 이미 접수된 오류의 처리 상황을 물어보세요.']) : null,
+          assistant.history.length ? el('div', { cls: 'pn-assist-history', role: 'group', 'aria-label': '앞의 대화' },
+            assistant.history.flatMap(function (h) {
+              return [el('p', { cls: 'pn-assist-question' }, ['내 질문 · ', h.question])].concat(h.turns.map(function (t) {
+                return el('p', { cls: t.who === 'me' ? 'pn-assist-question' : 'pn-assist-ai' }, [t.text]);
+              }), h.summary ? [el('p', { cls: 'pn-assist-ai' }, [h.summary])] : []);
+            })) : null,
+          initial && assistant.history.length ? el('h3', { tabindex: '-1' }, ['더 궁금한 점이 있으세요?']) : null,
+          assistant.question ? el('p', { cls: 'pn-assist-question' }, ['내 질문 · ', assistant.question]) : null]
+          .concat(turns(false), [
+          c && c.stage === 'checking' ? checkChips(c) : null,
           assistant.pending ? el('div', { cls: 'pn-assist-thinking', 'aria-hidden': 'true' }, [
             el('span', { cls: 'pn-assist-dots' }, [el('i'), el('i'), el('i')]),
             '공개된 사례를 확인하고 있어요.']) : null,
           assistant.result ? answerCard(assistant.result) : initial ? questionList : null],
+          !waiting ? turns(true) : [],
+          [c && c.stage === 'resume' && !waiting ? el('ul', { cls: 'pn-chips pn-assist-answers', 'aria-label': '임시 방법 결과' },
+            window.IntakeFacts.OUTCOMES.map(function (pair) {
+              return el('li', null, [btn('pn-chip', OUTCOME_ANSWER[pair[0]], 'assistant-outcome', { 'data-code': pair[0] })]);
+            })) : null]),
         foot: [el('p', { id: 'pn-assist-help' }, ['고객 이름, 번호, 비밀번호는 입력하지 마세요.']),
           el('form', { cls: 'pn-assist-compose', id: 'pn-assist-form' }, [
             el('input', { cls: 'pn-input', id: 'pn-assist-text', type: 'text', maxlength: '100', required: true,
               autocomplete: 'off', 'aria-label': '전산 문의 질문', 'aria-describedby': 'pn-assist-help',
               'data-fk': 'assistant-text', value: assistant.text, placeholder: '궁금한 점을 적어 주세요',
               'aria-invalid': assistant.error ? 'true' : null, readonly: waiting }),
-            el('button', { cls: assistant.result && !waiting ? 'pn-btn-2' : 'pn-btn',
+            el('button', { cls: (assistant.result || c) && !waiting ? 'pn-btn-2' : 'pn-btn',
               type: 'submit', disabled: waiting }, ['보내기'])]),
           assistant.error ? el('div', { cls: 'pn-err', role: 'alert' }, [assistant.error]) : null,
-          assistant.result && !waiting ? btn('pn-btn', '이 내용으로 문의 접수', 'assistant-handoff') : null,
-          assistant.pending && assistantReturn !== '0' ? btn('pn-btn-2', '기다리지 않고 접수', 'assistant-direct') : null,
+          // ADR-026: 되묻기 상담은 결과 확인을 마치면 주 버튼 하나로 접수 확인 화면에 간다
+          c ? (c.stage === 'done' && !waiting ? btn('pn-btn', '확인한 내용으로 접수하기', 'assistant-handoff') :
+            !waiting && assistantReturn !== '0' ? btn('pn-btn-2', '기다리지 않고 접수', 'assistant-direct') : null) :
+            assistant.result && !waiting ? btn('pn-btn', '이 내용으로 문의 접수', 'assistant-handoff') : null,
+          !c && assistant.pending && assistantReturn !== '0' ? btn('pn-btn-2', '기다리지 않고 접수', 'assistant-direct') : null,
           assistantReturn === '0' ? btn('pn-btn-2', '일반 접수로 돌아가기', 'leave-assistant') : null]
       };
     },
@@ -681,9 +708,56 @@
         // 승인 안내문은 임시 방법과 같은 말이라 두 갈래 표시와 겹치면 빼고, 해결 안내·사용법 안내만 보인다(ADR-025)
         result.guidance && (!d || d.status === 'RESOLVED') ? el('p', null, [result.guidance]) : null]),
       !streaming ? el('ul', { cls: 'pn-chips' }, [
-        assistantReturn !== '0' ? el('li', null, [btn('pn-chip', 'AI와 접수 초안 만들기', 'assistant-draft')]) : null,
-        el('li', null, [btn('pn-chip', '다른 질문하기', 'assistant-reset')])]) : null
+        assistantReturn !== '0' && !assistant.consult ? el('li', null, [btn('pn-chip', 'AI와 접수 초안 만들기', 'assistant-draft')]) : null,
+        assistant.consult && assistant.consult.stage === 'resume' ? null :
+          el('li', null, [btn('pn-chip', '다른 질문하기', 'assistant-reset')])]) : null
     ]);
+  }
+
+  /* ---- ADR-026 한 상담 되묻기 ----
+     consult = { result, checks, facts:{KEY: code}, outcome, stage: checking|resume|done }. 페이지 메모리에만 둔다 */
+  var OUTCOME_ANSWER = { RESUMED: '네, 진행했어요', STILL: '아직 안 돼요', UNKNOWN: '지금은 확인할 수 없어요' };
+  var OUTCOME_REPLY = {
+    RESUMED: '업무를 이어가셨네요. 오류 자체는 아직 고쳐지지 않았어요. 접수해 두시면 수정 소식을 알려 드려요.',
+    STILL: '시도한 방법을 접수에 함께 남길게요. 급하면 접수할 때 전화 연락을 요청할 수 있어요.',
+    UNKNOWN: '확인 전이어도 접수할 수 있어요. 결과는 나중에 내 접수내역에서 알려 주셔도 돼요.'
+  };
+  function nextCheck(c) { return c.checks.find(function (q) { return !c.facts[q.key]; }) || null; }
+  function checkChips(c) {
+    var q = nextCheck(c);
+    return q ? el('ul', { cls: 'pn-chips pn-assist-answers', 'aria-label': q.text }, q.choices.map(function (choice) {
+      return el('li', null, [btn('pn-chip', choice.label, 'assistant-check', { 'data-key': q.key, 'data-code': choice.code })]);
+    })) : null;
+  }
+  function focusAssistant(id) {
+    return render().then(function () { var t = $(id); if (t) t.focus(); });
+  }
+  /* 되묻기를 다 마치면 비슷한 사례 결과를 보이고, 임시 방법이 있으면 결과를 묻는다 */
+  function revealConsult(session) {
+    var c = session.consult;
+    session.turns.push({ who: 'ai', text: '알려주신 증상과 비슷한 사례가 있어요. 지금 해볼 방법을 안내해 드릴게요.' });
+    c.stage = c.result.resumeQuestion ? 'resume' : 'done';
+    if (c.stage === 'resume') session.turns.push({ who: 'ai', after: true, text: c.result.resumeQuestion });
+    session.result = c.result;
+    session.streamStarted = motionEnabled() ? performance.now() : null;
+    if (!assistantIsVisible(session)) return;
+    return session.streamStarted === null ? renderAssistantReply(session) : render();
+  }
+  /* 새 질문·다른 질문하기: 지금 대화를 위에 남기고 새 상담을 시작한다 */
+  function archive(session) {
+    if (!session.question) return;
+    session.history.push({ question: session.question, turns: session.turns,
+      summary: session.result && session.result.defect ? session.result.defect.title + ' · ' + session.result.defect.id : null });
+    session.question = '';
+    session.turns = [];
+    session.consult = null;
+    session.result = null;
+  }
+  function consultHandoff(session) {
+    var c = session.consult, d = c.result.defect;
+    var tried = c.outcome === 'RESUMED' || c.outcome === 'STILL';
+    return { origin: 'ASSISTANT', suggestedDefectId: d.id, facts: Object.assign({}, c.facts), outcome: c.outcome,
+      attemptedDefectId: tried ? d.id : null };
   }
 
   function assistantKey(st) {
@@ -742,6 +816,7 @@
     if (!session || session.pending || session.streamStarted !== null) return;
     session.text = text.trim();
     session.error = '';
+    if (session.text) archive(session);
     session.result = null;
     session.question = '';
     if (!session.text) {
@@ -765,6 +840,15 @@
       function showAnswer() {
         if (assistant !== session) return;
         session.pending = false;
+        if (result.outcome === 'MATCH' && (result.checks || []).length) {
+          var c = session.consult = { result: result, checks: result.checks, facts: {}, outcome: null, stage: 'checking' };
+          c.checks.forEach(function (q) { if (q.known) c.facts[q.key] = q.known; });   // 질문 문장에 있는 항목은 묻지 않는다
+          var q = nextCheck(c);
+          if (!q) return revealConsult(session);
+          session.turns.push({ who: 'ai', text: q.text });
+          if (assistantIsVisible(session)) return focusAssistant('pn-assist-ask');
+          return;
+        }
         session.result = result;
         session.streamStarted = motionEnabled() ? performance.now() : null;
         if (assistantIsVisible(session)) {
@@ -823,17 +907,36 @@
       case 'ask-suggestion': return ask(suggestions[Number(b.getAttribute('data-index'))]);
       case 'leave-assistant': return go({ step: assistantReturn });
       case 'assistant-reset':
-        assistant = null;
+        archive(assistant);
         return render().then(function () { $('pn-assist-text').focus(); });
+      case 'assistant-check':
+        var consult = assistant.consult, check = consult && nextCheck(consult);
+        if (!check || check.key !== b.getAttribute('data-key')) return;
+        var picked = check.choices.find(function (x) { return x.code === code; });
+        if (!picked) return;
+        assistant.turns.push({ who: 'me', text: picked.label });
+        consult.facts[check.key] = code;
+        var following = nextCheck(consult);
+        if (!following) return revealConsult(assistant);
+        assistant.turns.push({ who: 'ai', text: following.text });
+        return focusAssistant('pn-assist-ask');
+      case 'assistant-outcome':
+        if (!assistant.consult || assistant.consult.stage !== 'resume' || !OUTCOME_ANSWER[code]) return;
+        assistant.consult.outcome = code;
+        assistant.consult.stage = 'done';
+        assistant.turns.push({ who: 'me', after: true, text: OUTCOME_ANSWER[code] },
+          { who: 'ai', after: true, text: OUTCOME_REPLY[code] });
+        return focusAssistant('pn-assist-ask');
       case 'assistant-direct':
         var original = assistant.question || assistant.text;
+        if (assistant.consult && usesQuickForm(st)) return quick.handoff(st, original, assistant.consult.result, false, consultHandoff(assistant));
         assistant = null;
         return quick.handoff(st, original, {});
       case 'assistant-draft':
         return quick.handoff(st, assistant.question, assistant.result, true);
       case 'assistant-handoff':
         var answer = assistant.result, text = assistant.question, onBehalf = form.onBehalf;
-        if (usesQuickForm(st)) return quick.handoff(st, text, answer);
+        if (usesQuickForm(st)) return quick.handoff(st, text, answer, false, assistant.consult ? consultHandoff(assistant) : null);
         blank();
         form.fromAssistant = true;
         form.onBehalf = onBehalf;

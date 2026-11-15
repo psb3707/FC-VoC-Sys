@@ -46,7 +46,7 @@
 | GET | `/api/reports/branch?managerId=` | 관리자 [지점 FC 문의] (REQ-KN-06) |
 | GET | `/api/reports/unlinked?userId=&q=` | 아직 대표 결함에 안 묶인 신고(최신 순, 신고자 지점, 그 담당자 기준 `isNew`). `q`가 있으면 글자 찾기 (REQ-LG-02·07·08) |
 | POST | `/api/reports/unlinked/seen` | 담당자가 [아직 안 묶인 신고]를 본 시각(`AppUser.unlinkedSeenAt`) 기록 (REQ-LG-07) |
-| POST | `/api/reports/{id}/similar-defects` | AI 비슷한 대표 결함 후보 1~3개(07번 ⑤, 실패 시 규칙 후보) (REQ-LG-06) |
+| POST | `/api/reports/{id}/similar-defects` | AI 비슷한 대표 결함 후보 1~3개(07번 ⑤, 실패 시 규칙 후보, 프론트 단계 새 신고는 규칙 후보 `RULE`) (REQ-LG-06·09) |
 | GET | `/api/defects?status=&grade=&type=&q=` | 대표 결함 목록. `q`가 있으면 글자 찾기(필터와 AND) (REQ-LG-05·08) |
 | POST | `/api/defects` | 신고에서 대표 결함 생성 |
 | GET | `/api/defects/{id}` | 상세, 연결 신고, 이력 |
@@ -105,6 +105,29 @@
 
 - `previewIntakeDraft`는 텍스트 허용 필드만 가려 반환한다. `planIntakeDraft`에는 미리보기 텍스트와 확인 여부만 넘긴다. 결과는 선택 질문 최대 3개와 근거별 초안 필드다.
 - `postQuickIntake`는 사용자가 확정한 이미지 한 장과 확인한 초안을 선택적으로 받는다. 가상 저장에 실패하면 접수번호를 만들지 않고 첨부를 다시 보내거나 빼고 접수할 수 있다. `getReportAttachment`는 가상 담당자 역할만 조회하며 응답은 확인된 이미지다.
+
+### AI 문의 상담 인계와 사건 정보 (ADR-026, REQ-IN-13·14)
+
+- `postIntakeQuestion` 응답이 `MATCH`이고 시나리오에 확인 항목이 있으면 `checks`와 `resumeQuestion`을 더한다. `checks`는 최대 3개이며 `known`은 질문 문장에서 이미 알 수 있는 답(없으면 `null`)이다. 화면은 `known`이 없는 항목만 묻는다. 결함이 해결·수정하지 않음이거나 임시 방법이 없으면 `resumeQuestion`은 `null`이다.
+```json
+{"outcome":"MATCH","business":"SUBSCRIPTION","symptom":"WRONG_SCREEN","defect":{"id":"D-2026-001","status":"WORKAROUND","workaround":"…"},
+ "checks":[{"key":"DEVICE","text":"고객님 휴대전화에서 링크를 여셨나요?","choices":[{"code":"CUSTOMER_PHONE","label":"네, 고객님 휴대전화예요"},{"code":"SAME","label":"아니요, 지금 이 기기예요"},{"code":"UNKNOWN","label":"잘 모르겠어요"}],"known":null}],
+ "resumeQuestion":"문자로 서명 링크를 보내니 청약을 진행할 수 있었나요?"}
+```
+- 상담 상태(질문·되묻기·답·조치 결과)는 페이지 메모리에만 둔다. 인계 객체(화면 사이, 저장 안 함): `{origin:"ASSISTANT", question, business, symptom, suggestedDefectId, facts:{DEVICE, SEMINAR_HISTORY, CUSTOMER_WAITING}, attemptedDefectId, outcome:"RESUMED|STILL|UNKNOWN"}`. 지시서 예시의 필드는 `incidentFacts.device`→`incident.device`(`CUSTOMER_PHONE`), `seminarHistory`→`conditions.SEMINAR_HISTORY`, `customerWaiting`→`urgent`의 `CONSULTING`, `attemptedAction`→`attemptedWorkaround`(대장 임시 방법 문장, `guideId` 결함과 같을 때만), `pendingOutcome`→`workOutcome`으로 맞췄다.
+- `postQuickIntake` 요청에 `origin`, `conditions`, `workOutcome`, `suggestedDefectId`, `factSources`를 더한다. `incident.device`는 `CUSTOMER_PHONE`(고객 휴대전화)을 허용한다.
+- 접수 저장본(공유 저장소)은 허용 목록을 거친 코드만 남긴다. 목록 밖의 값은 버리고 빈 값으로 둔다.
+
+| 키 | 허용 값 | 비고 |
+|---|---|---|
+| `origin` | `ASSISTANT` `FORM` | AI 문의에서 넘어왔는지 |
+| `incident.device` | `SAME` `PC` `PHONE` `TABLET` `CUSTOMER_PHONE` `UNKNOWN` | 오류가 난 기기(FC 진술) |
+| `conditions.SEMINAR_HISTORY` | `YES` `NO` `UNKNOWN` | 시나리오 확인 항목(현재 1종) |
+| `workOutcome` | `RESUMED` `STILL` `UNKNOWN` 또는 `null` | 접수 시점의 조치 결과. 대리 접수는 항상 `null` |
+| `suggestedDefectId` | 공개 대표 결함 ID 또는 `null` | AI 문의가 안내한 사례. 연결 아님 |
+| `factSources.*` | `USER_REPORTED` `DEMO_CONTEXT` `BROWSER_CAPTURED` `DEFECT_LEDGER` `UNKNOWN` | 키는 `device` `conditions` `urgent` `attempted` `workOutcome` |
+
+- 접수 뒤 `workOutcome`이 `RESUMED|STILL`이고 접수자가 신고자 본인이면 화면이 `POST /api/reports/{id}/work-resumption`을 한 번 부른다(같은 접수에 다시 부르지 않음). `getMyReports`·`getUnlinkedReports`·`getDefect`의 신고는 같은 저장본을 읽어 위 키를 그대로 내린다.
 
 ### POST `/api/intake/sessions`
 응답
@@ -173,6 +196,7 @@
                 "matched":["BUSINESS","SYMPTOM","WORDING"]}]}
 ```
 - 후보가 없으면 `"candidates":[]`. 화면은 "비슷한 결함을 찾지 못했어요"와 새 대표 결함 만들기 안내.
+- 프론트 단계에서 고정 응답이 없는 신고(시연 중 만든 `R-Q…`)는 규칙으로 후보를 만든다(ADR-026 결정 8): `llmOutcome:"RULE"`, `similarity:null`, `reasons:["업무: 청약·서명","증상: 엉뚱한 화면이 떠요","관련 조건: 초대장 발송 이력 있음","시도한 조치: 이 결함의 임시 방법","AI 문의: 안내한 사례"]`(맞은 것만), `matched`는 `BUSINESS` `SYMPTOM` `CONDITION` `WORKAROUND` `SUGGESTED` 중 맞은 것. 업무와 증상이 모두 같거나 `SUGGESTED`일 때만 후보이며 맞은 항목이 많은 순이다. 비슷함 정도·점수는 붙이지 않는다.
 - LLM 실패 시 `"llmOutcome":"FALLBACK"`, 규칙 후보는 `"similarity":null`, `"reason":"같은 업무·같은 문제 유형이에요"`.
 - 연결은 이 API가 하지 않는다. 담당자가 고른 뒤 `POST /api/defects/{id}/reports`.
 

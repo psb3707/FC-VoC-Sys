@@ -36,6 +36,8 @@
   #intake-panel.pq-mode-switch #pn-close span { display: none; }
   #intake-panel.pq-mode-switch #pn-close { padding-inline: 12px; }
   .pq-summary .pn-rows dt { flex-basis: 86px; }
+  .pq-facts .pn-rows div { display: block; }   /* ADR-026 확인한 내용 카드: 좁은 화면은 이름·값 위아래 */
+  .pq-facts .pn-rows dd { margin-top: 2px; }
   .pq-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .pq-actions .pn-btn-2 + .pn-btn-2 { margin: 8px 0 0; }
   .pq-actions .pn-btn-2 { width: 100%; }
@@ -55,3 +57,4 @@
 .pq-attachment .pn-input[type="file"] { margin-bottom: 12px; padding-block: 10px; }
 .pq-attachment .pn-input::file-selector-button { font: inherit; margin-inline-end: 8px; }
 .pq-attachment .pq-image-preview { margin-bottom: 12px; }
+.pq-facts .pn-field + .pn-rows { margin-top: 16px; }   /* ADR-026: 선택 상자와 정의 목록 줄 사이 */

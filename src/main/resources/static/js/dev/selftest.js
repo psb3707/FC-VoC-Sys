@@ -173,7 +173,8 @@
 
     // 10. 글자 잘림 없음 (overflow hidden/clip 인데 내용이 더 큼)
     add('no-clipped-text', all('body *').filter(function (el) {
-      if (!el.textContent.trim() || el.closest('[data-clip-ok]')) return false;
+      // 화면 읽기 프로그램 전용 상태 글(.pn-sr-only)은 일부러 1px로 잘라 둔다
+      if (!el.textContent.trim() || el.closest('[data-clip-ok], .pn-sr-only')) return false;
       var s = cs(el);
       var hx = /hidden|clip/.test(s.overflowX) || s.textOverflow === 'ellipsis';
       var hy = /hidden|clip/.test(s.overflowY);
@@ -204,7 +205,7 @@
       if (!steps || !body || body.contains(steps) || steps.getBoundingClientRect().bottom > body.getBoundingClientRect().top + EPS) pf.push('단계 표시줄이 상단 고정 아님');
       if (body && !/auto|scroll/.test(cs(body).overflowY)) pf.push('본문 스크롤 영역 아님');
       var asking = !!document.getElementById('pn-assist-form');
-      if (asking && (!steps.hidden || !body.querySelector('.pn-assist-suggestions, .pn-assist-result'))) {
+      if (asking && (!steps.hidden || !body.querySelector('.pn-assist-suggestions, .pn-assist-result, .pn-assist-ai'))) {
         pf.push('AI 문의의 단계 표시줄 또는 본문 구성 확인');
       }
       if (!asking && !(document.getElementById('pn-steps-text') || {}).textContent) pf.push('단계 글자 표시 없음(색만으로 전달)');
@@ -423,5 +424,6 @@
       document.body.appendChild(pre);
     }
   }
+  window.SfaSelftest = start;   // 주소로 만들 수 없는 화면(대화 중 등)을 검사 스크립트가 다시 검사할 때 쓴다
   (window.SFA_READY || Promise.resolve()).then(function () { setTimeout(start, 50); }, start);
 })();

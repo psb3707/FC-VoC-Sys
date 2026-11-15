@@ -41,6 +41,8 @@ from ref_outline import SURNAME3, UI_WORDS  # noqa: E402  (참고 원본은 읽�
 EXTRA_UI_WORDS = {"사용자", "안내가", "부서가", "오류와", "설계일", "모바일",
                   # ADR-025 역할별 알림 문구(js/fixtures/notifications.js·defects.js)
                   "방법이", "안내된", "이어갈", "문의가",
+                  # ADR-026 AI 문의 되묻기 문구(js/fixtures/intake-assistant.js)
+                  "이전에", "기다리", "보내니", "진행할",
                   # S1 업무 탭 표 머리
                   "설계명", "주상품",
                   # S2 접수 패널 고정 응답(js/fixtures/intake.js) 문구
@@ -444,10 +446,15 @@ def assistant_motion_check(chrome: Chrome, page: str) -> None:
       if (animation !== (reduced ? 'none' : 'pn-assist-appear')) throw Error('AI 진입 모션 설정 오류');
       find('[data-index="1"]').click();
       let partial = 0;
+      if (!reduced && (!find('.pn-assist-thinking .pn-assist-dots') || !find('#pn-assist-status').textContent)) {
+        throw Error('답변 준비 표시 누락');
+      }
+      // ADR-026: 서명 알림톡 질문은 기기·초대장·고객 대기를 되물은 뒤 결과를 순차 표시한다
+      for (const code of ['CUSTOMER_PHONE', 'YES', 'YES']) {
+        await wait(() => find('[data-act="assistant-check"][data-code="' + code + '"]'));
+        find('[data-act="assistant-check"][data-code="' + code + '"]').click();
+      }
       if (!reduced) {
-        if (!find('.pn-assist-thinking .pn-assist-dots') || !find('#pn-assist-status').textContent) {
-          throw Error('답변 준비 표시 누락');
-        }
         await wait(() => find('.pn-assist-result[aria-busy="true"] #pn-assist-reply')?.textContent.length);
         partial = find('#pn-assist-reply').textContent.length;
         if (find('[data-act="assistant-handoff"]')) throw Error('답변 표시 중에 접수 동작이 노출됨');
@@ -455,9 +462,11 @@ def assistant_motion_check(chrome: Chrome, page: str) -> None:
       await wait(() => find('.pn-assist-result[aria-busy="false"]'));
       const answer = find('#pn-assist-reply');
       if (answer.textContent.length <= partial || !answer.textContent.includes('문자로 서명 링크') ||
-          answer.hasAttribute('aria-hidden') || !find('[data-act="assistant-handoff"]')) {
-        throw Error('완성된 답변과 접수 동작 확인 실패');
+          answer.hasAttribute('aria-hidden') || !find('[data-act="assistant-outcome"]')) {
+        throw Error('완성된 답변과 임시 방법 결과 질문 확인 실패');
       }
+      find('[data-act="assistant-outcome"][data-code="RESUMED"]').click();
+      await wait(() => find('[data-act="assistant-handoff"]'));
       return 'ok';
     })()"""
     for preference in ("no-preference", "reduce"):
