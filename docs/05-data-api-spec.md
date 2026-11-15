@@ -14,7 +14,8 @@
 | `Defect.status` 코드 | `RECEIVED`(접수) · `REPRODUCED`(재현 확인, FC 화면 이름 "문제 확인") · `CAUSE_FOUND`(원인 파악) · `WORKAROUND`(임시조치) · `FIX_PLANNED`(수정 예정, plannedFixDate 필수) · `RESOLVED`(해결) · `WONT_FIX`(수정하지 않음, wontFixReason* 필수) | 02번 3절 상태 단계. 화면 이름은 06번 5절(ADR-015) |
 | `DefectStatusHistory` | id, defectId, from, to, reason, actorId, at, notifiable | Defect 1:N |
 | `FcNotice` | id, defectId, draftText, approvedText, status(DRAFT/APPROVED), llmCallId, approverId | 승인본만 FC에 노출 |
-| `NotificationLog` | id, defectId, historyId, recipientId, bodySnapshot, channel=PREVIEW, at | 실발송 없음 |
+| `NotificationLog` | id, defectId, historyId, recipientId, reportId?, audience(REPORTER/SUBMITTER), kind(STATUS/PROXY_RECEIPT), bodySnapshot, channel=PREVIEW, at, readAt? | 실발송 없음. `audience`·`kind`는 02번 4-1절(ADR-025). `PROXY_RECEIPT`는 `historyId`가 없음 |
+| `WorkResumption` | reportId, result(RESUMED/STILL), at | Report 1:1(마지막 답). 신고자 본인만 기록. 대표 결함 상태와 무관(ADR-025) |
 | `VirtualContract` | id, customerNo, policyNo, proposalNo, statusCat, productGroup, lastChangeType, lastChangeAt, channel | 가상 데이터 |
 | `RefKeyMap` | refKey, reportScope, kind, originalValue | **서버 전용**. 신고별로 K-01부터 새로 시작. API로 노출 금지 |
 | `LlmCall` | id, task(TRIAGE/REFINE/NOTICE/SIMILAR), provider, model, promptVersion, requestHash, latencyMs, retries, outcome(OK/RETRIED/FALLBACK), trialId? | 전문은 JSONL(마스킹본)에 |
@@ -41,6 +42,8 @@
 | POST | `/api/intake/sessions/{id}/answers` | 되묻기 답변 제출, 정제 결과 반환 |
 | POST | `/api/reports` | 신고 최종 제출(A/B 공통, 사람 확인값 포함) |
 | GET | `/api/reports/mine?userId=` | 내 신고와 진행 단계 |
+| POST | `/api/reports/{id}/work-resumption` | FC 업무 재개 회신(신고자 본인만, REQ-KN-05) |
+| GET | `/api/reports/branch?managerId=` | 관리자 [지점 FC 문의] (REQ-KN-06) |
 | GET | `/api/reports/unlinked?userId=&q=` | 아직 대표 결함에 안 묶인 신고(최신 순, 신고자 지점, 그 담당자 기준 `isNew`). `q`가 있으면 글자 찾기 (REQ-LG-02·07·08) |
 | POST | `/api/reports/unlinked/seen` | 담당자가 [아직 안 묶인 신고]를 본 시각(`AppUser.unlinkedSeenAt`) 기록 (REQ-LG-07) |
 | POST | `/api/reports/{id}/similar-defects` | AI 비슷한 대표 결함 후보 1~3개(07번 ⑤, 실패 시 규칙 후보) (REQ-LG-06) |
@@ -131,6 +134,16 @@
 - `statusHistory`는 `DefectStatusHistory`에서 FC에 필요한 `from`·`to`·`at`만 내린다(`actorId`·`reason` 제외).
 - 단계는 건너뛸 수 있다(예: `RECEIVED → CAUSE_FOUND`). 화면은 지금 상태 기준으로 지난 단계를 채운다.
 - `WONT_FIX`이면 화면은 직전 상태(`statusHistory` 마지막 항목의 `from`)까지 막대를 채우고 "수정하지 않음 · ○○ 단계에서 끝났어요"로 표시한다(06번 5절).
+- ADR-025 추가 키: `workResumption`(`{result, at}` 또는 `null`), `reporter`·`submittedBy`(`{id, name}`, 대신 접수한 건이면 둘이 다름). `defectId`가 있으면 "담당자가 확인했어요", 없으면 "접수됨 · 담당자 확인 전"으로 본다.
+
+### POST `/api/reports/{id}/work-resumption` (REQ-KN-05, ADR-025)
+요청 `{"userId":"U-001","result":"RESUMED"}` → 응답 `{"saved":true,"result":"RESUMED","at":"2026-11-15T10:20:00+09:00"}`. 신고자가 아니거나 `result`가 두 값이 아니면 `null`. `STILL`이면 그 신고의 후속 기록(`action: STILL`)도 남긴다. 대표 결함 상태·알림은 바꾸지 않는다.
+
+### GET `/api/reports/branch?managerId=` 응답 (REQ-KN-06, ADR-025)
+관리자와 같은 지점 FC의 신고와 관리자가 대신 접수한 신고. 신고마다 `id, kind, business, createdAt, defectId, defect(공개 키), reporter{id,name}, byMe(내가 대신 접수), workResumption, notice(UNREAD/READ/NONE: 그 FC가 이 대표 결함의 마지막 알림을 읽었는지)`. `maskedText`는 `byMe`일 때만 내린다(FC가 적은 설명은 관리자에게 보이지 않음).
+
+### 알림 (`GET /api/notifications?userId=`, ADR-025)
+항목마다 `audience`(REPORTER/SUBMITTER), `kind`(STATUS/PROXY_RECEIPT), `reportId`(FC 알림), `read`. 한 상태 변경의 수신자는 02번 4-1절 규칙으로 고르고 같은 사람은 1건이다.
 
 ### GET `/api/reports/unlinked?userId=` 응답 (S4 아직 안 묶인 신고, ADR-017)
 `defectId`가 `null`인 신고, 최신 순. `reporter`는 화면 표시용(이름(가상)·지점). `isNew`는 `createdAt`이 그 담당자의 `unlinkedSeenAt`보다 뒤면 `true`. 이 목록은 LLM에 보내지 않는다.

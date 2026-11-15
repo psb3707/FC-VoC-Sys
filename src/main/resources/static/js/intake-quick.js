@@ -285,6 +285,7 @@
       return {
         body: [
           el('h3', { tabindex: '-1' }, ['확인하고 보내기']),
+          proxyNotice(),
           el('div', { cls: 'pn-card pq-summary' }, [rows([
             ['업무', ui.labelOf(meta.businesses, form.business)], ['한 줄 설명', form.oneLine],
             form.detail ? ['상세 설명', form.detail] : null,
@@ -342,6 +343,16 @@
             'quick-submit', { disabled: busy })]
       };
     }
+    /* 대리 접수(ADR-025): 누구의 문의이고 누가 안내받는지 보내기 전에 알린다 */
+    function proxyNotice() {
+      if (!form.onBehalf || form.onBehalf === actor) return null;
+      var fc = ui.userName(form.onBehalf), me = ui.userName(actor) || '나';
+      var box = note('', 'i-info', '이 문의는 ' + fc + ' 님의 접수내역에 등록돼요',
+        rows([['불편을 겪는 사람', fc + ' (FC)'], ['접수하는 사람', me + ' (대신 접수)'],
+          ['안내받는 사람', fc + ' 님과 나 · 처리 경과를 함께 받아요']]));
+      box.setAttribute('data-proxy-notice', '');
+      return box;
+    }
     function aiSection() {
       if (!ai) return el('div', { cls: 'pn-card pq-actions' }, [
         el('p', null, ['설명을 확인한 뒤 AI 정리를 요청할 수 있어요. 바로 접수해도 돼요.']),
@@ -373,6 +384,8 @@
     }
     function done() {
       var d = catalog.find(function (item) { return item.id === (receipt.guideId || receipt.defectId); });
+      var proxied = receipt.reporterId && receipt.submittedById && receipt.reporterId !== receipt.submittedById;
+      var fc = proxied ? ui.userName(receipt.reporterId) : '';
       return {
         body: [
           el('div', { cls: 'pn-success' }, [
@@ -383,7 +396,11 @@
             btn('pn-btn-2', '접수번호 복사', 'quick-copy'),
             el('p', { role: 'status', id: 'quick-copy-status' }),
             rows([
-              ['현재 상태', receipt.kind === 'ME_TOO' ? '같은 오류를 겪었다고 알렸어요' : '접수 완료 · 담당자 확인 대기'],
+              ['현재 상태', receipt.kind === 'ME_TOO' ? '같은 오류를 겪었다고 알렸어요' : '접수 완료 · 담당자 확인 전'],
+              // 확인 화면 안내 상자와 같은 이름 칸(ADR-025)
+              proxied ? ['불편을 겪는 사람', fc + ' (FC) · 접수 사실을 ' + fc + ' 님에게 알렸어요'] : null,
+              proxied ? ['접수하는 사람', '나 (대신 접수)'] : null,
+              proxied ? ['안내받는 사람', fc + ' 님과 나 · 처리 경과를 함께 받아요'] : null,
               receipt.urgent && receipt.urgent.length ? ['우선 확인 요청', '긴급 사정을 함께 남겼어요'] : null,
               receipt.attemptedWorkaround ? ['시도한 임시 방법', receipt.attemptedWorkaround] : null,
               receipt.hasAttachment ? ['화면 첨부', '확인한 이미지 1장'] : null,
@@ -391,7 +408,7 @@
               receipt.department ? ['담당 창구', receipt.department] : null,
               ['연락', receipt.contact === 'PHONE' ? '전화 희망' +
                 (receipt.contactTime ? ' · ' + options.time.find(function (pair) { return pair[0] === receipt.contactTime; })[1] : '') : 'SFA 내 접수내역'],
-              ['다음 안내', '정해지면 내 접수내역에서 확인할 수 있어요.']
+              ['다음 안내', '담당자가 확인하면 알림과 내 접수내역으로 알려 드려요. 다음 안내 일정은 아직 정해지지 않았어요.']
             ])]),
           d && d.workaround !== receipt.attemptedWorkaround ? guide(d) : null
         ],

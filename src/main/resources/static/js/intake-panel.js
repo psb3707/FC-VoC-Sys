@@ -663,10 +663,10 @@
     } else if (d) {
       heading = d.status === 'RESOLVED' ? '해결된 유사 사례가 있어요' :
         d.status === 'WONT_FIX' ? '공개된 유사 사례가 있어요' : '비슷한 문제가 아직 처리 중이에요';
-      detail = rows([['현재 상태', DEFECT_STATUS[d.status]],
-        d.workaround && !result.guidance ? ['임시 방법', d.workaround] : null,
-        d.plannedFixDate ? ['수정 예정', fmtDate(d.plannedFixDate)] : null,
-        d.wontFixReasonText ? ['수정하지 않는 이유', d.wontFixReasonText] : null]);
+      // ADR-025: 지금 할 일과 근본 수정을 나눠 보이고, 같은 결함인지는 담당자가 확인한다고 알린다
+      detail = el('div', null, [
+        window.NoticeTracks.view(d),
+        el('p', { cls: 'pn-lead' }, ['비슷해 보이는 공개 사례예요. 내 문제와 같은지는 담당자가 확인해요.'])]);
     } else {
       heading = result.outcome === 'UNAVAILABLE' ? '지금은 사례를 확인하기 어려워요' : '안내할 만한 유사 사례를 찾지 못했어요';
     }
@@ -676,9 +676,10 @@
       el('div', { id: 'pn-assist-reply', 'aria-hidden': streaming ? 'true' : null }, [
         el('span', { cls: 'pn-tag' }, [TYPE_LABEL[result.type] || '담당자 확인 필요']),
         el('h3', { id: 'pn-assist-answer', tabindex: '-1' }, [heading]),
-        d ? el('p', { cls: 'pn-card-title' }, [d.title, ' · ', d.id]) : null,
+        d ? el('p', { cls: 'pn-card-title' }, [d.title, ' · ', el('span', { cls: 'pn-nowrap' }, [d.id])]) : null,
         detail,
-        result.guidance ? el('p', null, [result.guidance]) : null]),
+        // 승인 안내문은 임시 방법과 같은 말이라 두 갈래 표시와 겹치면 빼고, 해결 안내·사용법 안내만 보인다(ADR-025)
+        result.guidance && (!d || d.status === 'RESOLVED') ? el('p', null, [result.guidance]) : null]),
       !streaming ? el('ul', { cls: 'pn-chips' }, [
         assistantReturn !== '0' ? el('li', null, [btn('pn-chip', 'AI와 접수 초안 만들기', 'assistant-draft')]) : null,
         el('li', null, [btn('pn-chip', '다른 질문하기', 'assistant-reset')])]) : null
@@ -948,7 +949,8 @@
   }).then(function (r) {
     meta = r[0]; ctx = r[1]; known = r[2] || []; users = r[3] || []; suggestions = r[4];
     quick = window.createQuickIntake({ el: el, btn: btn, note: note, rows: rows, labelOf: labelOf, successMark: successMark,
-      fmtWhen: fmtWhen, fmtDate: fmtDate, user: proxyUser, read: read, go: go, paint: paint, close: close, copy: window.SfaCopy },
+      fmtWhen: fmtWhen, fmtDate: fmtDate, user: proxyUser, read: read, go: go, paint: paint, close: close, copy: window.SfaCopy,
+      userName: function (id) { var u = users.filter(function (x) { return x.id === id; })[0]; return u ? u.name : ''; } },
       { meta: meta, catalog: r[5], options: r[6] });
     bind();
     A.watchIntakeUpdates(function () {

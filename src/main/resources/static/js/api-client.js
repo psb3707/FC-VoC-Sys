@@ -28,19 +28,20 @@
     getSfaHome: function () {
       return Promise.resolve(copy(F.sfaHome || {}));
     },
-    /* GET /api/notifications?userId=  -> NotificationLog[] (알림 미리보기 내역, 최신 순) */
+    /* GET /api/notifications?userId=  -> NotificationLog[] (알림 미리보기 내역, 최신 순).
+       ADR-025: audience(REPORTER 신고자 / SUBMITTER 대리 접수자)·kind(STATUS / PROXY_RECEIPT)·reportId 를 함께 내린다 */
     getNotifications: function (userId) {
       var state = store.read();
-      var list = (F.notifications || []).concat(sentNotifications(state)).filter(function (n) {
+      var list = allNotifications(state).filter(function (n) {
         return n.recipientId === userId;
-      }).map(function (n) { return Object.assign({}, n, { read: !!state.read[n.id] }); });
+      }).map(function (n) { return Object.assign({}, n, { read: isRead(n, state) }); });
       list.sort(function (a, b) { return a.at < b.at ? 1 : -1; });
       return Promise.resolve(copy(list));
     },
     watchIntakeUpdates: function (fn) { store.watch(fn); },
     markNotificationRead: function (id, userId) {
       return store.update(function (state) {
-        var item = (F.notifications || []).concat(sentNotifications(state)).find(function (n) {
+        var item = allNotifications(state).find(function (n) {
           return n.id === id && n.recipientId === userId;
         });
         if (!item) return false;
@@ -66,6 +67,11 @@
           if (d && d.resolution) item.resolution = d.resolution;
         }
         item.followups = reportFollowups(state, r.id);
+        // ADR-025: 누구의 문의·누가 접수했는지, FC 업무 재개 회신
+        var submitter = r.submittedById || submitterOf(r.id) || r.reporterId;
+        item.reporter = userBrief(r.reporterId);
+        item.submittedBy = userBrief(submitter);
+        item.workResumption = resumptionOf(r.id, state);
         return item;
       });
       var when = function (r) {
@@ -73,6 +79,50 @@
       };
       list.sort(function (a, b) { return when(a) < when(b) ? 1 : -1; });
       return Promise.resolve(copy(list));
+    },
+    /* POST /api/reports/{id}/work-resumption {userId, result: RESUMED|STILL} (REQ-KN-05, ADR-025).
+       신고자 본인만 답한다. 대표 결함 상태와 알림은 바꾸지 않는다. STILL 은 같은 접수의 후속 기록("아직 안 돼요")도 남긴다. */
+    postWorkResumption: function (reportId, userId, result) {
+      if (!['RESUMED', 'STILL'].includes(result)) return ok(null);
+      return store.update(function (state) {
+        var report = visibleReports(userId, state).find(function (r) { return r.id === reportId && r.reporterId === userId; });
+        if (!report) return null;
+        var at = nowKst();
+        state.resumption[reportId] = { result: result, at: at };
+        if (result === 'STILL') {
+          var entries = state.followups[reportId] || [];
+          entries.unshift({ id: reportId + ':' + entries.length, action: 'STILL', at: at });
+          state.followups[reportId] = entries;
+        }
+        return { saved: true, result: result, at: at };
+      }).then(ok);
+    },
+    /* GET /api/reports/branch?managerId= (REQ-KN-06, ADR-025). 관리자와 같은 지점 FC의 신고 + 관리자가 대신 접수한 신고.
+       FC가 적은 설명(maskedText)은 내가 대신 접수한 건(byMe)에만 내린다. notice: 그 FC가 이 대표 결함의 마지막 알림을 읽었는지 */
+    getBranchReports: function (managerId) {
+      var me = (F.users || []).find(function (u) { return u.id === managerId && u.role === 'MANAGER'; });
+      if (!me) return ok([]);
+      var state = store.read(), defects = ledgerDefects(state), notices = allNotifications(state);
+      var labels = ((I.metaForm || {}).businesses || []);
+      var list = ledgerReports(state).filter(function (r) {
+        var reporter = (F.users || []).find(function (u) { return u.id === r.reporterId; });
+        var byMe = r.submittedById === me.id && r.reporterId !== me.id;
+        return byMe || (reporter && reporter.role === 'FC' && reporter.branchId === me.branchId);
+      }).map(function (r) {
+        var byMe = r.submittedById === me.id && r.reporterId !== me.id;
+        var d = r.defectId ? defects.find(function (x) { return x.id === r.defectId; }) : null;
+        var mine = notices.filter(function (n) {
+          return n.recipientId === r.reporterId && n.defectId && n.defectId === r.defectId && n.audience !== 'SUBMITTER';
+        }).sort(function (a, b) { return a.at < b.at ? 1 : -1; });
+        var business = labels.find(function (b) { return b.code === r.business; });
+        return { id: r.id, kind: r.kind, business: r.business, businessLabel: business ? business.label : '전산',
+          createdAt: r.createdAt, defectId: r.defectId || null, defect: d ? publicDefect(d) : null,
+          reporter: userBrief(r.reporterId), byMe: byMe, maskedText: byMe ? r.maskedText || null : null,
+          workResumption: resumptionOf(r.id, state),
+          notice: !mine.length ? 'NONE' : isRead(mine[0], state) ? 'READ' : 'UNREAD' };
+      });
+      list.sort(function (a, b) { return a.createdAt < b.createdAt ? 1 : -1; });
+      return ok(list);
     },
 
     /* ---- S2 접수 패널 ---- */
@@ -178,6 +228,7 @@
           if (report.aiDraft) report.aiDraftSummary = draftSummary(report);
           state.reports.push(storedReport(report, req.requestId));
           if (image) state.attachments[report.id] = image;
+          proxyReceipt(state, report);
           return copy(report);
         }, !!image).then(function (result) {
           if (result.id) quickReports.set(result.id, copy(result));
@@ -198,6 +249,7 @@
           department: quick.departments[((Q.defects || []).find(function (match) { return match.id === d.id; }) || {}).business],
           defect: publicDefect(d), guideId: d.id };
         state.reports.push(report);
+        proxyReceipt(state, report);
         return report;
       }).then(ok);
     },
@@ -385,7 +437,8 @@
           plannedFixDate: req.to === 'FIX_PLANNED' ? req.plannedFixDate : null,
           wontFixReasonCode: req.to === 'WONT_FIX' ? req.wontFixReasonCode : null,
           resolution: resolution, body: preview.body, recipients: preview.notifiable ? preview.recipients.map(function (r) {
-            return { userId: r.userId, reportId: r.reportId };
+            return r.audience === 'SUBMITTER' ? { userId: r.userId, reportId: null, audience: 'SUBMITTER', body: r.body }
+              : { userId: r.userId, reportId: r.reportId, audience: 'REPORTER' };
           }) : [], delivery: sends ? (req.simulateFailure ? 'FAILED' : 'SENT') : 'NONE',
           attempts: sends ? 1 : 0 };
         state.history.push(event);
@@ -410,6 +463,41 @@
     return (F.myReports || []).concat(state.reports.map(function (r) { return quickReports.get(r.id) || r; })).filter(function (r) {
       return !state.cancelled[r.id] && (r.reporterId === userId || r.submittedById === userId);
     });
+  }
+
+  /* ---- ADR-025 역할별 알림·업무 재개 ---- */
+  function allNotifications(state) {
+    return (F.notifications || []).concat(sentNotifications(state), state.notices || []);
+  }
+  function isRead(n, state) { return !!(state.read[n.id] || n.readAt); }
+  function userBrief(id) {
+    var u = (F.users || []).find(function (x) { return x.id === id; });
+    return u ? { id: u.id, name: u.name, role: u.role } : null;
+  }
+  function submitterOf(reportId) {
+    var r = (L.reports || []).find(function (x) { return x.id === reportId; });
+    return r ? r.submittedById : null;
+  }
+  function resumptionOf(reportId, state) {
+    if (state.resumption && state.resumption[reportId]) return copy(state.resumption[reportId]);
+    var r = (L.reports || []).find(function (x) { return x.id === reportId; });
+    return r && r.workResumption ? copy(r.workResumption) : null;
+  }
+  /* 관리자가 FC 대신 접수·참여하면 FC에게 접수 알림 1건(02번 4-1절). 대리 접수자는 완료 화면을 봤으므로 받지 않는다.
+     본문에는 업무 이름만 넣고 설명 원문은 넣지 않는다(ADR-021: 자유 입력 원문은 저장소에 두지 않음). */
+  function proxyReceipt(state, report) {
+    var by = userBrief(report.submittedById), to = userBrief(report.reporterId);
+    if (!by || !to || by.id === to.id) return;
+    var match = (Q.defects || []).find(function (m) { return m.id === report.defectId; });
+    var code = report.business || (match ? match.business : '');
+    var business = (((I.metaForm || {}).businesses) || []).find(function (b) { return b.code === code; });
+    var label = business ? business.label : '전산';
+    var body = report.kind === 'ME_TOO'
+      ? label + ' 오류에 같은 오류 참여가 기록됐어요 — ' + by.name + ' 관리자가 대신 알렸어요. 진행 상황은 내 접수내역에서 볼 수 있어요'
+      : label + ' 문의가 접수됐어요 — ' + by.name + ' 관리자가 대신 접수했어요. 담당자 확인을 기다리고 있어요';
+    state.notices.push({ id: 'N-P-' + report.id, defectId: report.kind === 'ME_TOO' ? report.defectId : null, historyId: null,
+      reportId: report.id, recipientId: to.id, audience: 'REPORTER', kind: 'PROXY_RECEIPT', bodySnapshot: body,
+      channel: 'PREVIEW', at: report.createdAt });
   }
   var INTAKE_DEPARTMENT = { LOGIN: 'LOGIN_SUPPORT', SUBSCRIPTION: 'SUBSCRIPTION_IT', CUSTOMER_LOOKUP: 'CUSTOMER_IT',
     DESIGN: 'DESIGN_SUPPORT', CONTRACT_LOOKUP: 'CONTRACT_IT' };
@@ -564,7 +652,8 @@
   function ledgerReports(state) {
     return (L.reports || []).concat(state.reports).filter(function (r) { return !state.cancelled[r.id]; }).map(function (r) {
       return Object.assign({}, r, { defectId: state.links[r.id] || r.defectId,
-        maskedText: r.maskedText || (r.kind === 'FULL' ? r.title : null), followups: reportFollowups(state, r.id) });
+        maskedText: r.maskedText || (r.kind === 'FULL' ? r.title : null), followups: reportFollowups(state, r.id),
+        workResumption: resumptionOf(r.id, state) });
     });
   }
   function historyView(h) {
@@ -578,8 +667,10 @@
   function sentNotifications(state) {
     return state.history.filter(function (event) { return event.delivery === 'SENT'; }).flatMap(function (event) {
       return event.recipients.map(function (r) {
+        var submitter = r.audience === 'SUBMITTER';
         return { id: 'N-' + event.id + '-' + r.userId, historyId: event.id, defectId: event.defectId, reportId: r.reportId,
-          recipientId: r.userId, at: event.at, bodySnapshot: event.body, resolution: event.resolution };
+          recipientId: r.userId, at: event.at, bodySnapshot: submitter ? r.body : event.body,
+          audience: submitter ? 'SUBMITTER' : 'REPORTER', kind: 'STATUS', resolution: submitter ? null : event.resolution };
       });
     });
   }
@@ -588,23 +679,47 @@
     var d = ledgerDefects(state).find(function (entry) { return entry.id === id; });
     var back = req.from === 'WONT_FIX' || ORDER.indexOf(req.to) < ORDER.indexOf(req.from);
     var notifiable = !!d && !back && NOTIFY.includes(req.to);
-    var seen = new Set(), recipients = [];
-    if (notifiable) linkedReports(id, state).forEach(function (r) {
+    /* 02번 4-1절(ADR-025): ① 신고자(REPORTER) 전원 ② 신고자와 다른 대리 접수자(SUBMITTER). 한 변경에 한 사람 1건, ①이 우선 */
+    var seen = new Map(), recipients = [];
+    var linked = notifiable ? linkedReports(id, state) : [];
+    linked.forEach(function (r) {
       if (seen.has(r.reporterId)) return;
-      seen.add(r.reporterId);
-      recipients.push({ userId: r.reporterId, reportId: r.id, name: r.reporter ? r.reporter.name : '',
-        branchName: r.reporter ? r.reporter.branchName : '' });
+      var entry = { userId: r.reporterId, reportId: r.id, audience: 'REPORTER', name: r.reporter ? r.reporter.name : '',
+        branchName: r.reporter ? r.reporter.branchName : '' };
+      seen.set(r.reporterId, entry);
+      recipients.push(entry);
+    });
+    linked.forEach(function (r) {
+      var by = r.submittedById;
+      if (!by || by === r.reporterId) return;
+      var known = seen.get(by);
+      if (known) { if (known.audience === 'SUBMITTER') known.count++; return; }
+      var u = (F.users || []).find(function (x) { return x.id === by; });
+      var b = u && (L.branches || []).find(function (x) { return x.id === u.branchId; });
+      var entry = { userId: by, reportId: null, audience: 'SUBMITTER', count: 1, name: u ? u.name : '', branchName: b ? b.name : '' };
+      seen.set(by, entry);
+      recipients.push(entry);
     });
     var date = validDay(req.plannedFixDate) ? Number(req.plannedFixDate.slice(5, 7)) + '월 ' + Number(req.plannedFixDate.slice(8, 10)) + '일' : '';
-    var body = notifiable ? (L.statusTemplates || {})[req.to] || '' : '';
+    var reason = REASON_TEXT[req.wontFixReasonCode] || req.wontFixReasonText || '';
+    function fill(template) {
+      if (!d || !template) return '';
+      if (!d.workaround) template = template.replace(': {workaround}', '. 내 접수내역에서 확인해 주세요');
+      return template.replace('{title}', d.title).replace('{date}', date).replace('{reason}', reason)
+        .replace('{workaround}', d.workaround || '');
+    }
+    var body = notifiable ? fill((L.statusTemplates || {})[req.to]) : '';
     var resolution = req.to === 'RESOLVED' ? safeResolution(req.resolution) : null;
-    if (d) body = body.replace('{title}', d.title).replace('{date}', date)
-      .replace('{reason}', REASON_TEXT[req.wontFixReasonCode] || req.wontFixReasonText || '');
     if (resolution) {
       body = d.title + ' · 수정 완료. ' + resolution.appliedAt.slice(0, 10) + ' ' +
         resolution.appliedAt.slice(11, 16) + ' 적용. ' + resolution.change + ' ' + resolution.action;
     }
-    return { notifiable: notifiable, recipientCount: recipients.length, body: body, recipients: recipients, resolution: resolution };
+    recipients.forEach(function (r) {
+      if (r.audience === 'SUBMITTER') r.body = fill((L.submitterTemplates || {})[req.to]).replace('{count}', String(r.count));
+    });
+    var submitters = recipients.filter(function (r) { return r.audience === 'SUBMITTER'; }).length;
+    return { notifiable: notifiable, recipientCount: recipients.length, reporterCount: recipients.length - submitters,
+      submitterCount: submitters, body: body, recipients: recipients, resolution: resolution };
   }
   function norm(v) { return String(v == null ? '' : v).trim().toLowerCase().slice(0, 40); }
   function has(text, word) { return text != null && String(text).toLowerCase().indexOf(word) >= 0; }
@@ -613,6 +728,7 @@
     var u = (F.users || []).find(function (v) { return v.id === r.reporterId; });
     var b = u && (L.branches || []).find(function (v) { return v.id === u.branchId; });
     x.reporter = u ? { id: u.id, name: u.name, branchId: u.branchId, branchName: b ? b.name : '' } : null;
+    x.submittedBy = r.submittedById && r.submittedById !== r.reporterId ? userBrief(r.submittedById) : null;   // 대신 접수(ADR-025)
     return x;
   }
   function linkedReports(defectId, state) {

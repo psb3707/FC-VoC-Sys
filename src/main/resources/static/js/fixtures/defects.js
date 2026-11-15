@@ -8,7 +8,9 @@
    - similar: POST /api/reports/{id}/similar-defects 의 AI 고정 응답(신고 ID별, 07번 ⑤, ADR-017). 실제 LLM 호출은 없다.
      후보의 title·status 는 서버가 대장에서 붙이므로 여기에는 두지 않는다(api-client 가 붙임). candidates 가 [] 이면 "찾지 못함".
      AI 실패(llm=fail)는 api-client 가 규칙 후보(같은 업무·같은 증상 유형의 신고가 묶인 결함)로 대신 만든다.
-   - statusTemplates: 상태 변경 알림의 고정 문구(02번 4절 "없으면 고정 템플릿"). {title} {date} {reason} 을 채운다.
+   - statusTemplates: 상태 변경 알림의 고정 문구(02번 4절 "없으면 고정 템플릿"). {title} {date} {reason} {workaround} 를 채운다.
+     FC(신고자)용은 "지금 할 일"을 먼저 쓴다. submitterTemplates 는 신고자와 다른 대리 접수자(관리자)용, {count} = 대신 접수한 신고 수(ADR-025).
+   - reports[].workResumption: FC 업무 재개 회신 시드(RESUMED 진행했어요 / STILL 아직 안 돼요, ADR-025). 대표 결함 상태와 무관.
    업무 코드는 intake.js metaForm, 등급·부서 코드는 intake-panel.js 와 같다. 모든 값은 가상이다. */
 window.FIXTURES = window.FIXTURES || {};
 window.FIXTURES.ledger = {
@@ -51,7 +53,8 @@ window.FIXTURES.ledger = {
   "reports": [
     { "id": "R-011", "reporterId": "U-001", "submittedById": "U-001", "kind": "FULL", "mode": "B", "business": "SUBSCRIPTION", "symptom": "WRONG_SCREEN",
       "maskedText": "서명 알림톡을 누르면 세미나 초대장 화면이 떠요", "finalType": "DEFECT", "grade": "IMMEDIATE", "departmentCode": "SUBSCRIPTION_IT",
-      "defectId": "D-2026-001", "createdAt": "2026-10-30T14:10:00+09:00" },
+      "defectId": "D-2026-001", "createdAt": "2026-10-30T14:10:00+09:00",
+      "workResumption": { "result": "RESUMED", "at": "2026-11-02T11:05:00+09:00" } },
     { "id": "R-021", "reporterId": "U-002", "submittedById": "U-002", "kind": "FULL", "mode": "B", "business": "SUBSCRIPTION", "symptom": "WRONG_SCREEN",
       "maskedText": "서명 알림톡을 누르면 다른 화면이 떠요", "finalType": "DEFECT", "grade": "IMMEDIATE", "departmentCode": "SUBSCRIPTION_IT",
       "defectId": "D-2026-001", "createdAt": "2026-10-31T08:50:00+09:00" },
@@ -115,6 +118,18 @@ window.FIXTURES.ledger = {
       "maskedText": "계약 목록을 날짜순으로 바꾸면 다른 계약이 열려요", "finalType": "DEFECT", "grade": "NORMAL", "departmentCode": "CONTRACT_IT",
       "defectId": "D-2026-006", "createdAt": "2026-11-03T15:20:00+09:00" },
 
+    /* ADR-025 시연 시드(docs/10-seed-scenarios.md 5-1절): 관리자 U-010 이 같은 지점 FC U-011 대신 접수(R-063·R-065), U-012 는 직접 참여 */
+    { "id": "R-063", "reporterId": "U-011", "submittedById": "U-010", "kind": "FULL", "mode": "B", "business": "SUBSCRIPTION", "symptom": "WRONG_SCREEN",
+      "maskedText": "고객 서명 링크를 열면 초대장 화면이 나와요", "finalType": "DEFECT", "grade": "IMMEDIATE", "departmentCode": "SUBSCRIPTION_IT",
+      "defectId": "D-2026-001", "createdAt": "2026-11-01T11:20:00+09:00",
+      "workResumption": { "result": "RESUMED", "at": "2026-11-02T13:30:00+09:00" } },
+    { "id": "R-064", "reporterId": "U-012", "submittedById": "U-012", "kind": "ME_TOO", "mode": "B", "business": "SUBSCRIPTION", "symptom": "WRONG_SCREEN",
+      "maskedText": null, "finalType": "DEFECT", "grade": "IMMEDIATE", "departmentCode": "SUBSCRIPTION_IT",
+      "defectId": "D-2026-001", "createdAt": "2026-11-03T16:00:00+09:00" },
+    { "id": "R-065", "reporterId": "U-011", "submittedById": "U-010", "kind": "FULL", "mode": "B", "business": "DESIGN", "symptom": "NOT_SHOWN",
+      "maskedText": "보험료 계산을 누르면 한참 걸려요", "finalType": "DEFECT", "grade": "BATCH", "departmentCode": "DESIGN_SUPPORT",
+      "defectId": "D-2026-003", "createdAt": "2026-11-01T09:10:00+09:00" },
+
     { "id": "R-014", "reporterId": "U-001", "submittedById": "U-001", "kind": "FULL", "mode": "B", "business": "ETC", "symptom": "ETC",
       "maskedText": "인쇄 버튼을 눌러도 반응이 없어요", "finalType": "DEFECT", "grade": "BATCH", "departmentCode": "SALES_SUPPORT",
       "defectId": null, "createdAt": "2026-11-03T09:05:00+09:00" },
@@ -174,9 +189,15 @@ window.FIXTURES.ledger = {
   },
 
   "statusTemplates": {
-    "WORKAROUND": "{title} — 임시조치 안내가 등록됐어요",
-    "FIX_PLANNED": "{title} — 고칠 날짜가 {date}로 정해졌어요",
+    "WORKAROUND": "{title} — 임시 방법이 나왔어요: {workaround}",
+    "FIX_PLANNED": "{title} — {date}에 고칠 예정이에요. 그때까지는 안내된 임시 방법을 써 주세요",
     "RESOLVED": "{title} — 고쳤어요. 이제 평소처럼 쓰시면 돼요",
-    "WONT_FIX": "{title} — {reason}. 지금 화면은 고치지 않아요"
+    "WONT_FIX": "{title} — {reason}. 지금 화면은 고치지 않아요. 안내된 임시 방법을 계속 써 주세요"
+  },
+  "submitterTemplates": {
+    "WORKAROUND": "대신 접수한 문의 {count}건 · {title} — 임시 방법이 나왔어요. FC가 업무를 이어갈 수 있는지 확인해 주세요",
+    "FIX_PLANNED": "대신 접수한 문의 {count}건 · {title} — {date}에 고칠 예정이에요. FC에게도 알렸어요",
+    "RESOLVED": "대신 접수한 문의 {count}건 · {title} — 고쳤어요. FC에게도 알렸어요",
+    "WONT_FIX": "대신 접수한 문의 {count}건 · {title} — {reason}. 지금 화면은 고치지 않아요"
   }
 };

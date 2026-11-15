@@ -39,6 +39,8 @@ from ref_outline import SURNAME3, UI_WORDS  # noqa: E402  (참고 원본은 읽�
 
 # 화면 문구에 흔한 3글자 낱말 중 성씨 글자로 시작하는 것 (이름 아님)
 EXTRA_UI_WORDS = {"사용자", "안내가", "부서가", "오류와", "설계일", "모바일",
+                  # ADR-025 역할별 알림 문구(js/fixtures/notifications.js·defects.js)
+                  "방법이", "안내된", "이어갈", "문의가",
                   # S1 업무 탭 표 머리
                   "설계명", "주상품",
                   # S2 접수 패널 고정 응답(js/fixtures/intake.js) 문구
@@ -75,7 +77,12 @@ KNOWN_HOME_STATES = ["role=FC&board=known", "role=SALES&board=known"]
 K = "role=FC&board=known&panel=known&"
 KNOWN_PANEL_STATES = [K + "tab=known", K + "tab=known&item=D-2026-005", K + "tab=mine",
                       "role=FC&panel=known&tab=mine&item=R-013",   # 알림 팝업 항목에서 연 상태
-                      "role=MANAGER&panel=known&tab=mine", "role=SALES&panel=known&tab=mine"]   # 빈 화면
+                      "role=MANAGER&panel=known&tab=mine", "role=SALES&panel=known&tab=mine",   # 관리자 내 접수(대신 접수 포함)·빈 화면
+                      # ADR-025: 두 갈래·업무 재개 회신(펼친 카드), 대신 접수된 FC, 관리자 [지점 FC 문의]
+                      "role=FC&panel=known&tab=mine&item=R-011", "role=FC&user=U-011&panel=known&tab=mine",
+                      "role=MANAGER&board=known&panel=known&tab=team", "role=MANAGER&panel=known&tab=team&item=D-2026-001"]
+# ADR-025: 관리자 알림 팝업(대리 접수자 알림), 대신 접수된 FC 알림 팝업
+STATES += ["role=MANAGER&popup=alarm", "role=FC&user=U-011&popup=alarm"]
 # S4 결함 대장 (ledger.html, js/ledger.js 주소 키, 06번 11절): 목록·필터·빈 결과·안 묶인 신고·상세 패널·
 # 상태 바꾸기 대화상자 단계별(고르기·예정일·사유·되돌림·막힘·알림 미리보기·기록만·끝)·신고 묶기
 LD = "role=SALES&item=D-2026-001&dialog=status&"

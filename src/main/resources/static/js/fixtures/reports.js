@@ -69,5 +69,41 @@ window.FIXTURES.myReports = [
       { "from": "RECEIVED", "to": "REPRODUCED", "at": "2026-10-29T15:00:00+09:00" },
       { "from": "REPRODUCED", "to": "FIX_PLANNED", "at": "2026-11-01T16:05:00+09:00" }],
     "fcNotice": { "id": "FN-002", "status": "APPROVED",
-      "approvedText": "서명 화면이 멈추는 원인을 찾았고 11월 20일에 고칠 예정이에요. 그 전에는 서명 화면을 닫았다가 다시 열어 주세요." } }
+      "approvedText": "서명 화면이 멈추는 원인을 찾았고 11월 20일에 고칠 예정이에요. 그 전에는 서명 화면을 닫았다가 다시 열어 주세요." } },
+
+  /* ADR-025 시연 시드(docs/10-seed-scenarios.md 5-1절). submittedById 가 reporterId 와 다르면 관리자가 대신 접수한 건.
+     신고자(FC)와 대리 접수자(관리자) 둘 다 내 접수내역에서 본다. 업무 재개 회신은 fixtures/defects.js reports[].workResumption */
+  { "id": "R-063", "reporterId": "U-011", "submittedById": "U-010", "kind": "FULL", "finalType": "DEFECT", "createdAt": "2026-11-01T11:20:00+09:00",
+    "maskedText": "고객 서명 링크를 열면 초대장 화면이 나와요", "defectId": "D-2026-001",
+    "defect": { "id": "D-2026-001", "title": "서명 알림톡이 초대장 화면으로 열려요", "status": "WORKAROUND",
+      "workaround": "알림톡 대신 문자로 서명 링크를 보내 주세요", "plannedFixDate": null,
+      "wontFixReasonCode": null, "wontFixReasonText": null, "updatedAt": "2026-11-02T10:20:00+09:00" },
+    "statusHistory": [
+      { "from": null, "to": "RECEIVED", "at": "2026-10-30T14:10:00+09:00" },
+      { "from": "RECEIVED", "to": "CAUSE_FOUND", "at": "2026-10-31T09:40:00+09:00" },
+      { "from": "CAUSE_FOUND", "to": "WORKAROUND", "at": "2026-11-02T10:20:00+09:00" }],
+    "fcNotice": { "id": "FN-001", "status": "APPROVED",
+      "approvedText": "세미나 초대장을 보낸 적이 있는 고객에게 서명 알림톡을 보내면 초대장 화면이 열리는 문제를 확인했어요. 고칠 때까지는 알림톡 대신 문자로 서명 링크를 보내 주세요." } },
+
+  { "id": "R-064", "reporterId": "U-012", "submittedById": "U-012", "kind": "ME_TOO", "finalType": "DEFECT", "createdAt": "2026-11-03T16:00:00+09:00",
+    "maskedText": null, "defectId": "D-2026-001",
+    "defect": { "id": "D-2026-001", "title": "서명 알림톡이 초대장 화면으로 열려요", "status": "WORKAROUND",
+      "workaround": "알림톡 대신 문자로 서명 링크를 보내 주세요", "plannedFixDate": null,
+      "wontFixReasonCode": null, "wontFixReasonText": null, "updatedAt": "2026-11-02T10:20:00+09:00" },
+    "statusHistory": [
+      { "from": null, "to": "RECEIVED", "at": "2026-10-30T14:10:00+09:00" },
+      { "from": "RECEIVED", "to": "CAUSE_FOUND", "at": "2026-10-31T09:40:00+09:00" },
+      { "from": "CAUSE_FOUND", "to": "WORKAROUND", "at": "2026-11-02T10:20:00+09:00" }],
+    "fcNotice": { "id": "FN-001", "status": "APPROVED",
+      "approvedText": "세미나 초대장을 보낸 적이 있는 고객에게 서명 알림톡을 보내면 초대장 화면이 열리는 문제를 확인했어요. 고칠 때까지는 알림톡 대신 문자로 서명 링크를 보내 주세요." } },
+
+  { "id": "R-065", "reporterId": "U-011", "submittedById": "U-010", "kind": "FULL", "finalType": "DEFECT", "createdAt": "2026-11-01T09:10:00+09:00",
+    "maskedText": "보험료 계산을 누르면 한참 걸려요", "defectId": "D-2026-003",
+    "defect": { "id": "D-2026-003", "title": "가입설계에서 보험료 계산이 늦게 나와요", "status": "CAUSE_FOUND",
+      "workaround": null, "plannedFixDate": null,
+      "wontFixReasonCode": null, "wontFixReasonText": null, "updatedAt": "2026-11-03T11:00:00+09:00" },
+    "statusHistory": [
+      { "from": null, "to": "RECEIVED", "at": "2026-11-01T15:30:00+09:00" },
+      { "from": "RECEIVED", "to": "CAUSE_FOUND", "at": "2026-11-03T11:00:00+09:00" }],
+    "fcNotice": null }
 ];
