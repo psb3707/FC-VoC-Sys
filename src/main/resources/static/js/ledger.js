@@ -511,7 +511,8 @@
   function factRows(r, withResumption) {
     var F = window.IntakeFacts, src = r.factSources || {};
     var urgency = ((((window.FIXTURES || {}).intake || {}).quick || {}).options || {}).urgency || [];
-    function said(text, key) { return text + ' · ' + F.sourceLabel(src[key]); }
+    function src2(code) { return el('span', { cls: 'pn-src' }, [' · ' + F.sourceLabel(code)]); }
+    function said(text, key) { return [text, src2(src[key])]; }
     var list = [];
     if (r.incident && r.incident.device) list.push(['오류가 난 기기', said(F.deviceLabel(r.incident.device), 'device')]);
     Object.keys(r.conditions || {}).forEach(function (key) {
@@ -523,11 +524,11 @@
         return hit ? hit[1] : code;
       }).join(' · '), 'urgent')]);
     }
-    if (r.attemptedWorkaround) list.push(['시도한 조치', r.attemptedWorkaround + ' · ' + F.sourceLabel(src.attempted || 'DEFECT_LEDGER')]);
+    if (r.attemptedWorkaround) list.push(['시도한 조치', ['「' + r.attemptedWorkaround + '」', src2(src.attempted || 'DEFECT_LEDGER')]]);
     var answer = r.workResumption ? F.outcomeLabel(r.workResumption.result) + ' (' + fmtWhen(r.workResumption.at) + ')' :
       r.workOutcome ? F.outcomeLabel(r.workOutcome) : '';
-    if (withResumption && answer) list.push(['업무 재개', answer + ' · ' + F.sourceLabel('USER_REPORTED')]);
-    if (r.suggestedDefectId) list.push(['AI 문의 안내 사례', r.suggestedDefectId + ' · 연결은 담당자가 정해요']);
+    if (withResumption && answer) list.push(['업무 재개', [answer, src2('USER_REPORTED')]]);
+    if (r.suggestedDefectId) list.push(['AI 문의 안내 사례', [r.suggestedDefectId, el('span', { cls: 'pn-src' }, [' · 연결은 담당자가 정해요'])]]);
     return list;
   }
   function factsCard(r) {

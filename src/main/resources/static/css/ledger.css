@@ -204,3 +204,10 @@ body.ld-page:has(.pn:not([hidden])) { overflow-y: hidden; }
 /* 대화상자의 AI 후보 선택 버튼: 글자 2줄 선택 버튼 + 셋째 줄 이유 */
 .ld-dlg .pn-choice .ld-choice-why { color: var(--ld-sub); font-weight: 500; }
 .ld-dlg .pn-choice[aria-pressed="true"] .ld-choice-why { color: var(--ld-ink); }
+/* ADR-026 발생 조건: 출처는 보조 글색, 묶인 신고 안 접기는 그림자 없이 1px(0-3 "카드 안 접기") */
+.pn-rows .pn-src { color: var(--pn-sub); }
+.ld-reports .pn-details { box-shadow: none; border: 1px solid var(--pn-line); }
+@media (max-width: 480px) {
+  [data-report-facts] .pn-rows div, .ld-cands .pn-rows div { display: block; }
+  [data-report-facts] .pn-rows dd, .ld-cands .pn-rows dd { margin-top: 2px; }
+}

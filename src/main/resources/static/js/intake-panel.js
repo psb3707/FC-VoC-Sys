@@ -449,7 +449,7 @@
             '공개된 사례를 확인하고 있어요.']) : null,
           assistant.result ? answerCard(assistant.result) : initial ? questionList : null],
           !waiting ? turns(true) : [],
-          [c && c.stage === 'resume' && !waiting ? el('ul', { cls: 'pn-chips', 'aria-label': '임시 방법 결과' },
+          [c && c.stage === 'resume' && !waiting ? el('ul', { cls: 'pn-chips pn-assist-answers', 'aria-label': '임시 방법 결과' },
             window.IntakeFacts.OUTCOMES.map(function (pair) {
               return el('li', null, [btn('pn-chip', OUTCOME_ANSWER[pair[0]], 'assistant-outcome', { 'data-code': pair[0] })]);
             })) : null]),
@@ -709,7 +709,8 @@
         result.guidance && (!d || d.status === 'RESOLVED') ? el('p', null, [result.guidance]) : null]),
       !streaming ? el('ul', { cls: 'pn-chips' }, [
         assistantReturn !== '0' && !assistant.consult ? el('li', null, [btn('pn-chip', 'AI와 접수 초안 만들기', 'assistant-draft')]) : null,
-        el('li', null, [btn('pn-chip', '다른 질문하기', 'assistant-reset')])]) : null
+        assistant.consult && assistant.consult.stage === 'resume' ? null :
+          el('li', null, [btn('pn-chip', '다른 질문하기', 'assistant-reset')])]) : null
     ]);
   }
 
@@ -724,7 +725,7 @@
   function nextCheck(c) { return c.checks.find(function (q) { return !c.facts[q.key]; }) || null; }
   function checkChips(c) {
     var q = nextCheck(c);
-    return q ? el('ul', { cls: 'pn-chips', 'aria-label': q.text }, q.choices.map(function (choice) {
+    return q ? el('ul', { cls: 'pn-chips pn-assist-answers', 'aria-label': q.text }, q.choices.map(function (choice) {
       return el('li', null, [btn('pn-chip', choice.label, 'assistant-check', { 'data-key': q.key, 'data-code': choice.code })]);
     })) : null;
   }

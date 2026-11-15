@@ -196,7 +196,7 @@
                 "matched":["BUSINESS","SYMPTOM","WORDING"]}]}
 ```
 - 후보가 없으면 `"candidates":[]`. 화면은 "비슷한 결함을 찾지 못했어요"와 새 대표 결함 만들기 안내.
-- 프론트 단계에서 고정 응답이 없는 신고(시연 중 만든 `R-Q…`)는 규칙으로 후보를 만든다(ADR-026 결정 8): `llmOutcome:"RULE"`, `similarity:null`, `reasons:["업무: 청약·서명","증상: 엉뚱한 화면이 떠요","관련 조건: 초대장 발송 이력 있음","시도한 조치: 이 결함의 임시 방법","AI 문의에서 안내한 사례"]`(맞은 것만), `matched`는 `BUSINESS` `SYMPTOM` `CONDITION` `WORKAROUND` `SUGGESTED` 중 맞은 것. 업무와 증상이 모두 같거나 `SUGGESTED`일 때만 후보이며 맞은 항목이 많은 순이다. 비슷함 정도·점수는 붙이지 않는다.
+- 프론트 단계에서 고정 응답이 없는 신고(시연 중 만든 `R-Q…`)는 규칙으로 후보를 만든다(ADR-026 결정 8): `llmOutcome:"RULE"`, `similarity:null`, `reasons:["업무: 청약·서명","증상: 엉뚱한 화면이 떠요","관련 조건: 초대장 발송 이력 있음","시도한 조치: 이 결함의 임시 방법","AI 문의: 안내한 사례"]`(맞은 것만), `matched`는 `BUSINESS` `SYMPTOM` `CONDITION` `WORKAROUND` `SUGGESTED` 중 맞은 것. 업무와 증상이 모두 같거나 `SUGGESTED`일 때만 후보이며 맞은 항목이 많은 순이다. 비슷함 정도·점수는 붙이지 않는다.
 - LLM 실패 시 `"llmOutcome":"FALLBACK"`, 규칙 후보는 `"similarity":null`, `"reason":"같은 업무·같은 문제 유형이에요"`.
 - 연결은 이 API가 하지 않는다. 담당자가 고른 뒤 `POST /api/defects/{id}/reports`.
 

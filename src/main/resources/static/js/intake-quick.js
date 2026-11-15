@@ -317,7 +317,7 @@
           el('div', { cls: 'pn-card pq-summary' }, [rows([
             ['업무', ui.labelOf(meta.businesses, form.business)], ['한 줄 설명', form.oneLine],
             form.detail ? ['상세 설명', form.detail] : null,
-            form.attemptedWorkaround ? ['시도한 임시 방법', form.attemptedWorkaround] : null,
+            form.attemptedWorkaround ? ['시도한 임시 방법', '「' + form.attemptedWorkaround + '」'] : null,
             form.symptom || form.draftFields ? ['대표 증상', ui.labelOf(symptoms, form.symptom) || '미확인'] : null,
             form.extraSymptoms.length ? ['추가 증상', form.extraSymptoms.map(function (code) { return ui.labelOf(symptoms, code); }).join(', ')] : null,
             form.urgent.length ? ['우선 확인 요청', options.urgency.filter(function (pair) { return form.urgent.includes(pair[0]); })
@@ -448,7 +448,7 @@
               proxied ? ['접수하는 사람', '나 (대신 접수)'] : null,
               proxied ? ['안내받는 사람', fc + ' 님과 나 · 처리 경과를 함께 받아요'] : null,
               receipt.urgent && receipt.urgent.length ? ['우선 확인 요청', '긴급 사정을 함께 남겼어요'] : null,
-              receipt.attemptedWorkaround ? ['시도한 임시 방법', receipt.attemptedWorkaround] : null,
+              receipt.attemptedWorkaround ? ['시도한 임시 방법', '「' + receipt.attemptedWorkaround + '」'] : null,
               receipt.workOutcome ? ['업무 재개', facts.outcomeLabel(receipt.workOutcome) +
                 (receipt.resumptionSaved ? ' · 접수에 기록했어요' : '')] : null,
               proxied && receipt.origin === 'ASSISTANT' ? ['업무 재개', 'FC 본인이 내 접수내역에서 답해요'] : null,

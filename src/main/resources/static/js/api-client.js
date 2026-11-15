@@ -791,7 +791,7 @@
       }
       if (r.suggestedDefectId === d.id) {
         matched.push('SUGGESTED');
-        reasons.push('AI 문의에서 안내한 사례');
+        reasons.push('AI 문의: 안내한 사례');
       }
       if (!both && matched.indexOf('SUGGESTED') < 0) return null;
       return { defectId: d.id, similarity: null, matched: matched, reasons: reasons, reason: reasons.join(' · ') };
