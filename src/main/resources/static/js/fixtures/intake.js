@@ -13,6 +13,8 @@ window.FIXTURES.intake = {
       { "code": "CUSTOMER_LOOKUP", "label": "고객조회" },
       { "code": "DESIGN", "label": "가입설계" },
       { "code": "CONTRACT_LOOKUP", "label": "계약조회" },
+      /* ADR-027: 상품소개동의 URL·본인확인 입력. 청약·서명과 나눈다 */
+      { "code": "CUSTOMER_CONSENT", "label": "고객동의·본인확인" },
       { "code": "ETC", "label": "그 밖의 업무" }
     ],
     "symptoms": [
@@ -20,6 +22,7 @@ window.FIXTURES.intake = {
       { "code": "CANNOT_PROCEED", "label": "다음으로 안 넘어가요" },
       { "code": "WRONG_SCREEN", "label": "엉뚱한 화면이 떠요" },
       { "code": "WRONG_INPUT", "label": "입력이 잘못 들어가요" },
+      { "code": "CANNOT_INPUT", "label": "입력할 수 없어요(키패드가 안 떠요)" },
       { "code": "HOW_TO", "label": "쓰는 법을 모르겠어요" },
       { "code": "ETC", "label": "그 밖의 문제" }
     ],
@@ -142,7 +145,8 @@ window.FIXTURES.intake = {
 window.FIXTURES.intake.quick = {
   departments: {
     LOGIN: '영업지원팀', SUBSCRIPTION: '청약업무팀', CUSTOMER_LOOKUP: '고객관리팀',
-    DESIGN: '상품설계지원팀', CONTRACT_LOOKUP: '계약관리팀', ETC: '영업지원팀'
+    DESIGN: '상품설계지원팀', CONTRACT_LOOKUP: '계약관리팀', ETC: '영업지원팀',
+    CUSTOMER_CONSENT: '고객동의업무팀(가상)'   // ADR-027: 시연용 가상 매핑. 실제 담당 부서는 확인 필요
   },
   guides: {
     'D-2026-001': { steps: ['문자로 서명 링크를 보낼 수 있는 화면을 여세요.', '해당 고객에게 서명 링크를 문자로 보내 주세요.'],

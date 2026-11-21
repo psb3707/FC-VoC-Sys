@@ -35,7 +35,7 @@
     if (d.workaround) {
       return { answer: d.workaround, sub: '이 방법으로 업무를 이어갈 수 있어요. 오류 자체가 고쳐진 것은 아니에요.' };
     }
-    return { answer: '확인된 임시 방법이 아직 없어요.', sub: '방법이 나오면 알려 드려요.' };
+    return { answer: '현재 확인된 임시조치가 없어요.', sub: '방법이 나오면 알려 드려요.' };   // ADR-027 결정 4 문구
   }
   function fix(d, resolution) {
     if (!d) return { answer: '담당자 확인 전이라 정해진 일정이 없어요.', sub: '담당자가 확인하면 알려 드려요.' };

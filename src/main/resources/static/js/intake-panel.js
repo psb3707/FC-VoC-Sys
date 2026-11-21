@@ -323,7 +323,7 @@
     body.classList.toggle('pn-assist-enter', asking && entering && !assistant.pending && !assistant.result);
     body.classList.toggle('pn-receipt-enter', entering && ['receipt', 'metoo', 'done'].includes(st.step));
     var status = asking ? (assistant.pending || assistant.streamStarted !== null ? '답변을 준비하고 있어요.' :
-      assistant.consult && assistant.consult.stage === 'checking' ? 'AI가 확인할 내용을 여쭤보고 있어요.' :
+      assistant.consult && ['guide', 'report'].indexOf(assistant.consult.stage) >= 0 ? 'AI가 확인할 내용을 여쭤보고 있어요.' :
       assistant.result ? '답변이 준비됐어요.' : '') : '';
     if ($('pn-assist-status').textContent !== status) $('pn-assist-status').textContent = status;
     body.innerHTML = '';
@@ -443,16 +443,17 @@
           initial && assistant.history.length ? el('h3', { tabindex: '-1' }, ['더 궁금한 점이 있으세요?']) : null,
           assistant.question ? el('p', { cls: 'pn-assist-question' }, ['내 질문 · ', assistant.question]) : null]
           .concat(turns(false), [
-          c && c.stage === 'checking' ? checkChips(c) : null,
+          c && c.stage === 'guide' ? checkChips(c) : null,
           assistant.pending ? el('div', { cls: 'pn-assist-thinking', 'aria-hidden': 'true' }, [
             el('span', { cls: 'pn-assist-dots' }, [el('i'), el('i'), el('i')]),
             '공개된 사례를 확인하고 있어요.']) : null,
           assistant.result ? answerCard(assistant.result) : initial ? questionList : null],
           !waiting ? turns(true) : [],
-          [c && c.stage === 'resume' && !waiting ? el('ul', { cls: 'pn-chips pn-assist-answers', 'aria-label': '임시 방법 결과' },
-            window.IntakeFacts.OUTCOMES.map(function (pair) {
-              return el('li', null, [btn('pn-chip', OUTCOME_ANSWER[pair[0]], 'assistant-outcome', { 'data-code': pair[0] })]);
-            })) : null]),
+          // ADR-027: 결과 카드 뒤에는 결과 질문(임시 방법 결과 또는 업무 진행 어려움) → 담당자 확인용 항목 → 간편 알리기 확인
+          [c && !waiting && c.stage === 'resume' ? answerChips('임시 방법 결과', window.IntakeFacts.OUTCOMES, OUTCOME_ANSWER, 'assistant-outcome') : null,
+            c && !waiting && c.stage === 'support' ? answerChips('업무를 이어가기 어려운지', window.IntakeFacts.SUPPORT, SUPPORT_ANSWER, 'assistant-support') : null,
+            c && !waiting && c.stage === 'report' ? checkChips(c) : null,
+            c && !waiting && c.stage === 'quick' ? quickCard(c) : null]),
         foot: [el('p', { id: 'pn-assist-help' }, ['고객 이름, 번호, 비밀번호는 입력하지 마세요.']),
           el('form', { cls: 'pn-assist-compose', id: 'pn-assist-form' }, [
             el('input', { cls: 'pn-input', id: 'pn-assist-text', type: 'text', maxlength: '100', required: true,
@@ -462,9 +463,14 @@
             el('button', { cls: (assistant.result || c) && !waiting ? 'pn-btn-2' : 'pn-btn',
               type: 'submit', disabled: waiting }, ['보내기'])]),
           assistant.error ? el('div', { cls: 'pn-err', role: 'alert' }, [assistant.error]) : null,
-          // ADR-026: 되묻기 상담은 결과 확인을 마치면 주 버튼 하나로 접수 확인 화면에 간다
-          c ? (c.stage === 'done' && !waiting ? btn('pn-btn', '확인한 내용으로 접수하기', 'assistant-handoff') :
-            !waiting && assistantReturn !== '0' ? btn('pn-btn-2', '기다리지 않고 접수', 'assistant-direct') : null) :
+          // ADR-026: 되묻기 상담은 결과 확인을 마치면 주 버튼 하나로 접수 확인 화면에 간다.
+          // ADR-027: 보조 버튼 [같은 오류로 간편 알리기] → 확인 카드에서 주 버튼 [같은 오류로 알리기]
+          c && !waiting && c.stage === 'done' ? btn('pn-btn', '확인한 내용으로 접수하기', 'assistant-handoff') : null,
+          c && !waiting && c.stage === 'done' && canQuick() ? btn('pn-btn-2', '같은 오류로 간편 알리기', 'assistant-quick') : null,
+          c && !waiting && c.stage === 'quick' ? btn('pn-btn', c.saving ? '알리는 중…' : '같은 오류로 알리기', 'assistant-quick-confirm', { disabled: c.saving }) : null,
+          c && !waiting && c.stage === 'quick' ? btn('pn-btn-2', '돌아가기', 'assistant-quick-back', { disabled: c.saving }) : null,
+          c && !waiting && ['done', 'quick'].indexOf(c.stage) < 0 && assistantReturn !== '0' ? btn('pn-btn-2', '기다리지 않고 접수', 'assistant-direct') : null,
+          c ? null :
             assistant.result && !waiting ? btn('pn-btn', '이 내용으로 문의 접수', 'assistant-handoff') : null,
           !c && assistant.pending && assistantReturn !== '0' ? btn('pn-btn-2', '기다리지 않고 접수', 'assistant-direct') : null,
           assistantReturn === '0' ? btn('pn-btn-2', '일반 접수로 돌아가기', 'leave-assistant') : null]
@@ -692,7 +698,7 @@
         d.status === 'WONT_FIX' ? '공개된 유사 사례가 있어요' : '비슷한 문제가 아직 처리 중이에요';
       // ADR-025: 지금 할 일과 근본 수정을 나눠 보이고, 같은 결함인지는 담당자가 확인한다고 알린다
       detail = el('div', null, [
-        window.NoticeTracks.view(d),
+        window.NoticeTracks.view(d, { after: result.blockedNote && assistant.consult ? helpPath(result) : null }),
         el('p', { cls: 'pn-lead' }, ['비슷해 보이는 공개 사례예요. 내 문제와 같은지는 담당자가 확인해요.'])]);
     } else {
       heading = result.outcome === 'UNAVAILABLE' ? '지금은 사례를 확인하기 어려워요' : '안내할 만한 유사 사례를 찾지 못했어요';
@@ -709,20 +715,72 @@
         result.guidance && (!d || d.status === 'RESOLVED') ? el('p', null, [result.guidance]) : null]),
       !streaming ? el('ul', { cls: 'pn-chips' }, [
         assistantReturn !== '0' && !assistant.consult ? el('li', null, [btn('pn-chip', 'AI와 접수 초안 만들기', 'assistant-draft')]) : null,
-        assistant.consult && assistant.consult.stage === 'resume' ? null :
+        assistant.consult && ['resume', 'support', 'quick'].indexOf(assistant.consult.stage) >= 0 ? null :
           el('li', null, [btn('pn-chip', '다른 질문하기', 'assistant-reset')])]) : null
     ]);
   }
 
-  /* ---- ADR-026 한 상담 되묻기 ----
-     consult = { result, checks, facts:{KEY: code}, outcome, stage: checking|resume|done }. 페이지 메모리에만 둔다 */
+  /* ---- ADR-026·027 한 상담 되묻기 ----
+     consult = { result, checks, facts:{KEY: code}, outcome, support, revealed, saving, error,
+                 stage: guide(안내에 필요한 항목) | resume·support(결과 질문) | report(담당자 확인용) | done | quick(간편 알리기 확인) }.
+     페이지 메모리에만 둔다 */
   var OUTCOME_ANSWER = { RESUMED: '네, 진행했어요', STILL: '아직 안 돼요', UNKNOWN: '지금은 확인할 수 없어요' };
+  var SUPPORT_ANSWER = { YES: '네, 진행이 어려워요', NO: '아니요, 기다릴 수 있어요', UNKNOWN: '잘 모르겠어요' };
+  var SUPPORT_REPLY = {
+    YES: '업무를 이어가기 어려운 상황을 접수에 남길게요. 담당자가 확인하면 알림과 내 접수내역으로 알려 드려요.',
+    NO: '알겠어요. 접수해 두시면 처리 경과를 알려 드려요.',
+    UNKNOWN: '확인 전이어도 접수할 수 있어요.'
+  };
+  function answerChips(label, pairs, names, act) {
+    return el('ul', { cls: 'pn-chips pn-assist-answers', 'aria-label': label }, pairs.map(function (pair) {
+      return el('li', null, [btn('pn-chip', names[pair[0]], act, { 'data-code': pair[0] })]);
+    }));
+  }
+  /* B: 승인된 임시조치가 없을 때 사람의 도움을 받을 수 있는 경로. 이 시안에서 확인된 것만 쓴다(가상 연락처·처리 보장 없음) */
+  function helpPath(result) {
+    return el('div', { cls: 'pn-assist-blocked' }, [
+      el('p', null, [result.blockedNote]),
+      el('details', { cls: 'pn-details pq-details', 'data-help-path': '' }, [
+        el('summary', null, ['사람의 도움을 받을 수 있는 경로']),
+        el('ul', { cls: 'pn-plain pq-details-body' }, [
+          el('li', null, ['접수하면 담당 창구' + (result.department ? '(' + result.department + ')' : '') + '가 확인하고, 처리 경과를 알림과 내 접수내역으로 알려 드려요.']),
+          el('li', null, ['고객님이 기다리고 계시면 접수할 때 긴급 사정과 전화 연락 희망을 남길 수 있어요.']),
+          el('li', null, ['이 화면에서 바로 전화·메신저로 연결하지는 않아요. 처리 시간도 아직 정해지지 않았어요.']),
+          el('li', null, ['본인확인을 건너뛰거나 고객 정보를 다른 방법으로 받아 두지 마세요.'])])])]);
+  }
+  function canQuick() {
+    var c = assistant && assistant.consult;
+    return !!(c && c.result.defect && c.result.defect.status !== 'RESOLVED' && usesQuickForm(read()) && assistantReturn !== '0');
+  }
+  /* 조사 "와/과": 결함 제목 끝 글자 받침으로 */
+  function wa(word) { var c = word.charCodeAt(word.length - 1) - 0xac00; return c >= 0 && c < 11172 && c % 28 ? '과' : '와'; }
+  /* 간편 알리기 확인 카드: 함께 남길 허용 코드만 보인다 */
+  function quickCard(c) {
+    var F = window.IntakeFacts, d = c.result.defect, h = consultHandoff(assistant), list = [];
+    if (F.isDevice(h.facts.DEVICE)) list.push(['오류가 난 기기', F.deviceLabel(h.facts.DEVICE)]);
+    Object.keys(F.CONDITIONS).forEach(function (key) {
+      if (h.facts[key]) list.push([F.CONDITIONS[key].label, F.conditionLabel(key, h.facts[key])]);
+    });
+    if (h.facts.CUSTOMER_WAITING === 'YES') list.push(['업무 영향', '고객 상담 중']);
+    if (h.workaroundState) list.push(['임시조치', F.workaroundLabel(h.workaroundState) + (h.outcome ? ' · ' + F.outcomeLabel(h.outcome) : '')]);
+    if (h.support) list.push(['업무 상황', F.supportLabel(h.support)]);
+    var card = el('article', { cls: 'pn-card pn-assist-quick', 'aria-labelledby': 'pn-assist-quick-title' }, [
+      el('h3', { cls: 'pn-card-title', id: 'pn-assist-quick-title', tabindex: '-1' }, ['「' + d.title + '」' + wa(d.title) + ' 같은 오류로 알릴까요?']),
+      list.length ? rows(list) : null,
+      el('p', { cls: 'pn-lead' }, ['같은 오류인지 직접 확인한 뒤 눌러 주세요. 대화 내용과 고객 정보는 남기지 않아요. 처리 경과는 알림과 내 접수내역으로 알려 드려요.']),
+      c.error ? el('p', { cls: 'pn-err', role: 'alert' }, [c.error]) : null]);
+    card.setAttribute('data-quick-confirm', '');
+    return card;
+  }
   var OUTCOME_REPLY = {
     RESUMED: '업무를 이어가셨네요. 오류 자체는 아직 고쳐지지 않았어요. 접수해 두시면 수정 소식을 알려 드려요.',
     STILL: '시도한 방법을 접수에 함께 남길게요. 급하면 접수할 때 전화 연락을 요청할 수 있어요.',
     UNKNOWN: '확인 전이어도 접수할 수 있어요. 결과는 나중에 내 접수내역에서 알려 주셔도 돼요.'
   };
-  function nextCheck(c) { return c.checks.find(function (q) { return !c.facts[q.key]; }) || null; }
+  function nextCheck(c, stage) {
+    stage = stage || c.stage;
+    return c.checks.find(function (q) { return q.stage === stage && !c.facts[q.key]; }) || null;
+  }
   function checkChips(c) {
     var q = nextCheck(c);
     return q ? el('ul', { cls: 'pn-chips pn-assist-answers', 'aria-label': q.text }, q.choices.map(function (choice) {
@@ -732,12 +790,21 @@
   function focusAssistant(id) {
     return render().then(function () { var t = $(id); if (t) t.focus(); });
   }
-  /* 되묻기를 다 마치면 비슷한 사례 결과를 보이고, 임시 방법이 있으면 결과를 묻는다 */
+  /* 안내에 필요한 항목(guide)을 마치면 비슷한 사례 결과를 먼저 보이고, 결과 질문 → 담당자 확인용 항목(report) 순서로 묻는다(ADR-027 결정 3) */
   function revealConsult(session) {
-    var c = session.consult;
-    session.turns.push({ who: 'ai', text: '알려주신 증상과 비슷한 사례가 있어요. 지금 해볼 방법을 안내해 드릴게요.' });
-    c.stage = c.result.resumeQuestion ? 'resume' : 'done';
-    if (c.stage === 'resume') session.turns.push({ who: 'ai', after: true, text: c.result.resumeQuestion });
+    var c = session.consult, workaround = c.result.defect && c.result.defect.workaround;
+    session.turns.push({ who: 'ai', text: workaround ? '알려주신 증상과 비슷한 사례가 있어요. 지금 해볼 방법을 안내해 드릴게요.'
+      : '알려주신 증상과 비슷한 사례가 있어요. 아직 확인된 임시조치는 없어요.' });
+    c.revealed = true;
+    if (c.result.resumeQuestion) {
+      c.stage = 'resume';
+      session.turns.push({ who: 'ai', after: true, text: c.result.resumeQuestion });
+    } else if (c.result.supportQuestion) {
+      c.stage = 'support';
+      session.turns.push({ who: 'ai', after: true, text: c.result.supportQuestion });
+    } else {
+      afterResult(session);
+    }
     session.result = c.result;
     session.streamStarted = motionEnabled() ? performance.now() : null;
     if (!assistantIsVisible(session)) return;
@@ -753,11 +820,24 @@
     session.consult = null;
     session.result = null;
   }
+  /* 결과 질문 뒤: 남은 담당자 확인용 항목을 하나씩 묻고, 없으면 마친다 */
+  function afterResult(session) {
+    var c = session.consult, q = nextCheck(c, 'report');
+    c.stage = q ? 'report' : 'done';
+    if (q) {
+      c.askedReport = true;
+      session.turns.push({ who: 'ai', after: true, text: q.text });
+    } else if (c.askedReport) {
+      session.turns.push({ who: 'ai', after: true, text: '알려 주셔서 고마워요. 확인한 내용으로 접수하거나, 같은 오류라면 간편하게 알릴 수 있어요.' });
+    }
+  }
+  /* ADR-027 결정 5: 임시조치 상태는 결과 카드를 본 뒤에만 정한다(없음 / 안내함 / 시도함) */
   function consultHandoff(session) {
     var c = session.consult, d = c.result.defect;
     var tried = c.outcome === 'RESUMED' || c.outcome === 'STILL';
+    var state = !c.revealed ? null : !d.workaround ? 'NONE' : tried ? 'TRIED' : 'OFFERED';
     return { origin: 'ASSISTANT', suggestedDefectId: d.id, facts: Object.assign({}, c.facts), outcome: c.outcome,
-      attemptedDefectId: tried ? d.id : null };
+      attemptedDefectId: tried ? d.id : null, workaroundState: state, support: c.support || null };
   }
 
   function assistantKey(st) {
@@ -841,10 +921,10 @@
         if (assistant !== session) return;
         session.pending = false;
         if (result.outcome === 'MATCH' && (result.checks || []).length) {
-          var c = session.consult = { result: result, checks: result.checks, facts: {}, outcome: null, stage: 'checking' };
+          var c = session.consult = { result: result, checks: result.checks, facts: {}, outcome: null, support: null, stage: 'guide' };
           c.checks.forEach(function (q) { if (q.known) c.facts[q.key] = q.known; });   // 질문 문장에 있는 항목은 묻지 않는다
-          var q = nextCheck(c);
-          if (!q) return revealConsult(session);
+          var q = nextCheck(c, 'guide');
+          if (!q) return revealConsult(session);   // 안내에 필요한 항목이 없으면 결과부터(ADR-027 빠른 도움)
           session.turns.push({ who: 'ai', text: q.text });
           if (assistantIsVisible(session)) return focusAssistant('pn-assist-ask');
           return;
@@ -914,19 +994,48 @@
         if (!check || check.key !== b.getAttribute('data-key')) return;
         var picked = check.choices.find(function (x) { return x.code === code; });
         if (!picked) return;
-        assistant.turns.push({ who: 'me', text: picked.label });
+        var after = consult.stage === 'report';
+        assistant.turns.push({ who: 'me', after: after, text: picked.label });
         consult.facts[check.key] = code;
-        var following = nextCheck(consult);
+        if (after) { afterResult(assistant); return focusAssistant('pn-assist-ask'); }
+        var following = nextCheck(consult, 'guide');
         if (!following) return revealConsult(assistant);
         assistant.turns.push({ who: 'ai', text: following.text });
         return focusAssistant('pn-assist-ask');
       case 'assistant-outcome':
         if (!assistant.consult || assistant.consult.stage !== 'resume' || !OUTCOME_ANSWER[code]) return;
         assistant.consult.outcome = code;
-        assistant.consult.stage = 'done';
         assistant.turns.push({ who: 'me', after: true, text: OUTCOME_ANSWER[code] },
           { who: 'ai', after: true, text: OUTCOME_REPLY[code] });
+        afterResult(assistant);
         return focusAssistant('pn-assist-ask');
+      case 'assistant-support':
+        if (!assistant.consult || assistant.consult.stage !== 'support' || !SUPPORT_ANSWER[code]) return;
+        assistant.consult.support = code;
+        assistant.turns.push({ who: 'me', after: true, text: SUPPORT_ANSWER[code] },
+          { who: 'ai', after: true, text: SUPPORT_REPLY[code] });
+        afterResult(assistant);
+        return focusAssistant('pn-assist-ask');
+      case 'assistant-quick':
+        if (!assistant.consult || assistant.consult.stage !== 'done' || !canQuick()) return;
+        assistant.consult.stage = 'quick';
+        assistant.consult.error = '';
+        return focusAssistant('pn-assist-quick-title');
+      case 'assistant-quick-back':
+        if (!assistant.consult || assistant.consult.stage !== 'quick' || assistant.consult.saving) return;
+        assistant.consult.stage = 'done';
+        return render();
+      case 'assistant-quick-confirm':
+        var qc = assistant.consult;
+        if (!qc || qc.stage !== 'quick' || qc.saving) return;
+        qc.saving = true;
+        render();
+        return quick.participate(st, consultHandoff(assistant)).then(function (saved) {
+          qc.saving = false;
+          if (saved) return;
+          qc.error = '같은 오류로 알리지 못했어요. 다시 누르거나 [돌아가기] 뒤 접수해 주세요.';
+          return render();
+        });
       case 'assistant-direct':
         var original = assistant.question || assistant.text;
         if (assistant.consult && usesQuickForm(st)) return quick.handoff(st, original, assistant.consult.result, false, consultHandoff(assistant));

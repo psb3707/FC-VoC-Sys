@@ -14,6 +14,8 @@ window.FIXTURES.users = [
   /* 관리자 U-010 과 같은 지점 FC: [지점 FC 문의]·대리 접수 알림 시연 (ADR-025, docs/10-seed-scenarios.md 5-1절) */
   { "id": "U-011", "name": "정다솜(가상)", "role": "FC", "branchId": "B-01" },
   { "id": "U-012", "name": "조은별(가상)", "role": "FC", "branchId": "B-01" },
+  /* ADR-027 고객 동의 키패드 시연의 대표 FC: 같은 지점, 신고 이력 없음 (docs/10-seed-scenarios.md 5-3절) */
+  { "id": "U-013", "name": "남다래(가상)", "role": "FC", "branchId": "B-01" },
   { "id": "U-010", "name": "박새벽(가상)", "role": "MANAGER", "branchId": "B-01" },
   /* unlinkedSeenAt: 결함 대장 [아직 안 묶인 신고]를 마지막으로 본 시각. 이 뒤에 들어온 신고가 "새로 들어옴"(ADR-017) */
   { "id": "U-020", "name": "최누리(가상)", "role": "SALES", "branchId": "B-HQ", "unlinkedSeenAt": "2026-11-04T08:00:00+09:00" },

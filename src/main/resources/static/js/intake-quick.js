@@ -26,8 +26,9 @@
       form = { requestId: requestId(), business: '', oneLine: '', symptom: '', detail: '', extraSymptoms: [], urgent: [],
         customerScope: '', customerNo: '', device: '', screen: '', date: '', time: '', contact: '', contactTime: '',
         finalType: 'UNCLASSIFIED', onBehalf: '', condition: '', source: '', attemptedWorkaround: '', attachment: '', draftFields: null, draftSource: '',
-        // ADR-026: AI 문의 상담에서 넘어온 코드와 출처
-        origin: '', seminarHistory: '', workOutcome: '', suggestedDefectId: '', factSources: {} };
+        // ADR-026: AI 문의 상담에서 넘어온 코드와 출처. ADR-027: 조건은 시나리오별 키, 임시조치 상태·추가 지원 필요
+        origin: '', conditions: {}, workaroundState: '', workOutcome: '', supportNeeded: '', suggestedDefectId: '', factSources: {},
+        consultNote: '' };
       receipt = diagnostics = null;
       confirming = busy = wide = restored = false;
       error = invalid = '';
@@ -72,23 +73,54 @@
         form.device = known.DEVICE;
         sources.device = known.DEVICE === 'UNKNOWN' ? 'UNKNOWN' : 'USER_REPORTED';
       }
-      if (facts.conditionLabel('SEMINAR_HISTORY', known.SEMINAR_HISTORY)) {
-        form.seminarHistory = known.SEMINAR_HISTORY;
-        sources.conditions = known.SEMINAR_HISTORY === 'UNKNOWN' ? 'UNKNOWN' : 'USER_REPORTED';
-      }
+      form.conditions = {};
+      Object.keys(facts.CONDITIONS).forEach(function (key) {   // 시나리오마다 다른 조건 키(ADR-027 결정 2)
+        if (facts.conditionLabel(key, known[key])) form.conditions[key] = known[key];
+      });
+      var condValues = Object.keys(form.conditions).map(function (key) { return form.conditions[key]; });
+      if (condValues.length) sources.conditions = condValues.every(function (v) { return v === 'UNKNOWN'; }) ? 'UNKNOWN' : 'USER_REPORTED';
       if (known.CUSTOMER_WAITING === 'YES') {
         if (!form.urgent.includes('CONSULTING')) form.urgent = form.urgent.concat('CONSULTING');
         sources.urgent = 'USER_REPORTED';
       }
+      form.workaroundState = facts.workaroundLabel(c.workaroundState) ? c.workaroundState : '';
       var tried = catalog.find(function (d) { return d.id === c.attemptedDefectId; });
-      if (tried && tried.workaround) {
+      if (tried && tried.workaround && form.workaroundState === 'TRIED') {
         form.attemptedWorkaround = tried.workaround;   // 대장의 임시 방법 문장 그대로(새 문자열을 만들지 않음)
         sources.attempted = 'DEFECT_LEDGER';
       }
-      form.workOutcome = facts.outcomeLabel(c.outcome) ? c.outcome : '';
+      // 임시조치가 없으면 결과(진행했어요·아직 안 돼요)를 두지 않는다(ADR-027 결정 5)
+      form.workOutcome = form.workaroundState !== 'NONE' && facts.outcomeLabel(c.outcome) ? c.outcome : '';
       if (form.workOutcome) sources.workOutcome = form.workOutcome === 'UNKNOWN' ? 'UNKNOWN' : 'USER_REPORTED';
+      form.supportNeeded = facts.supportLabel(c.support) ? c.support : '';
+      if (form.supportNeeded) sources.supportNeeded = form.supportNeeded === 'UNKNOWN' ? 'UNKNOWN' : 'USER_REPORTED';
       form.suggestedDefectId = catalog.some(function (d) { return d.id === c.suggestedDefectId; }) ? c.suggestedDefectId : '';
       form.factSources = sources;
+      form.consultNote = '';
+    }
+    /* ADR-027 결정 7: 업무·대표 증상·핵심 조건이 상담이 안내한 사례와 맞는지 */
+    function suggestionFits() {
+      var d = catalog.find(function (item) { return item.id === form.suggestedDefectId; });
+      if (!d || d.business !== form.business) return false;
+      if (form.symptom && d.symptom && form.symptom !== d.symptom) return false;
+      return Object.keys(d.conditions || {}).every(function (key) {
+        var mine = form.conditions[key];
+        return !mine || mine === 'UNKNOWN' || mine === d.conditions[key];
+      });
+    }
+    /* 맞지 않으면 안내 사례와 그 사례에서 온 임시 방법·결과·조건을 함께 지운다(기기·고객 대기·업무 상황은 FC의 사실이라 남김) */
+    function revalidate() {
+      if (!form.suggestedDefectId || suggestionFits()) return false;
+      var d = catalog.find(function (item) { return item.id === form.suggestedDefectId; }) || {};
+      var conditions = Object.assign({}, form.conditions);
+      Object.keys(d.conditions || {}).forEach(function (key) { delete conditions[key]; });
+      form.conditions = conditions;
+      form.factSources = Object.assign({}, form.factSources);
+      if (!Object.keys(conditions).length) delete form.factSources.conditions;
+      ['attempted', 'workOutcome'].forEach(function (key) { delete form.factSources[key]; });
+      form.suggestedDefectId = form.attemptedWorkaround = form.workaroundState = form.workOutcome = '';
+      form.consultNote = '업무나 증상이 바뀌어 AI 문의에서 안내한 사례를 뺐어요.';
+      return true;
     }
     function handoff(st, question, answer, withDraft, consult) {
       if (actor !== owner(st)) start(owner(st));
@@ -374,18 +406,29 @@
     }
     function proxied() { return !!form.onBehalf && form.onBehalf !== actor; }
     /* ADR-026: AI 문의에서 확인한 내용. 값은 고칠 수 있고 고친 값으로 제출한다. 대리 접수는 업무 재개를 정하지 않는다 */
+    function condSelect(key) {
+      var def = facts.CONDITIONS[key];
+      return el('div', { cls: 'pn-field' }, [el('label', { for: 'quick-cond-' + key }, [def.label]),
+        el('select', { id: 'quick-cond-' + key, 'data-quick': 'cond:' + key, 'data-fk': 'quick:cond:' + key },
+          [['', '선택 안 함']].concat(def.values).map(function (pair) {
+            return el('option', { value: pair[0], selected: form.conditions[key] === pair[0] }, [pair[1]]);
+          }))]);
+    }
     function factsCard() {
       if (form.origin !== 'ASSISTANT') return null;
-      var seminar = facts.CONDITIONS.SEMINAR_HISTORY;
       var guided = catalog.find(function (d) { return d.id === form.suggestedDefectId; });
+      var noWorkaround = form.workaroundState === 'NONE';
       var card = el('div', { cls: 'pn-card pq-facts' }, [
         el('p', { cls: 'pn-card-title' }, ['AI 문의에서 확인한 내용']),
         el('p', { cls: 'pn-lead' }, ['대화에서 알려 주신 내용으로 채웠어요. 다르면 고쳐 주세요.']),
-        select('device', '오류가 난 기기', devices, '선택 안 함'),
-        form.seminarHistory || form.factSources.conditions ? select('seminarHistory', seminar.label, seminar.values, '선택 안 함') : null,
+        form.consultNote ? el('p', { cls: 'pn-lead', id: 'quick-consult-note', role: 'status' }, [form.consultNote]) : null,
+        select('device', '오류가 난 기기', devices, '선택 안 함')]
+        .concat(Object.keys(facts.CONDITIONS).filter(function (key) { return form.conditions[key]; }).map(condSelect), [
+        noWorkaround ? rows([['임시조치', '승인된 임시조치 없음 · 결함 대장 기준']]) : null,
         proxied() ? el('p', { cls: 'pn-lead', id: 'quick-proxy-outcome' }, ['업무 재개 여부는 FC 본인이 내 접수내역에서 답해요.']) :
+          noWorkaround || form.supportNeeded ? select('supportNeeded', '지금 업무를 이어가기 어려운가요?', facts.SUPPORT, '선택 안 함') :
           select('workOutcome', '안내한 방법으로 업무를 이어갔나요?', facts.OUTCOMES, '선택 안 함'),
-        guided ? rows([['AI가 안내한 사례', guided.id + ' · 같은 오류인지는 담당자가 확인해요']]) : null]);
+        guided ? rows([['AI가 안내한 사례', guided.id + ' · 같은 오류인지는 담당자가 확인해요']]) : null]));
       card.setAttribute('data-consult-facts', '');
       return card;
     }
@@ -436,7 +479,8 @@
         body: [
           el('div', { cls: 'pn-success' }, [
             ui.successMark(),
-            el('h3', { tabindex: '-1' }, [receipt.kind === 'ME_TOO' ? '같은 오류 참여가 기록됐어요' : '접수됐어요'])]),
+            el('h3', { tabindex: '-1' }, [receipt.duplicate ? '이미 이 오류로 알린 접수가 있어요' :
+              receipt.kind === 'ME_TOO' ? '같은 오류 참여가 기록됐어요' : '접수됐어요'])]),
           el('div', { cls: 'pn-card pq-actions' }, [
             el('p', { cls: 'pn-card-title', id: 'quick-receipt-id', tabindex: '-1' }, ['접수번호 ', receipt.id]),
             btn('pn-btn-2', '접수번호 복사', 'quick-copy'),
@@ -449,8 +493,11 @@
               proxied ? ['안내받는 사람', fc + ' 님과 나 · 처리 경과를 함께 받아요'] : null,
               receipt.urgent && receipt.urgent.length ? ['우선 확인 요청', '긴급 사정을 함께 남겼어요'] : null,
               receipt.attemptedWorkaround ? ['시도한 임시 방법', '「' + receipt.attemptedWorkaround + '」'] : null,
+              receipt.duplicate ? ['이미 알린 접수', '이 오류로 알린 접수가 이미 있어서 새로 만들지 않았어요'] : null,
               receipt.workOutcome ? ['업무 재개', facts.outcomeLabel(receipt.workOutcome) +
-                (receipt.resumptionSaved ? ' · 접수에 기록했어요' : '')] : null,
+                (receipt.resumptionSaved ? ' · 접수에 기록했어요' : receipt.resumptionFailed ? ' · 아직 기록하지 못했어요' : '')] : null,
+              receipt.workaroundState === 'NONE' ? ['임시조치', '승인된 임시조치 없음'] : null,
+              receipt.supportNeeded ? ['업무 상황', facts.supportLabel(receipt.supportNeeded)] : null,
               proxied && receipt.origin === 'ASSISTANT' ? ['업무 재개', 'FC 본인이 내 접수내역에서 답해요'] : null,
               receipt.hasAttachment ? ['화면 첨부', '확인한 이미지 1장'] : null,
               receipt.aiDraft ? ['AI 접수 초안', '확인하고 수정한 내용으로 접수했어요'] : null,
@@ -459,6 +506,9 @@
                 (receipt.contactTime ? ' · ' + options.time.find(function (pair) { return pair[0] === receipt.contactTime; })[1] : '') : 'SFA 내 접수내역'],
               ['다음 안내', '담당자가 확인하면 알림과 내 접수내역으로 알려 드려요. 다음 안내 일정은 아직 정해지지 않았어요.']
             ])]),
+          receipt.resumptionFailed ? el('div', { cls: 'pn-card pq-actions', id: 'quick-resume-failed' }, [
+            el('p', null, ['접수는 됐어요. 업무 재개 회신만 아직 기록하지 못했어요.']),
+            btn('pn-btn-2', busy ? '기록 중…' : '다시 기록하기', 'quick-resume-retry', { disabled: busy })]) : null,
           d && d.workaround !== receipt.attemptedWorkaround ? guide(d) : null
         ],
         foot: [btn('pn-btn', '이 접수의 진행 상황 보기', 'quick-mine')]
@@ -515,8 +565,9 @@
         guideId: match ? match.id : form.suggestedDefectId || null,
         attemptedWorkaround: form.attemptedWorkaround, diagnosticMode: st.diagnostics,
         diagnosticCapturedAt: diagnostics && diagnostics.capturedAt, aiDraft: form.draftFields,
-        origin: form.origin || 'FORM', conditions: form.seminarHistory ? { SEMINAR_HISTORY: form.seminarHistory } : {},
-        workOutcome: proxied() ? null : form.workOutcome || null, suggestedDefectId: form.suggestedDefectId || null,
+        origin: form.origin || 'FORM', conditions: form.conditions, workaroundState: form.workaroundState || null,
+        workOutcome: proxied() ? null : form.workOutcome || null, supportNeeded: proxied() ? null : form.supportNeeded || null,
+        suggestedDefectId: form.suggestedDefectId || null,
         factSources: form.factSources
       };
     }
@@ -556,18 +607,54 @@
       });
     }
     /* ADR-026 결정 7: 접수번호가 생긴 뒤 신고자 본인의 "진행했어요/아직 안 돼요"만 업무 재개 회신으로 한 번 기록 */
-    function finish(report) {
+    function ownResumption(report) {
       var outcome = report.workOutcome;
-      var own = (outcome === 'RESUMED' || outcome === 'STILL') && report.reporterId === actor && report.submittedById === actor;
-      if (own && !resumed.has(report.id)) {
-        busy = true;
-        return A.postWorkResumption(report.id, actor, outcome).then(function (saved) {
+      return (outcome === 'RESUMED' || outcome === 'STILL') && report.reporterId === actor && report.submittedById === actor;
+    }
+    /* ADR-027 결정 10: 한 번만 부르고, 결과를 접수 성공과 따로 둔다. 같은 요청 식별자라 다시 눌러도 기록은 1건 */
+    function recordResumption(report, simulateFailure) {
+      busy = true;
+      return A.postWorkResumption(report.id, actor, report.workOutcome, report.id + ':' + report.workOutcome, simulateFailure)
+        .catch(function () { return null; }).then(function (saved) {
           busy = false;
           if (saved) resumed.add(report.id);
-          finish(report);
+          report.resumptionSaved = !!saved;
+          report.resumptionFailed = !saved;
         });
+    }
+    function finish(report) {
+      if (ownResumption(report) && !resumed.has(report.id)) {
+        return recordResumption(report, ui.read().resume === 'fail').then(function () { show(report); });
       }
-      report.resumptionSaved = own && resumed.has(report.id);
+      report.resumptionSaved = ownResumption(report) && resumed.has(report.id);
+      show(report);
+    }
+    /* 간편 알리기(ADR-027 결정 6): FC가 확인 카드에서 누를 때만 같은 오류 참여를 만든다 */
+    function participate(st, c) {
+      if (actor !== owner(st)) start(owner(st));
+      if (busy) return Promise.resolve(false);
+      var known = c.facts || {}, conditions = {}, own = !proxied();
+      Object.keys(facts.CONDITIONS).forEach(function (key) { if (known[key]) conditions[key] = known[key]; });
+      var sources = {};
+      if (known.DEVICE) sources.device = known.DEVICE === 'UNKNOWN' ? 'UNKNOWN' : 'USER_REPORTED';
+      if (Object.keys(conditions).length) sources.conditions = 'USER_REPORTED';
+      if (known.CUSTOMER_WAITING === 'YES') sources.urgent = 'USER_REPORTED';
+      if (own && c.outcome) sources.workOutcome = c.outcome === 'UNKNOWN' ? 'UNKNOWN' : 'USER_REPORTED';
+      if (own && c.support) sources.supportNeeded = c.support === 'UNKNOWN' ? 'UNKNOWN' : 'USER_REPORTED';
+      var snapshot = form;
+      busy = true;
+      return A.postQuickParticipation(c.suggestedDefectId, form.onBehalf || actor, actor, {
+        requestId: actor + ':' + form.requestId, origin: 'ASSISTANT', incident: { device: known.DEVICE }, conditions: conditions,
+        urgent: known.CUSTOMER_WAITING === 'YES' ? ['CONSULTING'] : [], workaroundState: c.workaroundState,
+        workOutcome: own ? c.outcome : null, supportNeeded: own ? c.support : null, factSources: sources
+      }).catch(function () { return null; }).then(function (report) {
+        busy = false;
+        if (snapshot !== form || !report) return false;
+        finish(report);
+        return true;
+      });
+    }
+    function show(report) {
       if (restored) drafts.delete(actor);
       receipt = report;
       offer = confirming = wide = false;
@@ -622,6 +709,9 @@
         return act('review', st);
       }
       if (action === 'submit') return submit(st);
+      if (action === 'resume-retry' && receipt && receipt.resumptionFailed) {
+        return recordResumption(receipt, false).then(function () { ui.paint(ui.read()); });
+      }
       if (action === 'mine' && receipt) {
         return ui.go({ panel: 'known', tab: 'mine', item: receipt.id, step: '', submit: '' });
       }
@@ -709,7 +799,16 @@
       }
       var key = target.getAttribute('data-quick');
       if (!key) return;
-      var sourceKey = { device: 'device', seminarHistory: 'conditions', workOutcome: 'workOutcome' }[key];
+      if (key.indexOf('cond:') === 0) {   // 시나리오 조건(ADR-027): 고친 값도 FC 진술
+        var condKey = key.slice(5);
+        form.conditions = Object.assign({}, form.conditions);
+        if (target.value) form.conditions[condKey] = target.value;
+        form.factSources = Object.assign({}, form.factSources, { conditions: 'USER_REPORTED' });
+        if (Object.keys(form.conditions).every(function (k) { return form.conditions[k] === 'UNKNOWN'; })) form.factSources.conditions = 'UNKNOWN';
+        if (revalidate()) ui.paint(st);
+        return;
+      }
+      var sourceKey = { device: 'device', workOutcome: 'workOutcome', supportNeeded: 'supportNeeded' }[key];
       if (sourceKey) {   // 설계사가 고친 값도 FC 진술. 비우면 출처도 지운다(ADR-026 결정 6)
         form.factSources = Object.assign({}, form.factSources);
         if (target.value) form.factSources[sourceKey] = target.value === 'UNKNOWN' ? 'UNKNOWN' : 'USER_REPORTED';
@@ -732,12 +831,16 @@
         var message = document.getElementById('quick-error');
         if (message) message.remove();
       }
-      if (eventType !== 'change' || target.tagName !== 'SELECT') return;
+      var invalidated = (key === 'business' || key === 'symptom') && revalidate();
+      if (eventType !== 'change' || target.tagName !== 'SELECT') {
+        if (invalidated) ui.paint(st);
+        return;
+      }
       if (key === 'symptom') form.extraSymptoms = form.extraSymptoms.filter(function (code) { return code !== form.symptom; });
       if (['business', 'symptom', 'customerScope', 'contact', 'condition'].includes(key)) ui.paint(st);
     }
 
-    return { steps: steps, isStep: isStep, open: open, enter: enter, handoff: handoff, view: view, act: act,
+    return { steps: steps, isStep: isStep, open: open, enter: enter, handoff: handoff, participate: participate, view: view, act: act,
       change: change, close: close, refreshAdvice: refreshAdvice, isWide: function () { return wide; },
       canSwitch: function () { return !confirming && !busy; },
       updateCatalog: function (items) { catalog = items; },
