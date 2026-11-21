@@ -11,6 +11,8 @@
    - statusTemplates: 상태 변경 알림의 고정 문구(02번 4절 "없으면 고정 템플릿"). {title} {date} {reason} {workaround} 를 채운다.
      FC(신고자)용은 "지금 할 일"을 먼저 쓴다. submitterTemplates 는 신고자와 다른 대리 접수자(관리자)용, {count} = 대신 접수한 신고 수(ADR-025).
    - reports[].workResumption: FC 업무 재개 회신 시드(RESUMED 진행했어요 / STILL 아직 안 돼요, ADR-025). 대표 결함 상태와 무관.
+   - D-2026-007(ADR-027, docs/10-seed-scenarios.md 5-3절): 고객 동의 URL 키패드 오류 대표 시연. 원인·기종·OS·임시조치·실제 부서는 미확정이라
+     값을 넣지 않는다. 묶인 신고의 conditions·factSources 는 FC 진술(USER_REPORTED)이고 입력란 값은 어디에도 없다.
    업무 코드는 intake.js metaForm, 등급·부서 코드는 intake-panel.js 와 같다. 모든 값은 가상이다. */
 window.FIXTURES = window.FIXTURES || {};
 window.FIXTURES.ledger = {
@@ -47,7 +49,11 @@ window.FIXTURES.ledger = {
     { "id": "D-2026-006", "title": "계약 목록을 정렬하면 다른 계약 상세가 열려요", "type": "DEFECT", "systemGen": "OLD",
       "grade": "NORMAL", "status": "RECEIVED", "departmentCode": "CONTRACT_IT",
       "workaround": null, "plannedFixDate": null,
-      "wontFixReasonCode": null, "wontFixReasonText": null, "published": false, "updatedAt": "2026-11-03T15:20:00+09:00" }
+      "wontFixReasonCode": null, "wontFixReasonText": null, "published": false, "updatedAt": "2026-11-03T15:20:00+09:00" },
+    { "id": "D-2026-007", "title": "고객 동의 URL에서 뒷자리 숫자 키패드가 열리지 않아요", "type": "DEFECT", "systemGen": "OLD",
+      "grade": "IMMEDIATE", "status": "RECEIVED", "departmentCode": "CONSENT_IT",
+      "workaround": null, "plannedFixDate": null,
+      "wontFixReasonCode": null, "wontFixReasonText": null, "published": true, "updatedAt": "2026-11-18T10:30:00+09:00" }
   ],
 
   "reports": [
@@ -130,6 +136,26 @@ window.FIXTURES.ledger = {
       "maskedText": "보험료 계산을 누르면 한참 걸려요", "finalType": "DEFECT", "grade": "BATCH", "departmentCode": "DESIGN_SUPPORT",
       "defectId": "D-2026-003", "createdAt": "2026-11-01T09:10:00+09:00" },
 
+    /* ADR-027 고객 동의 키패드 시연 시드: 서로 다른 지점 FC 3명. R-073 은 관리자 U-010 과 같은 지점 FC(U-012) */
+    { "id": "R-071", "reporterId": "U-003", "submittedById": "U-003", "kind": "FULL", "mode": "B", "business": "CUSTOMER_CONSENT", "symptom": "CANNOT_INPUT",
+      "maskedText": "고객 동의 링크에서 뒷자리 칸을 누르면 숫자 키패드가 안 떠요", "finalType": "DEFECT", "grade": "IMMEDIATE", "departmentCode": "CONSENT_IT",
+      "defectId": "D-2026-007", "createdAt": "2026-11-17T14:20:00+09:00", "origin": "ASSISTANT",
+      "incident": { "device": "CUSTOMER_PHONE" }, "conditions": { "INPUT_STEP": "BACK", "KEYPAD_SYMPTOM": "NO_KEYPAD", "DEVICE_OS": "ANDROID", "URL_PATH": "IN_APP" },
+      "urgent": ["CONSULTING"], "workaroundState": "NONE", "supportNeeded": "YES",
+      "factSources": { "device": "USER_REPORTED", "conditions": "USER_REPORTED", "urgent": "USER_REPORTED", "supportNeeded": "USER_REPORTED" } },
+    { "id": "R-072", "reporterId": "U-008", "submittedById": "U-008", "kind": "FULL", "mode": "B", "business": "CUSTOMER_CONSENT", "symptom": "CANNOT_INPUT",
+      "maskedText": "동의 화면 뒷자리 입력란에서 키패드가 나오지 않는대요", "finalType": "DEFECT", "grade": "IMMEDIATE", "departmentCode": "CONSENT_IT",
+      "defectId": "D-2026-007", "createdAt": "2026-11-18T09:40:00+09:00", "origin": "FORM",
+      "incident": { "device": "CUSTOMER_PHONE" }, "conditions": { "INPUT_STEP": "BACK", "KEYPAD_SYMPTOM": "NO_KEYPAD", "DEVICE_OS": "UNKNOWN", "URL_PATH": "EXTERNAL" },
+      "urgent": [], "workaroundState": "NONE", "supportNeeded": "UNKNOWN",
+      "factSources": { "device": "USER_REPORTED", "conditions": "USER_REPORTED", "supportNeeded": "UNKNOWN" } },
+    { "id": "R-073", "reporterId": "U-012", "submittedById": "U-012", "kind": "FULL", "mode": "B", "business": "CUSTOMER_CONSENT", "symptom": "CANNOT_INPUT",
+      "maskedText": "고객 동의 URL 뒷자리에서 키패드가 안 올라와요", "finalType": "DEFECT", "grade": "IMMEDIATE", "departmentCode": "CONSENT_IT",
+      "defectId": "D-2026-007", "createdAt": "2026-11-18T10:30:00+09:00", "origin": "ASSISTANT",
+      "incident": { "device": "CUSTOMER_PHONE" }, "conditions": { "INPUT_STEP": "BACK", "KEYPAD_SYMPTOM": "NO_KEYPAD", "DEVICE_OS": "IOS", "URL_PATH": "UNKNOWN" },
+      "urgent": ["CONSULTING"], "workaroundState": "NONE", "supportNeeded": "YES",
+      "factSources": { "device": "USER_REPORTED", "conditions": "USER_REPORTED", "urgent": "USER_REPORTED", "supportNeeded": "USER_REPORTED" } },
+
     { "id": "R-014", "reporterId": "U-001", "submittedById": "U-001", "kind": "FULL", "mode": "B", "business": "ETC", "symptom": "ETC",
       "maskedText": "인쇄 버튼을 눌러도 반응이 없어요", "finalType": "DEFECT", "grade": "BATCH", "departmentCode": "SALES_SUPPORT",
       "defectId": null, "createdAt": "2026-11-03T09:05:00+09:00" },
@@ -161,7 +187,9 @@ window.FIXTURES.ledger = {
     { "id": "H-007", "defectId": "D-2026-005", "from": "RECEIVED", "to": "WORKAROUND", "reason": null, "actorId": "U-020", "at": "2026-10-24T13:00:00+09:00", "notifiable": true },
     { "id": "H-008", "defectId": "D-2026-005", "from": "WORKAROUND", "to": "WONT_FIX", "reason": "새 시스템에서 고쳐질 예정이에요", "actorId": "U-030", "at": "2026-10-30T15:00:00+09:00", "notifiable": true },
 
-    { "id": "H-016", "defectId": "D-2026-006", "from": null, "to": "RECEIVED", "reason": null, "actorId": "U-020", "at": "2026-11-03T15:20:00+09:00", "notifiable": false }
+    { "id": "H-016", "defectId": "D-2026-006", "from": null, "to": "RECEIVED", "reason": null, "actorId": "U-020", "at": "2026-11-03T15:20:00+09:00", "notifiable": false },
+
+    { "id": "H-020", "defectId": "D-2026-007", "from": null, "to": "RECEIVED", "reason": null, "actorId": "U-030", "at": "2026-11-17T15:00:00+09:00", "notifiable": false }
   ],
 
   "fcNotices": [

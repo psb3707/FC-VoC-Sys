@@ -38,11 +38,12 @@
   var GRADE = { IMMEDIATE: '즉시', NORMAL: '일반', BATCH: '모아서' };
   var GRADE_WEIGHT = { IMMEDIATE: 3, NORMAL: 2, BATCH: 1 };   // 업무 중요도: 처리 등급(02번 1절)으로 갈음
   var DEPT = { SUBSCRIPTION_IT: '청약업무팀 + IT', CUSTOMER_IT: '고객관리팀 + IT', LOGIN_SUPPORT: '영업지원팀',
-    SALES_SUPPORT: '영업지원팀', DESIGN_SUPPORT: '상품설계지원팀', CONTRACT_IT: '계약관리팀 + IT' };
+    SALES_SUPPORT: '영업지원팀', DESIGN_SUPPORT: '상품설계지원팀', CONTRACT_IT: '계약관리팀 + IT',
+    CONSENT_IT: '고객동의업무팀(가상 매핑) + IT' };   // ADR-027: 실제 담당 부서는 확인 필요
   var BUSINESS = { LOGIN: '로그인·접속', SUBSCRIPTION: '청약·서명', CUSTOMER_LOOKUP: '고객조회', DESIGN: '가입설계',
-    CONTRACT_LOOKUP: '계약조회', ETC: '그 밖의 업무' };
+    CONTRACT_LOOKUP: '계약조회', CUSTOMER_CONSENT: '고객동의·본인확인', ETC: '그 밖의 업무' };
   var SYMPTOM = { NOT_SHOWN: '내용이 안 보여요', CANNOT_PROCEED: '다음으로 안 넘어가요', WRONG_SCREEN: '엉뚱한 화면이 떠요',
-    WRONG_INPUT: '입력이 잘못 들어가요', HOW_TO: '쓰는 법을 모르겠어요', ETC: '그 밖의 문제' };
+    WRONG_INPUT: '입력이 잘못 들어가요', CANNOT_INPUT: '입력할 수 없어요(키패드가 안 떠요)', HOW_TO: '쓰는 법을 모르겠어요', ETC: '그 밖의 문제' };
   var ROLE_NAME = { SALES: '영업팀', IT: 'IT 담당' };
   var SIMILAR = { HIGH: '비슷함 높음', MEDIUM: '비슷함 보통' };   // 07번 ⑤ similarity (LOW 는 서버가 버림)
 
@@ -414,9 +415,13 @@
     if (!c.similarity) return el('span', { cls: 'ld-tag is-dim' }, ['규칙으로 찾음']);
     return el('span', { cls: 'ld-tag' + (c.similarity === 'HIGH' ? '' : ' is-dim') }, [SIMILAR[c.similarity] || c.similarity]);
   }
-  function linkedCount(id) {
+  /* ADR-027 결정 8: 후보마다 가상 데이터에서 센 연결된 신고 수·영향 지점 수와 기존 조치 */
+  function relationRows(id) {
     var d = defects.filter(function (x) { return x.id === id; })[0];
-    return d ? (d.reports || []).length : 0;
+    if (!d) return null;
+    return rows([['연관 규모', '연결된 신고 ' + (d.reports || []).length + '건 · 영향 지점 ' + branchCount(d) + '곳'],
+      ['기존 조치', '지금 상태 ' + stageLabel(d.status) + ' · 임시 방법 ' + (d.workaround ? '「' + d.workaround + '」' : '없음') +
+        ' · 마지막 변경 ' + fmtDate(d.updatedAt)]]);
   }
   function ruleOutcome() { return !!similar && similar.llmOutcome === 'RULE'; }   // ADR-026 결정 8: 새 신고 규칙 후보
   function aiNote() {
@@ -446,7 +451,7 @@
           el('div', { cls: 'ld-cand-head' }, [el('p', { cls: 'ld-cand-says' }, [el('b', { cls: 'ld-id' }, [c.defectId]), ' · 담당자 확인 필요'])]),
           el('p', { cls: 'ld-cand-title' }, ['「' + c.title + '」']),
           rows([['추천 근거', el('ul', { cls: 'pn-plain ld-reasons' }, (c.reasons || []).map(function (why) { return el('li', null, [why]); }))]]),
-          el('p', { cls: 'ld-meta' }, ['지금 상태 ' + stageLabel(c.status) + ' · 묶인 신고 ' + linkedCount(c.defectId) + '건']),
+          relationRows(c.defectId),
           btn('pn-btn-2 ld-cand-btn', [icon('i-link'), '이 결함에 묶기'], 'link-ai', { 'data-ai-link': c.defectId, 'aria-haspopup': 'dialog',
             'aria-label': c.defectId + '에 묶기' })]);
       })) : el('p', null, ['대표 결함 목록에서 직접 골라 주세요. 같은 원인이 없으면 새 대표 결함으로 만들어요.'])]);
@@ -465,7 +470,7 @@
           : ['이 신고는 ', el('b', { cls: 'ld-id' }, [c.defectId]), wa(c.defectId) + ' 비슷해 보여요']), fallback ? null : simTag(c)]),
         el('p', { cls: 'ld-cand-title' }, ['「' + c.title + '」']),
         fallback ? null : el('p', { cls: 'ld-meta' }, ['이유: ' + c.reason]),   // 규칙 후보의 이유는 위 문장과 같아 되풀이하지 않음
-        el('p', { cls: 'ld-meta' }, ['지금 상태 ' + stageLabel(c.status) + ' · 묶인 신고 ' + linkedCount(c.defectId) + '건']),
+        relationRows(c.defectId),
         btn('pn-btn-2 ld-cand-btn', [icon('i-link'), '이 결함에 묶기'], 'link-ai', { 'data-ai-link': c.defectId, 'aria-haspopup': 'dialog',
           'aria-label': c.defectId + '에 묶기' })]);
     }))]);
@@ -479,21 +484,23 @@
       '같은 업무·같은 문제 유형으로 찾은 결함을 보여 드려요. 담당자가 확인하고 골라 주세요.'])]) : null;
     [el('h3', { tabindex: '-1' }, [r.maskedText || '"나도 겪었어요" 신고']),
       el('p', { cls: 'pn-lead' }, [who, r.isNew ? el('span', { cls: 'ld-tag is-new' }, ['새로 들어옴']) : null]),
-      // 이 패널의 목적은 묶을 결함 찾기라 AI 추천을 먼저, 신고 내용은 아래에 둔다
-      el('h4', null, [ruleOutcome() ? '비슷한 대표 결함 추천' : 'AI 추천']),
+      // ADR-027 결정 8: ① FC가 확인한 정보 → ② 기존 결함과의 연관성 → ③ 담당자 처리
+      el('h4', null, ['① FC가 확인한 정보']),
+      factsCard(r),
+      el('div', { cls: 'pn-card' }, [
+        rows([['업무', BUSINESS[r.business] || r.business], ['문제 유형', SYMPTOM[r.symptom] || r.symptom],
+          ['종류', TYPE[r.finalType] || r.finalType], ['처리 등급', [gradeTag(r.grade)]], ['담당 부서', DEPT[r.departmentCode] || r.departmentCode]])]),
+      r.diagnostics ? diagnosticDetails(r.diagnostics) : null,
+      r.hasAttachment ? attachmentDetails(r, st) : null,
+      draftSummaryCard(r),
+      el('h4', null, ['② 기존 결함과의 연관성']),
       warn || aiNote(),
       aiCard(r, st),
       el('p', { cls: 'pn-help' }, [icon('i-info'), el('span', null, [ruleOutcome()
         ? '규칙 후보는 업무·증상·발생 조건 코드와 시도한 조치만 비교해요. 신고 문장·고객번호·보낸 사람은 쓰지 않아요.'
         : 'AI에게는 가린 신고 문장과 업무·문제 유형, 대표 결함 제목·우회법만 보내요. 고객번호와 보낸 사람은 보내지 않아요.'])]),
-      el('h4', null, ['신고 내용']),
-      factsCard(r),
-      r.diagnostics ? diagnosticDetails(r.diagnostics) : null,
-      r.hasAttachment ? attachmentDetails(r, st) : null,
-      draftSummaryCard(r),
-      el('div', { cls: 'pn-card' }, [
-        rows([['업무', BUSINESS[r.business] || r.business], ['문제 유형', SYMPTOM[r.symptom] || r.symptom],
-          ['종류', TYPE[r.finalType] || r.finalType], ['처리 등급', [gradeTag(r.grade)]], ['담당 부서', DEPT[r.departmentCode] || r.departmentCode]])])
+      el('h4', null, ['③ 담당자 처리']),
+      handlingCard(r)
     ].forEach(function (n) { if (n) body.appendChild(n); });
     foot.appendChild(btn('pn-btn', [icon('i-link'), '묶을 결함 고르기'], 'link-pick', { 'aria-haspopup': 'dialog' }));
     return true;
@@ -524,7 +531,10 @@
         return hit ? hit[1] : code;
       }).join(' · '), 'urgent')]);
     }
+    var state = F.clean(r).workaroundState;   // ADR-027: 임시조치 없음 / 안내함 / 시도함
+    if (state) list.push(['임시조치', [F.workaroundLabel(state), src2(state === 'NONE' ? 'DEFECT_LEDGER' : src.attempted || 'USER_REPORTED')]]);
     if (r.attemptedWorkaround) list.push(['시도한 조치', ['「' + r.attemptedWorkaround + '」', src2(src.attempted || 'DEFECT_LEDGER')]]);
+    if (r.supportNeeded) list.push(['업무 상황', said(F.supportLabel(r.supportNeeded), 'supportNeeded')]);
     var answer = r.workResumption ? F.outcomeLabel(r.workResumption.result) + ' (' + fmtWhen(r.workResumption.at) + ')' :
       r.workOutcome ? F.outcomeLabel(r.workOutcome) : '';
     if (withResumption && answer) list.push(['업무 재개', [answer, src2('USER_REPORTED')]]);
@@ -536,6 +546,59 @@
     if (!list.length) return null;
     var card = el('div', { cls: 'pn-card' }, [el('p', { cls: 'pn-card-title' }, ['FC가 알려 준 발생 조건']), rows(list)]);
     card.setAttribute('data-report-facts', '');
+    return card;
+  }
+  /* ③ 담당자 처리: 추가 확인이 필요한 조건(모름·빈 값)과 수정 계획의 시간 맥락 (ADR-027 결정 8) */
+  function scenarioOf(id) {
+    return ((((window.FIXTURES || {}).intakeAssistant || {}).defects) || []).filter(function (m) { return m.id === id; })[0] || null;
+  }
+  function missingFacts(r) {
+    var F = window.IntakeFacts, out = [], cond = r.conditions || {};
+    if (!r.incident || !r.incident.device || r.incident.device === 'UNKNOWN') out.push('오류가 난 기기');
+    var top = (similar && similar.candidates || [])[0];
+    var scenario = scenarioOf(r.suggestedDefectId) || (top ? scenarioOf(top.defectId) : null);
+    var keys = Object.keys(cond).concat(((scenario && scenario.checks) || []).map(function (c) { return c.key; }))
+      .filter(function (key, i, all) { return F.CONDITIONS[key] && all.indexOf(key) === i; });
+    keys.forEach(function (key) {
+      if (!cond[key]) out.push(F.CONDITIONS[key].label + ' (확인 안 됨)');
+      else if (cond[key] === 'UNKNOWN') out.push(F.CONDITIONS[key].label + ' (모름)');
+    });
+    if (r.supportNeeded === 'UNKNOWN') out.push('업무 상황 (모름)');
+    return out;
+  }
+  function handlingCard(r) {
+    var gaps = missingFacts(r);
+    var card = el('div', { cls: 'pn-card' }, [
+      el('p', { cls: 'pn-card-title' }, ['같은 결함인지 확인하고 묶어 주세요']),
+      rows([['추가 확인이 필요한 조건', gaps.length ? el('ul', { cls: 'pn-plain ld-reasons' }, gaps.map(function (g) { return el('li', null, [g]); })) : '없음'],
+        ['수정 계획', '기술 검토 뒤 대표 결함의 [상태 바꾸기]에서 등록해요. 신고가 늘어도 예정일은 정해지지 않아요.']]),
+      el('p', { cls: 'ld-meta' }, ['아래 [묶을 결함 고르기]나 후보의 [이 결함에 묶기]로 연결해요. 묶기 전에는 FC에게 "담당자 확인 전"으로 보여요.'])]);
+    card.setAttribute('data-report-handling', '');
+    return card;
+  }
+  /* 대표 결함 상세: 묶인 신고의 발생 조건을 값별로 센다(가상 데이터에서 계산, ADR-027 결정 8) */
+  function fieldSummary(d) {
+    var F = window.IntakeFacts, counts = {}, order = [];
+    function add(label, value) {
+      if (!value) return;
+      if (!counts[label]) { counts[label] = {}; order.push(label); }
+      counts[label][value] = (counts[label][value] || 0) + 1;
+    }
+    (d.reports || []).forEach(function (r) {
+      if (r.incident && r.incident.device) add('오류가 난 기기', F.deviceLabel(r.incident.device));
+      Object.keys(r.conditions || {}).forEach(function (key) { if (F.CONDITIONS[key]) add(F.CONDITIONS[key].label, F.conditionLabel(key, r.conditions[key])); });
+      if (r.supportNeeded) add('업무 상황', F.supportLabel(r.supportNeeded));
+    });
+    if (!order.length) return null;
+    var card = el('div', { cls: 'pn-card' }, [el('p', { cls: 'pn-card-title' }, ['현장 조건 모아 보기']),
+      rows(order.map(function (label) {
+        var values = Object.keys(counts[label]).sort(function (a, b) {   // 많은 순, 모름은 끝
+          return (a === '모름') - (b === '모름') || counts[label][b] - counts[label][a];
+        });
+        return [label, values.map(function (v) { return v + ' ' + counts[label][v] + '건'; }).join(' · ')];
+      })),
+      el('p', { cls: 'ld-meta' }, ['FC가 알려 준 값을 센 것이에요. 실제 기기에서 확인한 값이 아니에요.'])]);
+    card.setAttribute('data-field-summary', '');
     return card;
   }
   function factsDetails(r) {
@@ -632,6 +695,7 @@
         rows([['유형', TYPE[d.type] || d.type], ['신·구 시스템', (GEN[d.systemGen] || '') + ' 시스템'],
           ['처리 등급', [gradeTag(d.grade)]], ['담당 부서', DEPT[d.departmentCode] || d.departmentCode],
           ['영향 지점', branchCount(d) + '곳'], ['묶인 신고', (d.reports || []).length + '건 (신고자 ' + reporterCount(d) + '명)']])]),
+      fieldSummary(d),
       el('h4', null, ['묶인 신고 ' + (d.reports || []).length + '건']),
       el('div', { cls: 'pn-card' }, [reports.length ? el('ul', { cls: 'pn-plain ld-reports' }, reports)
         : el('p', null, ['아직 묶인 신고가 없어요'])]),
@@ -715,7 +779,7 @@
       out.push(el('div', { cls: 'pn-field' }, [el('label', { 'for': 'ld-memo' }, ['되돌리는 이유']),
         el('textarea', { id: 'ld-memo', 'data-draft': 'memo', 'aria-invalid': err ? 'true' : null, 'aria-describedby': err ? 'ld-err' : null }, [draft.memo])]));
     } else if (to === 'FIX_PLANNED') {
-      out.push(el('p', { cls: 'pn-lead' }, ['고칠 날짜를 정해 주세요. 알림에 이 날짜가 함께 나가요.']));
+      out.push(el('p', { cls: 'pn-lead' }, ['기술 검토 뒤 정한 고칠 날짜를 넣어 주세요. 알림에 이 날짜가 함께 나가요. 시연 날짜는 가상이에요.']));
       out.push(el('div', { cls: 'pn-field' }, [el('label', { 'for': 'ld-date' }, ['고칠 예정일']),
         el('input', { id: 'ld-date', type: 'date', cls: 'pn-input', 'data-draft': 'date', value: draft.date, min: '2026-11-04',
           'aria-invalid': err ? 'true' : null, 'aria-describedby': err ? 'ld-err' : null })]));

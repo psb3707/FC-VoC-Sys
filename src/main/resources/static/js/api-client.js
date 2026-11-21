@@ -7,7 +7,8 @@
   var I = F.intake || {};
   var Q = F.intakeAssistant || {};
   var store = window.IntakeDemoStore;
-  var quickReports = new Map(), followupText = new Map(), failedSubmissions = new Set(), failedAttachments = new Set();
+  var quickReports = new Map(), followupText = new Map(), failedSubmissions = new Set(), failedAttachments = new Set(),
+    failedResumptions = new Set();
   var draftRules = window.IntakeDraftRules;
   var quick = I.quick || {};
 
@@ -82,13 +83,27 @@
     },
     /* POST /api/reports/{id}/work-resumption {userId, result: RESUMED|STILL} (REQ-KN-05, ADR-025).
        신고자 본인만 답한다. 대표 결함 상태와 알림은 바꾸지 않는다. STILL 은 같은 접수의 후속 기록("아직 안 돼요")도 남긴다. */
-    postWorkResumption: function (reportId, userId, result) {
+    /* ADR-027 결정 10: 같은 신고·같은 신고자의 마지막 회신과 결과가 같거나 같은 requestId 면 새 기록 없이 기존 기록(duplicate).
+       임시조치를 시도하지 않은 접수(workaroundState NONE·OFFERED, 연결된 결함에 임시 방법 없음)는 회신을 받지 않는다 */
+    postWorkResumption: function (reportId, userId, result, requestId, simulateFailure) {
       if (!['RESUMED', 'STILL'].includes(result)) return ok(null);
+      if (simulateFailure && !failedResumptions.has(reportId)) {   // 시연 resume=fail: 첫 기록만 실패
+        failedResumptions.add(reportId);
+        return ok(null);
+      }
       return store.update(function (state) {
         var report = visibleReports(userId, state).find(function (r) { return r.id === reportId && r.reporterId === userId; });
         if (!report) return null;
+        var linkedId = state.links[reportId] || report.defectId;
+        var linked = linkedId ? ledgerDefects(state).find(function (d) { return d.id === linkedId; }) : null;
+        var tried = window.IntakeFacts.clean(report).workaroundState === 'TRIED';
+        if (!tried && !(linked && linked.workaround && linked.status !== 'RESOLVED')) return null;
+        var last = resumptionOf(reportId, state);
+        if (last && (last.result === result || (requestId && last.requestId === requestId))) {
+          return Object.assign({ saved: true, duplicate: true }, last);
+        }
         var at = nowKst();
-        state.resumption[reportId] = { result: result, at: at };
+        state.resumption[reportId] = requestId ? { result: result, at: at, requestId: requestId } : { result: result, at: at };
         if (result === 'STILL') {
           var entries = state.followups[reportId] || [];
           entries.unshift({ id: reportId + ':' + entries.length, action: 'STILL', at: at });
@@ -119,6 +134,9 @@
           createdAt: r.createdAt, defectId: r.defectId || null, defect: d ? publicDefect(d) : null,
           reporter: userBrief(r.reporterId), byMe: byMe, maskedText: byMe ? r.maskedText || null : null,
           workResumption: resumptionOf(r.id, state),
+          // ADR-027: FC 업무 상황 계산용 코드(대리 접수는 저장할 때 workOutcome·supportNeeded 가 null)
+          workaroundState: window.IntakeFacts.clean(r).workaroundState, workOutcome: r.workOutcome || null,
+          supportNeeded: window.IntakeFacts.clean(r).supportNeeded,
           notice: !mine.length ? 'NONE' : isRead(mine[0], state) ? 'READ' : 'UNREAD' };
       });
       list.sort(function (a, b) { return a.createdAt < b.createdAt ? 1 : -1; });
@@ -159,7 +177,7 @@
       return ok((Q.defects || []).flatMap(function (match) {
         var d = defects.find(function (item) { return item.id === match.id && item.published; });
         return d && d.status !== 'RESOLVED' ? [{ id: d.id, title: d.title, status: d.status, workaround: d.workaround,
-          business: match.business, symptom: match.symptom, plannedFixDate: d.plannedFixDate,
+          business: match.business, symptom: match.symptom, plannedFixDate: d.plannedFixDate, conditions: copy(match.conditions || {}),
           wontFixReasonCode: d.wontFixReasonCode, wontFixReasonText: d.wontFixReasonText, guide: quick.guides[d.id] || null }] : [];
       }));
     },
@@ -213,7 +231,7 @@
           if (image && Object.values(state.attachments).reduce(function (size, value) { return size + value.length; }, 0) + image.length > 2000000) {
             return { attachmentError: '이 브라우저의 첨부 저장 한도에 도달했어요. 이미지를 빼고 접수할 수 있어요.' };
           }
-          var facts = window.IntakeFacts.clean(req);
+          var facts = window.IntakeFacts.clean(req), own = req.reporterId === req.submittedById;
           var report = {
             id: 'R-Q' + state.nextReport++, kind: 'FULL', reporterId: req.reporterId, submittedById: req.submittedById,
             createdAt: nowKst(), defectId: null, defect: null, title: req.oneLine, maskedText: req.oneLine,
@@ -223,11 +241,13 @@
             department: quick.departments[req.business] || quick.departments.ETC, guideId: req.guideId,
             grade: intakeGrade(req), departmentCode: INTAKE_DEPARTMENT[req.business] || 'SALES_SUPPORT',
             hasAttachment: !!image, aiDraft: req.aiDraft ? draftRules.clean(req.aiDraft) : null,
-            attemptedWorkaround: req.attemptedWorkaround,
+            attemptedWorkaround: facts.attemptAllowed ? req.attemptedWorkaround : null,
             // ADR-026: 상담 인계 코드. 대리 접수는 FC 대신 업무 재개를 정하지 않으므로 workOutcome 을 두지 않는다
+            // ADR-027: 임시조치 상태·추가 지원 필요. 추가 지원 필요도 FC 본인만 정한다
             origin: facts.origin, conditions: facts.conditions, factSources: facts.factSources,
-            workOutcome: req.reporterId === req.submittedById ? facts.workOutcome : null,
-            suggestedDefectId: publishedId(req.suggestedDefectId),
+            workaroundState: facts.workaroundState, workOutcome: own ? facts.workOutcome : null,
+            supportNeeded: own ? facts.supportNeeded : null,
+            suggestedDefectId: suggestedFor(req.suggestedDefectId, req.business),
             diagnostics: collectDiagnostics(req.diagnosticMode, validDate(req.diagnosticCapturedAt) ? req.diagnosticCapturedAt : nowKst())
           };
           if (report.aiDraft) report.aiDraftSummary = draftSummary(report);
@@ -241,18 +261,32 @@
         });
       });
     },
-    postQuickParticipation: function (defectId, reporterId, submittedById) {
+    /* ADR-027 결정 6: 같은 오류로 간편 알리기. FC가 공개 결함을 직접 확인했을 때만 부른다.
+       extra = {requestId, incident:{device}, conditions, urgent, workaroundState, workOutcome, supportNeeded, factSources} (허용 코드만 남김).
+       같은 사용자의 활성 참여나 그 결함에 연결된 접수가 있으면 새로 만들지 않고 그 접수(duplicate) */
+    postQuickParticipation: function (defectId, reporterId, submittedById, extra) {
       var d = ledgerDefects().find(function (item) { return item.id === defectId && item.published && item.status !== 'RESOLVED'; });
       if (!d) return ok(null);
+      extra = extra || {};
       return store.update(function (state) {
+        var again = extra.requestId && state.reports.find(function (r) { return r.requestId === extra.requestId; });
+        if (again) return Object.assign({ duplicate: true }, again);
         var existing = visibleReports(reporterId, state).find(function (r) {
           return r.reporterId === reporterId && r.kind === 'ME_TOO' && r.defectId === defectId;
-        });
-        if (existing) return existing;
-        var report = { id: 'R-Q' + state.nextReport++, kind: 'ME_TOO', reporterId: reporterId,
+        }) || ledgerReports(state).find(function (r) { return r.reporterId === reporterId && r.defectId === defectId; });
+        if (existing) return Object.assign({ duplicate: true }, copy(existing), { defect: publicDefect(d) });
+        var scenario = (Q.defects || []).find(function (match) { return match.id === d.id; }) || {};
+        var facts = window.IntakeFacts.clean(extra), own = reporterId === submittedById, incident = extra.incident || {};
+        var report = { id: 'R-Q' + state.nextReport++, requestId: extra.requestId || null, kind: 'ME_TOO', reporterId: reporterId,
           submittedById: submittedById, createdAt: nowKst(), defectId: d.id, finalType: d.type,
-          department: quick.departments[((Q.defects || []).find(function (match) { return match.id === d.id; }) || {}).business],
-          defect: publicDefect(d), guideId: d.id };
+          business: scenario.business || null, symptom: scenario.symptom || null,
+          department: quick.departments[scenario.business],
+          defect: publicDefect(d), guideId: d.id,
+          origin: extra.origin === 'ASSISTANT' ? 'ASSISTANT' : 'FORM', conditions: facts.conditions, factSources: facts.factSources,
+          urgent: (extra.urgent || []).filter(function (code) { return (quick.options.urgency || []).some(function (p) { return p[0] === code; }); }),
+          incident: { device: window.IntakeFacts.isDevice(incident.device) ? incident.device : '' },
+          workaroundState: facts.workaroundState, workOutcome: own ? facts.workOutcome : null, supportNeeded: own ? facts.supportNeeded : null,
+          attemptedWorkaround: facts.attemptAllowed && facts.workaroundState === 'TRIED' && d.workaround ? d.workaround : null };
         state.reports.push(report);
         proxyReceipt(state, report);
         return report;
@@ -515,10 +549,11 @@
       channel: 'PREVIEW', at: report.createdAt });
   }
   var INTAKE_DEPARTMENT = { LOGIN: 'LOGIN_SUPPORT', SUBSCRIPTION: 'SUBSCRIPTION_IT', CUSTOMER_LOOKUP: 'CUSTOMER_IT',
-    DESIGN: 'DESIGN_SUPPORT', CONTRACT_LOOKUP: 'CONTRACT_IT' };
+    DESIGN: 'DESIGN_SUPPORT', CONTRACT_LOOKUP: 'CONTRACT_IT', CUSTOMER_CONSENT: 'CONSENT_IT' };
   function intakeGrade(req) {
     if (req.finalType === 'USAGE') return null;
     if ((req.business === 'SUBSCRIPTION' && ['CANNOT_PROCEED', 'WRONG_SCREEN'].includes(req.symptom)) ||
+        (req.business === 'CUSTOMER_CONSENT' && ['CANNOT_PROCEED', 'CANNOT_INPUT'].includes(req.symptom)) ||   // ADR-027(02번 1절)
         /서명|동의|설명의무|잘못된 문서/.test(req.oneLine)) return 'IMMEDIATE';
     return req.business === 'LOGIN' ? 'NORMAL' : 'BATCH';
   }
@@ -537,6 +572,11 @@
 
   function publishedId(id) {
     return (L.defects || []).some(function (d) { return d.published && d.id === id; }) ? id : null;
+  }
+  /* ADR-027 결정 7: AI 문의가 안내한 사례는 그 결함의 업무가 접수 업무와 같을 때만 남긴다 */
+  function suggestedFor(id, business) {
+    var scenario = (Q.defects || []).find(function (m) { return m.id === id; });
+    return publishedId(id) && scenario && scenario.business === business ? id : null;
   }
   function storedReport(report, requestId) {
     var meta = I.metaForm || {}, options = quick.options || {}, incident = report.incident || {};
@@ -559,10 +599,11 @@
       customerScope: option('scope', report.customerScope), contact: option('contact', report.contact),
       contactTime: option('time', report.contactTime), department: report.department, diagnostics: report.diagnostics,
       guideId: guide ? guide.id : null,
-      attemptedWorkaround: guide && guide.workaround === report.attemptedWorkaround ? guide.workaround : null,
+      attemptedWorkaround: facts.attemptAllowed && guide && guide.workaround === report.attemptedWorkaround ? guide.workaround : null,
       // ADR-026: 허용 목록을 다시 거친 코드만 공유 저장소에 둔다(대화 원문·고객 정보 없음)
-      origin: facts.origin, conditions: facts.conditions, workOutcome: facts.workOutcome, factSources: facts.factSources,
-      suggestedDefectId: publishedId(report.suggestedDefectId),
+      origin: facts.origin, conditions: facts.conditions, workOutcome: report.workOutcome ? facts.workOutcome : null, factSources: facts.factSources,
+      workaroundState: facts.workaroundState, supportNeeded: report.supportNeeded ? facts.supportNeeded : null,   // ADR-027
+      suggestedDefectId: suggestedFor(report.suggestedDefectId, report.business),
       incident: { device: window.IntakeFacts.isDevice(incident.device) ? incident.device : '',
         date: validDay(incident.date) ? incident.date : '', time: /^\d{2}:\d{2}$/.test(incident.time) ? incident.time : '',
         screenProvided: !!incident.screen }
@@ -604,7 +645,8 @@
 
   // 시연용 형식 차단. 이름·주소 등은 입력하지 않도록 안내하며, 전체 마스킹은 백엔드 단계에서 수행한다.
   function containsPrivateValue(text) {
-    return /(?:\d[ .()-]*){6}|[^\s@]+@[^\s@]+\.[^\s@]+/.test(text);
+    return /(?:\d[ .()-]*){6}|[^\s@]+@[^\s@]+\.[^\s@]+/.test(text) ||
+      /(주민|뒷자리|앞자리|생년월일)\S{0,4}\s*[:：]?\s*\d/.test(text);   // ADR-027 결정 11: 본인확인 값 조각
   }
   function matchesQuestion(question, example) {
     return example.terms.every(function (term) { return term.test(question); });
@@ -622,16 +664,22 @@
         var notice = (L.fcNotices || []).find(function (n) { return n.defectId === d.id && n.status === 'APPROVED'; });
         // ADR-026: 처리 중인 결함이면 시나리오의 확인 항목(최대 3개)과 임시 방법 결과 질문을 붙인다. 정규식은 여기서만 쓴다
         var active = d.status !== 'RESOLVED' && d.status !== 'WONT_FIX';
-        var checks = active ? (match.checks || []).slice(0, 3).map(function (c) {
+        // ADR-027: 문장에서 아는 항목은 모두 넘기고(묻지 않음), 모르는 항목은 앞에서부터 최대 3개만 묻는다
+        var unknown = 0;
+        var checks = active ? (match.checks || []).map(function (c) {
           var hit = (c.known || []).find(function (rule) { return rule[0].test(question); });
-          return { key: c.key, text: c.text, known: hit ? hit[1] : null,
+          return { key: c.key, text: c.text, stage: c.stage === 'guide' ? 'guide' : 'report', known: hit ? hit[1] : null,
             choices: c.choices.map(function (pair) { return { code: pair[0], label: pair[1] }; }) };
-        }) : [];
+        }).filter(function (c) { return c.known || ++unknown <= 3; }) : [];
         return { outcome: 'MATCH', type: d.type, business: match.business, symptom: match.symptom,
           guidance: d.resolution ? d.resolution.change + ' ' + d.resolution.action : notice ? notice.approvedText : null,
           defect: { id: d.id, title: d.title, status: d.status, workaround: d.status === 'RESOLVED' ? null : d.workaround,
             plannedFixDate: d.plannedFixDate, wontFixReasonText: d.wontFixReasonText },
-          checks: checks, resumeQuestion: active && d.workaround ? match.resumeQuestion || null : null };
+          checks: checks, resumeQuestion: active && d.workaround ? match.resumeQuestion || null : null,
+          // ADR-027 결정 4: 승인된 임시조치가 없으면 업무를 이어가기 어려운지 묻는다
+          supportQuestion: active && !d.workaround ? match.supportQuestion || null : null,
+          blockedNote: active && !d.workaround ? match.blockedNote || null : null,
+          department: quick.departments[match.business] || null };
       }
     }
     if (!matches.length && asksHow && !hasError && Q.usage && matchesQuestion(question, Q.usage)) {
@@ -734,7 +782,8 @@
     var reason = REASON_TEXT[req.wontFixReasonCode] || req.wontFixReasonText || '';
     function fill(template) {
       if (!d || !template) return '';
-      if (!d.workaround) template = template.replace(': {workaround}', '. 내 접수내역에서 확인해 주세요');
+      if (!d.workaround) template = template.replace(': {workaround}', '. 내 접수내역에서 확인해 주세요')
+        .replace('그때까지는 안내된 임시 방법을 써 주세요', '임시 방법은 아직 없어요. 급하면 내 접수내역에 긴급 사정을 남겨 주세요');   // ADR-027
       return template.replace('{title}', d.title).replace('{date}', date).replace('{reason}', reason)
         .replace('{workaround}', d.workaround || '');
     }
@@ -789,7 +838,7 @@
         matched.push('WORKAROUND');
         reasons.push('시도한 조치: 이 결함의 임시 방법');
       }
-      if (r.suggestedDefectId === d.id) {
+      if (r.suggestedDefectId === d.id && scenario.business === r.business) {   // ADR-027 결정 7
         matched.push('SUGGESTED');
         reasons.push('AI 문의: 안내한 사례');
       }

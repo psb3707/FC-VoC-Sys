@@ -43,6 +43,7 @@ EXTRA_UI_WORDS = {"사용자", "안내가", "부서가", "오류와", "설계일
                   "방법이", "안내된", "이어갈", "문의가",
                   # ADR-026 AI 문의 되묻기 문구(js/fixtures/intake-assistant.js)
                   "이전에", "기다리", "보내니", "진행할",
+                  "나오지", "나와도", "안에서", "사파리", "어려운",   # ADR-027 고객 동의 시나리오 문구
                   # S1 업무 탭 표 머리
                   "설계명", "주상품",
                   # S2 접수 패널 고정 응답(js/fixtures/intake.js) 문구
@@ -82,13 +83,16 @@ KNOWN_PANEL_STATES = [K + "tab=known", K + "tab=known&item=D-2026-005", K + "tab
                       "role=MANAGER&panel=known&tab=mine", "role=SALES&panel=known&tab=mine",   # 관리자 내 접수(대신 접수 포함)·빈 화면
                       # ADR-025: 두 갈래·업무 재개 회신(펼친 카드), 대신 접수된 FC, 관리자 [지점 FC 문의]
                       "role=FC&panel=known&tab=mine&item=R-011", "role=FC&user=U-011&panel=known&tab=mine",
-                      "role=MANAGER&board=known&panel=known&tab=team", "role=MANAGER&panel=known&tab=team&item=D-2026-001"]
+                      "role=MANAGER&board=known&panel=known&tab=team", "role=MANAGER&panel=known&tab=team&item=D-2026-001",
+                      # ADR-027: 고객 동의 키패드 결함의 FC별 묶음, 임시 방법 없는 결함의 FC 카드
+                      "role=MANAGER&panel=known&tab=team&item=D-2026-007", "role=FC&user=U-012&panel=known&tab=mine&item=R-073"]
 # ADR-025: 관리자 알림 팝업(대리 접수자 알림), 대신 접수된 FC 알림 팝업
 STATES += ["role=MANAGER&popup=alarm", "role=FC&user=U-011&popup=alarm"]
 # S4 결함 대장 (ledger.html, js/ledger.js 주소 키, 06번 11절): 목록·필터·빈 결과·안 묶인 신고·상세 패널·
 # 상태 바꾸기 대화상자 단계별(고르기·예정일·사유·되돌림·막힘·알림 미리보기·기록만·끝)·신고 묶기
 LD = "role=SALES&item=D-2026-001&dialog=status&"
 LEDGER_STATES = ["role=SALES", "role=IT&grade=IMMEDIATE", "role=SALES&status=RESOLVED",
+                 "role=IT&item=D-2026-007",   # ADR-027: 현장 조건 모아 보기
                  "role=SALES&tab=unlinked", "role=SALES&tab=unlinked&for=D-2026-001",
                  "role=SALES&item=D-2026-001", "role=SALES&item=D-2026-005", "role=SALES&item=D-2026-006",
                  LD + "dstep=pick", LD + "to=FIX_PLANNED&dstep=pick",
@@ -449,11 +453,9 @@ def assistant_motion_check(chrome: Chrome, page: str) -> None:
       if (!reduced && (!find('.pn-assist-thinking .pn-assist-dots') || !find('#pn-assist-status').textContent)) {
         throw Error('답변 준비 표시 누락');
       }
-      // ADR-026: 서명 알림톡 질문은 기기·초대장·고객 대기를 되물은 뒤 결과를 순차 표시한다
-      for (const code of ['CUSTOMER_PHONE', 'YES', 'YES']) {
-        await wait(() => find('[data-act="assistant-check"][data-code="' + code + '"]'));
-        find('[data-act="assistant-check"][data-code="' + code + '"]').click();
-      }
+      // ADR-027: 서명 알림톡 질문은 안내에 필요한 초대장 발송 이력만 먼저 물은 뒤 결과를 순차 표시한다
+      await wait(() => find('[data-act="assistant-check"][data-code="YES"]'));
+      find('[data-act="assistant-check"][data-code="YES"]').click();
       if (!reduced) {
         await wait(() => find('.pn-assist-result[aria-busy="true"] #pn-assist-reply')?.textContent.length);
         partial = find('#pn-assist-reply').textContent.length;
@@ -466,6 +468,11 @@ def assistant_motion_check(chrome: Chrome, page: str) -> None:
         throw Error('완성된 답변과 임시 방법 결과 질문 확인 실패');
       }
       find('[data-act="assistant-outcome"][data-code="RESUMED"]').click();
+      // 결과 뒤 담당자 확인용 항목(기기·고객 대기)을 마치면 접수 동작
+      for (const code of ['CUSTOMER_PHONE', 'YES']) {
+        await wait(() => find('[data-act="assistant-check"][data-code="' + code + '"]'));
+        find('[data-act="assistant-check"][data-code="' + code + '"]').click();
+      }
       await wait(() => find('[data-act="assistant-handoff"]'));
       return 'ok';
     })()"""

@@ -97,6 +97,15 @@ window.FIXTURES.myReports = [
     "fcNotice": { "id": "FN-001", "status": "APPROVED",
       "approvedText": "세미나 초대장을 보낸 적이 있는 고객에게 서명 알림톡을 보내면 초대장 화면이 열리는 문제를 확인했어요. 고칠 때까지는 알림톡 대신 문자로 서명 링크를 보내 주세요." } },
 
+  /* ADR-027 고객 동의 키패드 시연 시드(docs/10-seed-scenarios.md 5-3절). 임시 방법·안내문 없음, 상태 접수 */
+  { "id": "R-073", "reporterId": "U-012", "submittedById": "U-012", "kind": "FULL", "finalType": "DEFECT", "createdAt": "2026-11-18T10:30:00+09:00",
+    "maskedText": "고객 동의 URL 뒷자리에서 키패드가 안 올라와요", "defectId": "D-2026-007",
+    "defect": { "id": "D-2026-007", "title": "고객 동의 URL에서 뒷자리 숫자 키패드가 열리지 않아요", "status": "RECEIVED",
+      "workaround": null, "plannedFixDate": null,
+      "wontFixReasonCode": null, "wontFixReasonText": null, "updatedAt": "2026-11-18T10:30:00+09:00" },
+    "statusHistory": [{ "from": null, "to": "RECEIVED", "at": "2026-11-17T15:00:00+09:00" }],
+    "fcNotice": null },
+
   { "id": "R-065", "reporterId": "U-011", "submittedById": "U-010", "kind": "FULL", "finalType": "DEFECT", "createdAt": "2026-11-01T09:10:00+09:00",
     "maskedText": "보험료 계산을 누르면 한참 걸려요", "defectId": "D-2026-003",
     "defect": { "id": "D-2026-003", "title": "가입설계에서 보험료 계산이 늦게 나와요", "status": "CAUSE_FOUND",

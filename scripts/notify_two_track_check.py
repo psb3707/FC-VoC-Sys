@@ -76,7 +76,8 @@ def check(chrome):
     open_page(chrome, "index.html", "#role=MANAGER&panel=known&tab=team&item=D-2026-001")
     evaluate(chrome, """
       const card = await wait('#kn-body .kn-card.is-target');
-      const text = card.innerText;
+      // ADR-027: 신고 건별 줄은 FC 줄을 펼쳐야 보이므로 접힌 내용까지 포함해 본다(보이면 안 되는 설명은 DOM에도 없어야 함)
+      const text = card.textContent;
       assert(text.includes('정다솜(가상)') && text.includes('김하늘(가상)') && text.includes('조은별(가상)'), '같은 지점 FC 묶음');
       assert(!text.includes('이바다(가상)') && !text.includes('한가람(가상)'), '다른 지점 FC 없음');
       assert(!text.includes('세미나 초대장 화면이 떠요'), 'FC가 직접 쓴 설명은 보이지 않음');

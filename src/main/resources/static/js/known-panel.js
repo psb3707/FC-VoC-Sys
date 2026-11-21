@@ -262,53 +262,104 @@
           el('p', { cls: 'pn-lead' }, ['오류가 생기면 오른쪽 "전산 오류 접수"를 눌러 알려 주세요.'])])];
   }
 
-  /* [지점 FC 문의] (관리자만, REQ-KN-06, ADR-025 결정 6). 대표 결함별로 묶고, 연결 전 신고는 한 건씩.
-     업무 재개 회신과 알림 확인을 따로 보인다. FC가 적은 설명은 내가 대신 접수한 건만(API 가 걸러 줌). */
-  function teamView(st) {
+  /* [지점 FC 문의] (관리자만, REQ-KN-06, ADR-025 결정 6, ADR-027 결정 9). 대표 결함별 카드 안에서 FC 한 줄로 묶고
+     펼치면 신고 건별로 본다. 업무 상황은 FC의 가장 최근 기록으로 정한다. FC가 적은 설명은 내가 대신 접수한 건만(API 가 걸러 줌). */
+  var SITUATION = { BLOCKED: '업무 진행 어려움', NO_REPLY: '회신 없음', NO_WORKAROUND: '임시조치 미확인', RESUMED: '업무 재개',
+    FIXED: '오류가 고쳐졌어요' };
+  var SITUATION_ORDER = ['BLOCKED', 'NO_REPLY', 'NO_WORKAROUND', 'RESUMED'];
+  /* 회신 없음 ≠ 업무 중단(02번 4-1절 ADR-027). 임시 방법이 없거나 연결 전이면 "임시조치 미확인" */
+  function situationOf(r, d) {
+    if (d && d.status === 'RESOLVED') return 'FIXED';
+    var a = r.workResumption;
+    if (a) return a.result === 'STILL' ? 'BLOCKED' : 'RESUMED';
+    if (r.supportNeeded === 'YES') return 'BLOCKED';
+    return d && d.workaround ? 'NO_REPLY' : 'NO_WORKAROUND';
+  }
+  function situationAt(r) { return (r.workResumption && r.workResumption.at) || r.createdAt; }
+  function teamGroups() {
     var groups = [], byKey = {};
     cache.team.forEach(function (r) {
       var key = r.defectId || r.id;
       var g = byKey[key];
       if (!g) {
-        g = byKey[key] = { key: key, defect: r.defect, title: r.defect ? r.defect.title : r.businessLabel + ' 문의', reports: [], last: '' };
+        g = byKey[key] = { key: key, defect: r.defect, title: r.defect ? r.defect.title : r.businessLabel + ' 문의', reports: [], fcs: [], last: '' };
         groups.push(g);
       }
       g.reports.push(r);
       if (r.createdAt > g.last) g.last = r.createdAt;
     });
-    function answerOf(g, fcId) {   // 한 FC가 같은 결함에 여러 건이면 가장 최근 회신
-      return g.reports.filter(function (r) { return r.reporter && r.reporter.id === fcId && r.workResumption; })
-        .map(function (r) { return r.workResumption; }).sort(function (a, b) { return a.at < b.at ? 1 : -1; })[0] || null;
-    }
     groups.forEach(function (g) {
-      g.fcs = g.reports.map(function (r) { return r.reporter ? r.reporter.id : r.id; })
-        .filter(function (id, i, all) { return all.indexOf(id) === i; });
-      g.still = g.fcs.filter(function (id) { var a = answerOf(g, id); return a && a.result === 'STILL'; }).length;
-      g.resumed = g.fcs.filter(function (id) { var a = answerOf(g, id); return a && a.result === 'RESUMED'; }).length;
+      var byFc = {};
+      g.reports.forEach(function (r) {
+        var id = r.reporter ? r.reporter.id : r.id;
+        var fc = byFc[id];
+        if (!fc) { fc = byFc[id] = { id: id, name: r.reporter ? r.reporter.name : r.id, reports: [], latest: null }; g.fcs.push(fc); }
+        fc.reports.push(r);
+        if (!fc.latest || situationAt(r) > situationAt(fc.latest)) fc.latest = r;
+      });
+      g.fcs.forEach(function (fc) {
+        fc.reports.sort(function (a, b) { return a.createdAt < b.createdAt ? 1 : -1; });
+        fc.situation = situationOf(fc.latest, g.defect);
+      });
+      g.fcs.sort(function (a, b) { return SITUATION_ORDER.indexOf(a.situation) - SITUATION_ORDER.indexOf(b.situation); });
+      g.blocked = g.fcs.filter(function (fc) { return fc.situation === 'BLOCKED'; }).length;
     });
-    groups.sort(function (a, b) { return (b.still > 0) - (a.still > 0) || (a.last < b.last ? 1 : -1); });
+    groups.sort(function (a, b) { return (b.blocked > 0) - (a.blocked > 0) || (a.last < b.last ? 1 : -1); });
+    return groups;
+  }
+  /* 맨 위 요약: 먼저 살펴볼 FC (지금 업무를 못 함 / 추가 확인 필요 / 업무 재개). FC마다 가장 급한 상황 하나로 센다 */
+  function teamSummary(groups) {
+    var lines = [['업무를 못 함', ['BLOCKED']], ['추가 확인 필요', ['NO_REPLY', 'NO_WORKAROUND']], ['업무 재개', ['RESUMED']]];
+    var rank = { BLOCKED: 0, NO_REPLY: 1, NO_WORKAROUND: 1, RESUMED: 2 }, worst = {}, order = [];
+    groups.forEach(function (g) {
+      g.fcs.forEach(function (fc) {
+        if (!(fc.situation in rank)) return;
+        if (!(fc.name in worst)) order.push(fc.name);
+        if (!(fc.name in worst) || rank[fc.situation] < rank[worst[fc.name]]) worst[fc.name] = fc.situation;
+      });
+    });
+    var card = el('div', { cls: 'pn-card kn-team-summary' }, [el('p', { cls: 'pn-card-title' }, ['먼저 살펴볼 FC']),
+      rows(lines.map(function (line) {
+        var names = order.filter(function (name) { return line[1].indexOf(worst[name]) >= 0; });
+        return [line[0], names.length + '명' + (names.length ? ' · ' + names.join(', ') : '')];
+      })),
+      el('p', { cls: 'kn-meta' }, ['FC마다 여러 결함 중 가장 급한 상황 하나로 셌어요(아래 결함 카드는 결함별로 세요). 회신 없음은 업무 중단이 아니에요. 전화·메신저 연결은 이 화면에 없어요.'])]);
+    card.setAttribute('data-team-summary', '');
+    return card;
+  }
+  function teamView(st) {
+    var groups = teamGroups();
     var cards = groups.map(function (g) {
       var d = g.defect, n = g.fcs.length;
-      var count = !d ? 'FC ' + n + '명 · 담당자 확인 전'
-        : d.status === 'RESOLVED' ? 'FC ' + n + '명 · 고쳐졌어요'
-        : d.workaround ? 'FC ' + n + '명 · 진행했어요 ' + g.resumed + '명 · 아직 안 돼요 ' + g.still + '명 · 답 없음 ' + (n - g.resumed - g.still) + '명'
-        : 'FC ' + n + '명 · 임시 방법이 아직 없어요';
-      var people = g.reports.map(function (r) {
-        var how = r.byMe ? '내가 대신 접수' : r.kind === 'ME_TOO' ? '같은 오류 참여' : '직접 접수';
-        var parts = [how, NOTICE_STATE[r.notice] || NOTICE_STATE.NONE];
-        if (d && d.workaround && d.status !== 'RESOLVED') parts.push('업무 재개 회신: ' + (r.workResumption ? RESUME[r.workResumption.result] : '답 없음'));
-        if (r.maskedText) parts.push('"' + r.maskedText + '"');
-        return [r.reporter ? r.reporter.name : r.id, parts.join(' · ')];
+      var tally = SITUATION_ORDER.map(function (code) {
+        var count = g.fcs.filter(function (fc) { return fc.situation === code; }).length;
+        return count ? SITUATION[code] + ' ' + count + '명' : null;
+      }).filter(Boolean);
+      var count = d && d.status === 'RESOLVED' ? 'FC ' + n + '명 · 고쳐졌어요' : ['FC ' + n + '명'].concat(tally).join(' · ');
+      var people = g.fcs.map(function (fc) {
+        var row = el('details', { cls: 'pn-details pq-details kn-fc', 'data-fc': fc.id }, [
+          // 요약은 한 줄 글로(접기 머리가 flex 라 글 조각이 칸으로 나뉘지 않게 span 하나로 감싼다)
+          el('summary', null, [el('span', { cls: 'kn-fc-line' }, [el('b', null, [fc.name + ' FC']),
+            ' · 관련 신고 ' + fc.reports.length + '건 · 최근 업무 상황: ', el('span', { cls: 'pn-tag' }, [SITUATION[fc.situation]])])]),
+          el('div', { cls: 'pq-details-body' }, [rows(fc.reports.map(function (r) {
+            var how = r.byMe ? '내가 대신 접수' : r.kind === 'ME_TOO' ? '같은 오류 참여' : '직접 접수';
+            var parts = [fmtDate(r.createdAt) + ' ' + how, NOTICE_STATE[r.notice] || NOTICE_STATE.NONE, '업무 상황: ' + SITUATION[situationOf(r, d)]];
+            if (r.workResumption) parts.push('업무 재개 회신 ' + RESUME[r.workResumption.result] + ' (' + fmtWhen(r.workResumption.at) + ')');
+            if (r.maskedText) parts.push('"' + r.maskedText + '"');
+            return [r.id, parts.join(' · ')];
+          }), 'kn-team')])]);
+        return row;
       });
       return el('li', { cls: 'pn-card kn-card' + (st.item === g.key ? ' is-target' : ''), 'data-id': g.key }, [
         el('div', { cls: 'kn-card-head' }, [el('p', { cls: 'pn-card-title', tabindex: '-1' }, [g.title]),
           el('span', { cls: 'pn-tag' }, [T.tag(d)])]),
         el('p', { cls: 'kn-meta' }, [count]),
         T.view(d),
-        rows(people, 'kn-team')]);
+        el('div', { cls: 'kn-fcs' }, people)]);
     });
     return [el('h3', { tabindex: '-1' }, ['지점 FC 문의']),
-      el('p', { cls: 'pn-lead' }, ['같은 지점 FC의 문의와 내가 대신 접수한 문의예요. FC가 적은 설명과 고객 정보는 보이지 않아요. 알림 확인과 업무 재개는 따로 표시해요.']),
+      el('p', { cls: 'pn-lead' }, ['같은 지점 FC의 문의와 내가 대신 접수한 문의예요. FC가 적은 설명과 고객 정보는 보이지 않아요. 알림 확인과 업무 상황은 따로 표시해요.']),
+      cards.length ? teamSummary(groups) : null,
       cards.length ? el('ul', { cls: 'pn-plain' }, cards)
         : el('div', { cls: 'pn-card kn-empty' }, [el('p', null, ['지점 FC의 문의가 없어요'])])];
   }
