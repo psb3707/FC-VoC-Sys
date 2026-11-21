@@ -143,6 +143,19 @@
       return ok(list);
     },
 
+    /* 신고자·접수자 정보 (ADR-028). 이름·역할·지점명은 저장하지 않고 ID로 조회한다.
+       보는 사람: FC는 자기 자신만, 관리자는 자신과 같은 지점 FC, 영업·IT는 모두. 그 밖에는 null */
+    getReporterContext: function (viewerId, reporterId, submittedById) {
+      var viewer = (F.users || []).find(function (u) { return u.id === viewerId; });
+      var reporter = (F.users || []).find(function (u) { return u.id === reporterId; });
+      if (!viewer || !reporter) return ok(viewer ? { error: 'USER' } : null);
+      var allowed = viewer.id === reporter.id || viewer.id === submittedById || ['SALES', 'IT'].includes(viewer.role) ||
+        (viewer.role === 'MANAGER' && reporter.role === 'FC' && reporter.branchId === viewer.branchId);
+      if (!allowed) return ok(null);
+      var who = identityOf(reporterId, submittedById || reporterId);
+      return ok(who.error ? { error: who.error } : who);
+    },
+
     /* ---- S2 접수 패널 ---- */
     setProto: function (p) {
       Object.keys(p || {}).forEach(function (k) { if (p[k]) proto[k] = p[k]; });
@@ -210,9 +223,11 @@
       return ok({ blocked: blocked });
     },
     postQuickIntake: function (req, simulateFailure) {
-      if (!req.requestId || !(F.users || []).some(function (user) { return user.id === req.reporterId; })) return ok({ failed: true });
+      if (!req.requestId) return ok({ failed: true });
       var previous = store.read().reports.find(function (r) { return r.requestId === req.requestId; });
       if (previous) return ok(quickReports.get(previous.id) || previous);
+      // ADR-028 결정 2: 신고자·접수자·지점이 맞지 않으면 저장하지 않는다(백엔드는 접수자를 인증 세션에서 정함)
+      if (identityOf(req.reporterId, req.submittedById).error) return ok({ identityError: true });
       var image = req.attachment;
       if (image && !validAttachment(image)) return ok({ attachmentError: '확정한 이미지가 너무 크거나 형식이 맞지 않아요. 다시 선택해 주세요.' });
       if (image && req.simulateAttachmentFailure && !failedAttachments.has(req.requestId)) {
@@ -267,6 +282,7 @@
     postQuickParticipation: function (defectId, reporterId, submittedById, extra) {
       var d = ledgerDefects().find(function (item) { return item.id === defectId && item.published && item.status !== 'RESOLVED'; });
       if (!d) return ok(null);
+      if (identityOf(reporterId, submittedById).error) return ok({ identityError: true });   // ADR-028 결정 2
       extra = extra || {};
       return store.update(function (state) {
         var again = extra.requestId && state.reports.find(function (r) { return r.requestId === extra.requestId; });
@@ -618,25 +634,63 @@
     return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+09:00$/.test(value) &&
       Number.isFinite(Date.parse(value));
   }
+  var SCREENS = { MAIN: '메인 화면', SIGN_LINK: '고객 서명 링크' };
+  var SUBMIT_DEVICES = { PC: 'PC', PHONE: '휴대폰', TABLET: '태블릿' };
+  /* ADR-028 결정 3: 접수하는 브라우저가 스스로 알려 주는 기기 유형·브라우저 종류·주 버전만. User-Agent 전체·주소·쿠키·토큰은 남기지 않는다 */
+  function submissionEnvironment() {
+    var deviceType = null, browser = null;
+    try {
+      var nav = window.navigator || {}, ua = String(nav.userAgent || ''), data = nav.userAgentData;
+      if (/iPad|Tablet/.test(ua) || (/Android/.test(ua) && !/Mobile/.test(ua))) deviceType = 'TABLET';
+      else if ((data && data.mobile === true) || /iPhone|Android.*Mobile/.test(ua)) deviceType = 'PHONE';
+      else if ((data && data.mobile === false) || /Windows NT|Macintosh|X11|CrOS/.test(ua)) deviceType = 'PC';
+      var brands = data && Array.isArray(data.brands) ? data.brands : [];
+      [['Microsoft Edge', 'Edge'], ['Google Chrome', 'Chrome'], ['HeadlessChrome', 'Chrome'], ['Chromium', 'Chrome']].some(function (pair) {
+        var hit = brands.find(function (b) { return b && b.brand === pair[0] && /^\d{1,3}$/.test(b.version); });
+        if (hit) browser = pair[1] + ' ' + hit.version;
+        return !!hit;
+      });
+      if (!browser) {
+        [[/Edg\/(\d{1,3})\./, 'Edge'], [/(?:Headless)?Chrome\/(\d{1,3})\./, 'Chrome'], [/Firefox\/(\d{1,3})\./, 'Firefox'],
+          [/Version\/(\d{1,3})[.\d]* .*Safari/, 'Safari']].some(function (pair) {
+          var m = ua.match(pair[0]);
+          if (m) browser = pair[1] + ' ' + m[1];
+          return !!m;
+        });
+      }
+    } catch (e) { deviceType = browser = null; }
+    return { deviceType: deviceType, browser: browser };
+  }
   function collectDiagnostics(mode, at) {
     var source = F.intakeDiagnostics || {};
-    var screens = { MAIN: '메인 화면', SIGN_LINK: '고객 서명 링크' };
-    var devices = { PC: '사무실 컴퓨터', PHONE: '고객 휴대폰' };
-    var browsers = { CHROME: 'Chrome', MOBILE: '모바일 브라우저' };
-    function pick(raw) {
-      raw = raw || {};
-      return {
-        screen: screens[raw.screen] || null,
-        device: devices[raw.device] || null,
-        browser: browsers[raw.browser] && /^\d{1,3}\.\d{1,3}$/.test(raw.version) ? browsers[raw.browser] + ' ' + raw.version : null,
-        at: validDate(raw.at) ? raw.at : null,
-        errorCode: raw.errorCode === 'SFA-SIGN-LINK' ? raw.errorCode : null,
-        action: raw.action === 'OPEN_LINK' ? '서명 링크 열기' : null
-      };
-    }
+    var env = mode === 'fail-submission' ? { deviceType: null, browser: null } : submissionEnvironment();
+    /* 발생 환경은 진단 이벤트가 준 값만(프론트 단계: diagnostics=mobile 시연 이벤트). 접수 환경 값을 복사하지 않는다 */
+    var raw = mode === 'mobile' ? source.mobile || {} : {};
+    var event = {
+      screen: SCREENS[raw.screen] || null, screenCode: SCREENS[raw.screen] ? raw.screen : null,
+      device: raw.device === 'PHONE' ? '고객 휴대폰' : null,
+      browser: raw.browser === 'MOBILE' && /^\d{1,3}\.\d{1,3}$/.test(raw.version) ? '모바일 브라우저 ' + raw.version : null,
+      at: validDate(raw.at) ? raw.at : null,
+      errorCode: raw.errorCode === 'SFA-SIGN-LINK' ? raw.errorCode : null,
+      action: raw.action === 'OPEN_LINK' ? '서명 링크 열기' : null
+    };
+    event.source = Object.keys(event).some(function (k) { return event[k]; }) ? 'DEMO_CONTEXT' : null;
     return { capturedAt: at, failed: mode === 'fail',
-      submission: pick(Object.assign({}, source.submission, { at: at })),
-      incident: pick(mode === 'mobile' ? source.mobile : null) };
+      submission: { screen: SCREENS.MAIN, screenCode: 'MAIN', device: SUBMIT_DEVICES[env.deviceType] || null, deviceType: env.deviceType,
+        browser: env.browser, at: at, errorCode: null, action: null, source: 'BROWSER_CAPTURED' },
+      incident: event };
+  }
+  /* ADR-028 결정 2: 신고자·접수자가 있고, 지점이 있고, 대신 접수면 같은 지점 관리자 → FC */
+  var ROLE_LABEL = { FC: 'FC', MANAGER: '관리자', SALES: '영업 담당', IT: 'IT 담당' };
+  function identityOf(reporterId, submittedById) {
+    var users = F.users || [], branches = L.branches || [];
+    var r = users.find(function (u) { return u.id === reporterId; }), s = users.find(function (u) { return u.id === submittedById; });
+    if (!r || !s) return { error: 'USER' };
+    var rb = branches.find(function (b) { return b.id === r.branchId; }), sb = branches.find(function (b) { return b.id === s.branchId; });
+    if (!rb || !sb) return { error: 'BRANCH' };
+    if (r.id !== s.id && !(s.role === 'MANAGER' && r.role === 'FC' && r.branchId === s.branchId)) return { error: 'PROXY' };
+    function brief(u, b) { return { id: u.id, name: u.name, role: u.role, roleLabel: ROLE_LABEL[u.role] || u.role, branchId: b.id, branchName: b.name }; }
+    return { reporter: brief(r, rb), submitter: brief(s, sb), proxied: r.id !== s.id };
   }
   function nowKst() {
     var KST_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -806,7 +860,7 @@
     var x = copy(r);
     var u = (F.users || []).find(function (v) { return v.id === r.reporterId; });
     var b = u && (L.branches || []).find(function (v) { return v.id === u.branchId; });
-    x.reporter = u ? { id: u.id, name: u.name, branchId: u.branchId, branchName: b ? b.name : '' } : null;
+    x.reporter = u ? { id: u.id, name: u.name, role: u.role, branchId: u.branchId, branchName: b ? b.name : '' } : null;
     x.submittedBy = r.submittedById && r.submittedById !== r.reporterId ? userBrief(r.submittedById) : null;   // 대신 접수(ADR-025)
     return x;
   }
