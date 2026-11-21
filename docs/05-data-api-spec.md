@@ -121,11 +121,17 @@
 | 키 | 허용 값 | 비고 |
 |---|---|---|
 | `origin` | `ASSISTANT` `FORM` | AI 문의에서 넘어왔는지 |
-| `incident.device` | `SAME` `PC` `PHONE` `TABLET` `CUSTOMER_PHONE` `UNKNOWN` | 오류가 난 기기(FC 진술) |
-| `conditions.SEMINAR_HISTORY` | `YES` `NO` `UNKNOWN` | 시나리오 확인 항목(현재 1종) |
-| `workOutcome` | `RESUMED` `STILL` `UNKNOWN` 또는 `null` | 접수 시점의 조치 결과. 대리 접수는 항상 `null` |
-| `suggestedDefectId` | 공개 대표 결함 ID 또는 `null` | AI 문의가 안내한 사례. 연결 아님 |
-| `factSources.*` | `USER_REPORTED` `DEMO_CONTEXT` `BROWSER_CAPTURED` `DEFECT_LEDGER` `UNKNOWN` | 키는 `device` `conditions` `urgent` `attempted` `workOutcome` |
+| `incident.device` | `SAME` `PC` `PHONE` `TABLET` `CUSTOMER_PHONE` `OTHER` `UNKNOWN` | 오류가 난 기기(FC 진술). `OTHER` "다른 기기"는 ADR-027 |
+| `conditions.SEMINAR_HISTORY` | `YES` `NO` `UNKNOWN` | 전자서명 시나리오(D-2026-001) 확인 항목 |
+| `conditions.INPUT_STEP` | `FRONT` `BACK` `UNKNOWN` | 고객 동의 시나리오(D-2026-007, ADR-027): 문제가 생긴 입력란(앞자리/뒷자리). 입력한 값은 두지 않음 |
+| `conditions.KEYPAD_SYMPTOM` | `NO_KEYPAD` `NO_INPUT` `UNKNOWN` | 키패드가 안 나타남 / 보이지만 입력 안 됨 |
+| `conditions.DEVICE_OS` | `ANDROID` `IOS` `UNKNOWN` | 고객 기기 환경(FC 진술, 자동 수집 아님) |
+| `conditions.URL_PATH` | `IN_APP` `EXTERNAL` `UNKNOWN` | 링크를 연 경로(앱 안 브라우저 / 외부 브라우저) |
+| `workaroundState` | `NONE` `OFFERED` `TRIED` 또는 `null` | ADR-027. 승인된 임시조치 없음 / 안내했지만 결과 미확인 / 시도함. 없으면 `workOutcome`으로 읽음(`RESUMED|STILL`→`TRIED`, `UNKNOWN`→`OFFERED`) |
+| `supportNeeded` | `YES` `NO` `UNKNOWN` 또는 `null` | ADR-027. 업무를 이어가기 어려움(추가 지원 필요). 대리 접수는 항상 `null` |
+| `workOutcome` | `RESUMED` `STILL` `UNKNOWN` 또는 `null` | 접수 시점의 조치 결과. 대리 접수는 항상 `null`. ADR-027: `TRIED`이면 `RESUMED|STILL`, `OFFERED`이면 `UNKNOWN`, `NONE`이면 `null`(어긋난 조합은 버림) |
+| `suggestedDefectId` | 공개 대표 결함 ID 또는 `null` | AI 문의가 안내한 사례. 연결 아님. ADR-027: 그 결함의 시나리오 업무가 접수 업무와 다르면 버림 |
+| `factSources.*` | `USER_REPORTED` `DEMO_CONTEXT` `BROWSER_CAPTURED` `DEFECT_LEDGER` `UNKNOWN` | 키는 `device` `conditions` `urgent` `attempted` `workOutcome` `supportNeeded`(ADR-027) |
 
 - 접수 뒤 `workOutcome`이 `RESUMED|STILL`이고 접수자가 신고자 본인이면 화면이 `POST /api/reports/{id}/work-resumption`을 한 번 부른다(같은 접수에 다시 부르지 않음). `getMyReports`·`getUnlinkedReports`·`getDefect`의 신고는 같은 저장본을 읽어 위 키를 그대로 내린다.
 
@@ -159,11 +165,16 @@
 - `WONT_FIX`이면 화면은 직전 상태(`statusHistory` 마지막 항목의 `from`)까지 막대를 채우고 "수정하지 않음 · ○○ 단계에서 끝났어요"로 표시한다(06번 5절).
 - ADR-025 추가 키: `workResumption`(`{result, at}` 또는 `null`), `reporter`·`submittedBy`(`{id, name}`, 대신 접수한 건이면 둘이 다름). `defectId`가 있으면 "담당자가 확인했어요", 없으면 "접수됨 · 담당자 확인 전"으로 본다.
 
+### 빠른 도움·간편 알리기 (ADR-027, REQ-IN-15·16)
+- `postIntakeQuestion`의 `checks[]`에 `stage`(`guide`: 안내를 고르는 데 필요 / `report`: 담당자 확인용)를 더한다. 화면은 `guide` → 결과 카드 → 결과 질문 → `report` 순서로 묻고, 합쳐 3개를 넘지 않는다. 임시 방법이 없는 공개 결함이면 `resumeQuestion` 대신 `supportQuestion`("지금 이 고객님과 업무를 이어가기 어려운 상황인가요?")을 내린다.
+- 인계 객체에 `workaroundState`, `supportNeeded`를 더한다. 확인 화면은 업무·대표 증상·`guide` 조건이 바뀌면 `suggestedDefectId`를 다시 확인하고, 맞지 않으면 그 결함의 조건 값·시도한 조치·`workaroundState`·`workOutcome`을 함께 지운다.
+- `postQuickParticipation(defectId, reporterId, submittedById, extra)`: `extra = {requestId, incident:{device}, conditions, urgent, workaroundState, workOutcome, supportNeeded, factSources}`(허용 목록을 거친 코드만). 응답은 `ME_TOO` 접수. 같은 사용자의 활성 참여나 그 결함에 연결된 접수가 있으면 새로 만들지 않고 그 접수에 `duplicate:true`를 붙여 돌려준다. 공개되지 않았거나 해결된 결함이면 `null`.
+
 ### POST `/api/reports/{id}/work-resumption` (REQ-KN-05, ADR-025)
-요청 `{"userId":"U-001","result":"RESUMED"}` → 응답 `{"saved":true,"result":"RESUMED","at":"2026-11-15T10:20:00+09:00"}`. 신고자가 아니거나 `result`가 두 값이 아니면 `null`. `STILL`이면 그 신고의 후속 기록(`action: STILL`)도 남긴다. 대표 결함 상태·알림은 바꾸지 않는다.
+요청 `{"userId":"U-001","result":"RESUMED"}` → 응답 `{"saved":true,"result":"RESUMED","at":"2026-11-15T10:20:00+09:00"}`. 신고자가 아니거나 `result`가 두 값이 아니면 `null`. `STILL`이면 그 신고의 후속 기록(`action: STILL`)도 남긴다. 대표 결함 상태·알림은 바꾸지 않는다. ADR-027: 같은 신고·같은 신고자의 마지막 회신과 결과가 같거나 같은 `requestId`이면 새 기록·후속 기록 없이 기존 기록에 `duplicate:true`를 붙여 돌려준다.
 
 ### GET `/api/reports/branch?managerId=` 응답 (REQ-KN-06, ADR-025)
-관리자와 같은 지점 FC의 신고와 관리자가 대신 접수한 신고. 신고마다 `id, kind, business, createdAt, defectId, defect(공개 키), reporter{id,name}, byMe(내가 대신 접수), workResumption, notice(UNREAD/READ/NONE: 그 FC가 이 대표 결함의 마지막 알림을 읽었는지)`. `maskedText`는 `byMe`일 때만 내린다(FC가 적은 설명은 관리자에게 보이지 않음).
+관리자와 같은 지점 FC의 신고와 관리자가 대신 접수한 신고. 신고마다 `id, kind, business, createdAt, defectId, defect(공개 키), reporter{id,name}, byMe(내가 대신 접수), workResumption, notice(UNREAD/READ/NONE: 그 FC가 이 대표 결함의 마지막 알림을 읽었는지)`. `maskedText`는 `byMe`일 때만 내린다(FC가 적은 설명은 관리자에게 보이지 않음). ADR-027: `workaroundState`, `workOutcome`(대리 접수는 `null`), `supportNeeded`를 더 내린다. 화면은 FC별로 묶어 업무 상황(업무 재개·업무 진행 어려움·회신 없음·임시조치 미확인)을 계산한다.
 
 ### 알림 (`GET /api/notifications?userId=`, ADR-025)
 항목마다 `audience`(REPORTER/SUBMITTER), `kind`(STATUS/PROXY_RECEIPT), `reportId`(FC 알림), `read`. 한 상태 변경의 수신자는 02번 4-1절 규칙으로 고르고 같은 사람은 1건이다.
@@ -197,6 +208,7 @@
 ```
 - 후보가 없으면 `"candidates":[]`. 화면은 "비슷한 결함을 찾지 못했어요"와 새 대표 결함 만들기 안내.
 - 프론트 단계에서 고정 응답이 없는 신고(시연 중 만든 `R-Q…`)는 규칙으로 후보를 만든다(ADR-026 결정 8): `llmOutcome:"RULE"`, `similarity:null`, `reasons:["업무: 청약·서명","증상: 엉뚱한 화면이 떠요","관련 조건: 초대장 발송 이력 있음","시도한 조치: 이 결함의 임시 방법","AI 문의: 안내한 사례"]`(맞은 것만), `matched`는 `BUSINESS` `SYMPTOM` `CONDITION` `WORKAROUND` `SUGGESTED` 중 맞은 것. 업무와 증상이 모두 같거나 `SUGGESTED`일 때만 후보이며 맞은 항목이 많은 순이다. 비슷함 정도·점수는 붙이지 않는다.
+- ADR-027: `SUGGESTED`(AI 문의가 안내한 사례)는 그 결함의 업무가 신고 업무와 같을 때만 근거·후보가 된다. 고객 동의 시나리오의 조건(`INPUT_STEP` 등)도 같은 방식으로 "관련 조건: …" 근거가 된다.
 - LLM 실패 시 `"llmOutcome":"FALLBACK"`, 규칙 후보는 `"similarity":null`, `"reason":"같은 업무·같은 문제 유형이에요"`.
 - 연결은 이 API가 하지 않는다. 담당자가 고른 뒤 `POST /api/defects/{id}/reports`.
 
