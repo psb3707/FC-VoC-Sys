@@ -19,6 +19,8 @@
 .pn-assist-foot > button { width: 100%; }
 @media (max-width: 480px) {
   .pn-assist-entry { padding-left: 12px; }
+  .pn-assist-quick .pn-rows div { display: block; }
+  .pn-assist-quick .pn-rows dd { margin-top: 2px; }
   .pn-assist-result .pn-rows div { display: block; }
   .pn-assist-result .pn-rows dd { margin-top: 2px; }
 }
@@ -41,7 +43,7 @@
 .pn-assist-blocked .pq-details-body li + li { margin-top: 8px; }
 /* 간편 알리기 확인 카드: 결과 카드와 같은 콘텐츠 카드, 앞 대화와 16px */
 .pn-assist-quick { margin-top: 16px; overflow-wrap: anywhere; }
-.pn-assist-quick h3.pn-card-title { margin: 0 0 12px; font-size: var(--pn-text); }
+.pn-assist-quick .pn-card-title { margin: 0 0 12px; }
 .pn-assist-thinking {
   display: flex; align-items: center; gap: 12px; width: fit-content; max-width: 100%; padding: 12px 16px;
   border-radius: var(--pn-note-radius); background: var(--pn-bg); color: var(--pn-sub);

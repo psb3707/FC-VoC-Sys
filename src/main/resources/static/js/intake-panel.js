@@ -454,8 +454,9 @@
             c && !waiting && c.stage === 'support' ? answerChips('업무를 이어가기 어려운지', window.IntakeFacts.SUPPORT, SUPPORT_ANSWER, 'assistant-support') : null,
             c && !waiting && c.stage === 'report' ? checkChips(c) : null,
             c && !waiting && c.stage === 'quick' ? quickCard(c) : null]),
-        foot: [el('p', { id: 'pn-assist-help' }, ['고객 이름, 번호, 비밀번호는 입력하지 마세요.']),
-          el('form', { cls: 'pn-assist-compose', id: 'pn-assist-form' }, [
+        // 간편 알리기 확인 중에는 질문 입력란을 숨겨 확인 카드가 첫 화면에 보이게 한다(ADR-027)
+        foot: [el('p', { id: 'pn-assist-help', hidden: !!(c && c.stage === 'quick') }, ['고객 이름, 번호, 비밀번호는 입력하지 마세요.']),
+          el('form', { cls: 'pn-assist-compose', id: 'pn-assist-form', hidden: !!(c && c.stage === 'quick') }, [
             el('input', { cls: 'pn-input', id: 'pn-assist-text', type: 'text', maxlength: '100', required: true,
               autocomplete: 'off', 'aria-label': '전산 문의 질문', 'aria-describedby': 'pn-assist-help',
               'data-fk': 'assistant-text', value: assistant.text, placeholder: '궁금한 점을 적어 주세요',
@@ -765,7 +766,7 @@
     if (h.workaroundState) list.push(['임시조치', F.workaroundLabel(h.workaroundState) + (h.outcome ? ' · ' + F.outcomeLabel(h.outcome) : '')]);
     if (h.support) list.push(['업무 상황', F.supportLabel(h.support)]);
     var card = el('article', { cls: 'pn-card pn-assist-quick', 'aria-labelledby': 'pn-assist-quick-title' }, [
-      el('h3', { cls: 'pn-card-title', id: 'pn-assist-quick-title', tabindex: '-1' }, ['「' + d.title + '」' + wa(d.title) + ' 같은 오류로 알릴까요?']),
+      el('p', { cls: 'pn-card-title', id: 'pn-assist-quick-title', tabindex: '-1' }, ['「' + d.title + '」' + wa(d.title) + ' 같은 오류로 알릴까요?']),
       list.length ? rows(list) : null,
       el('p', { cls: 'pn-lead' }, ['같은 오류인지 직접 확인한 뒤 눌러 주세요. 대화 내용과 고객 정보는 남기지 않아요. 처리 경과는 알림과 내 접수내역으로 알려 드려요.']),
       c.error ? el('p', { cls: 'pn-err', role: 'alert' }, [c.error]) : null]);

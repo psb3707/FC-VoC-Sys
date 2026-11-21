@@ -534,7 +534,7 @@
     var state = F.clean(r).workaroundState;   // ADR-027: 임시조치 없음 / 안내함 / 시도함
     if (state) list.push(['임시조치', [F.workaroundLabel(state), src2(state === 'NONE' ? 'DEFECT_LEDGER' : src.attempted || 'USER_REPORTED')]]);
     if (r.attemptedWorkaround) list.push(['시도한 조치', ['「' + r.attemptedWorkaround + '」', src2(src.attempted || 'DEFECT_LEDGER')]]);
-    if (r.supportNeeded) list.push(['업무 중단', said(F.supportLabel(r.supportNeeded), 'supportNeeded')]);
+    if (r.supportNeeded) list.push(['업무 상황', said(F.supportLabel(r.supportNeeded), 'supportNeeded')]);
     var answer = r.workResumption ? F.outcomeLabel(r.workResumption.result) + ' (' + fmtWhen(r.workResumption.at) + ')' :
       r.workOutcome ? F.outcomeLabel(r.workOutcome) : '';
     if (withResumption && answer) list.push(['업무 재개', [answer, src2('USER_REPORTED')]]);
@@ -563,7 +563,7 @@
       if (!cond[key]) out.push(F.CONDITIONS[key].label + ' (확인 안 됨)');
       else if (cond[key] === 'UNKNOWN') out.push(F.CONDITIONS[key].label + ' (모름)');
     });
-    if (r.supportNeeded === 'UNKNOWN') out.push('업무 중단 여부 (모름)');
+    if (r.supportNeeded === 'UNKNOWN') out.push('업무 상황 (모름)');
     return out;
   }
   function handlingCard(r) {
@@ -587,12 +587,15 @@
     (d.reports || []).forEach(function (r) {
       if (r.incident && r.incident.device) add('오류가 난 기기', F.deviceLabel(r.incident.device));
       Object.keys(r.conditions || {}).forEach(function (key) { if (F.CONDITIONS[key]) add(F.CONDITIONS[key].label, F.conditionLabel(key, r.conditions[key])); });
-      if (r.supportNeeded) add('업무 중단', F.supportLabel(r.supportNeeded));
+      if (r.supportNeeded) add('업무 상황', F.supportLabel(r.supportNeeded));
     });
     if (!order.length) return null;
     var card = el('div', { cls: 'pn-card' }, [el('p', { cls: 'pn-card-title' }, ['현장 조건 모아 보기']),
       rows(order.map(function (label) {
-        return [label, Object.keys(counts[label]).map(function (v) { return v + ' ' + counts[label][v] + '건'; }).join(' · ')];
+        var values = Object.keys(counts[label]).sort(function (a, b) {   // 많은 순, 모름은 끝
+          return (a === '모름') - (b === '모름') || counts[label][b] - counts[label][a];
+        });
+        return [label, values.map(function (v) { return v + ' ' + counts[label][v] + '건'; }).join(' · ')];
       })),
       el('p', { cls: 'ld-meta' }, ['FC가 알려 준 값을 센 것이에요. 실제 기기에서 확인한 값이 아니에요.'])]);
     card.setAttribute('data-field-summary', '');

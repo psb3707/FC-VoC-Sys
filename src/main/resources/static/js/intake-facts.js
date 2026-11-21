@@ -21,7 +21,7 @@
   var OUTCOMES = [['RESUMED', '진행했어요'], ['STILL', '아직 안 돼요'], ['UNKNOWN', '지금은 확인할 수 없어요']];
   /* ADR-027 결정 5: 임시조치 상태와 추가 지원 필요 */
   var WORKAROUND_STATES = [['NONE', '승인된 임시조치 없음'], ['OFFERED', '안내했지만 결과 미확인'], ['TRIED', '시도함']];
-  var SUPPORT = [['YES', '업무 진행 어려움 · 추가 지원 필요'], ['NO', '기다릴 수 있음'], ['UNKNOWN', '모름']];
+  var SUPPORT = [['YES', '업무 진행 어려움(추가 지원 필요)'], ['NO', '기다릴 수 있음'], ['UNKNOWN', '모름']];
   var SOURCE_KEYS = ['device', 'conditions', 'urgent', 'attempted', 'workOutcome', 'supportNeeded'];
 
   function has(pairs, code) { return pairs.some(function (pair) { return pair[0] === code; }); }

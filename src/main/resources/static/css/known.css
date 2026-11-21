@@ -75,6 +75,11 @@
 /* ADR-027 FC별 묶음: 카드 안 접기(1px 선, 그림자 없음) 한 줄씩. 펼친 안쪽의 신고 줄은 위 선 없이 */
 .kn-card .kn-fcs { margin: 16px 0 0; padding: 16px 0 0; border-top: 1px solid var(--pn-line-soft); display: grid; gap: 12px; }
 .kn-fcs > .pn-details { margin: 0; box-shadow: none; border: 1px solid var(--pn-line); }
-.kn-fcs > .pn-details > summary b { color: var(--pn-ink); }
+.kn-fcs > .pn-details > summary { padding-block: 12px; }
+.kn-fc-line { flex: 1; min-width: 0; color: var(--pn-sub); font-weight: 500; }
+.kn-fc-line b { color: var(--pn-ink); font-weight: 700; }
 .kn-card .kn-fcs .kn-team { margin: 0; padding: 0; border-top: 0; }
-.kn-team-summary .pn-rows dd { font-weight: 700; color: var(--pn-ink); }
+@media (max-width: 480px) {
+  .kn-fcs .pn-rows div, .kn-team-summary .pn-rows div { display: block; }
+  .kn-fcs .pn-rows dd, .kn-team-summary .pn-rows dd { margin-top: 2px; }
+}

@@ -133,7 +133,7 @@ def check(chrome):
     open_page(chrome, "ledger.html", "?selftest=1#role=IT&item=D-2026-007")
     evaluate(chrome, CONSENT + """
       const summary = (await wait('#ld-body [data-field-summary]')).innerText;
-      assert(summary.includes('뒷자리 입력 4건') && summary.includes('Android 2건') && summary.includes('업무 진행 어려움 · 추가 지원 필요 3건') &&
+      assert(summary.includes('뒷자리 입력 4건') && summary.includes('Android 2건') && summary.includes('업무 진행 어려움(추가 지원 필요) 3건') &&
         summary.includes('실제 기기에서 확인한 값이 아니에요'), '현장 조건 모아 보기(가상 데이터에서 계산)');
       await selftest('고객 동의 결함 상세');
       await act('status');
@@ -173,6 +173,7 @@ def check(chrome):
       const card = await wait('[data-quick-confirm]');
       assert(card.innerText.includes('고객 동의 URL에서 뒷자리 숫자 키패드가 열리지 않아요') && card.innerText.includes('뒷자리 입력') &&
         card.innerText.includes('승인된 임시조치 없음'), '간편 알리기 확인 카드');
+      assert($('#pn-assist-form').hidden && !$('#pn-assist-form').getClientRects().length, '확인 중에는 질문 입력란 숨김');
       assert(IntakeDemoStore.read().reports.length === count, 'FC가 확인하기 전에는 기록 없음');
       await selftest('간편 알리기 확인');
       await act('assistant-quick-confirm');
@@ -283,9 +284,9 @@ def check(chrome):
       assert(nada.includes('남다래(가상) FC') && nada.includes('최근 업무 상황: 업무 진행 어려움'), '진행 어려움 FC');
       const summary = $('[data-team-summary]').innerText;
       const line = (label) => summary.split('\\n').find((t, i, all) => all[i - 1] === label) || '';
-      assert(line('지금 업무를 못 하는 FC').includes('남다래(가상)') && !line('지금 업무를 못 하는 FC').includes('조은별(가상)'),
+      assert(line('업무를 못 함').includes('남다래(가상)') && !line('업무를 못 함').includes('조은별(가상)'),
         '회신 없음·미확인을 업무 중단으로 세지 않음 ' + summary);
-      assert(line('추가 확인이 필요한 FC').includes('조은별(가상)'), '추가 확인이 필요한 FC');
+      assert(line('추가 확인 필요').includes('조은별(가상)'), '추가 확인이 필요한 FC');
       const sign = [...document.querySelectorAll('#kn-body .kn-card')].find(c => c.getAttribute('data-id') === 'D-2026-001');
       assert(sign.querySelector('[data-fc="U-012"] summary').textContent.includes('회신 없음') &&
         sign.querySelector('[data-fc="U-011"] summary').textContent.includes('업무 재개'), '업무 재개와 회신 없음 구분');

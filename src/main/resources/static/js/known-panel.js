@@ -309,7 +309,7 @@
   }
   /* 맨 위 요약: 먼저 살펴볼 FC (지금 업무를 못 함 / 추가 확인 필요 / 업무 재개). FC마다 가장 급한 상황 하나로 센다 */
   function teamSummary(groups) {
-    var lines = [['지금 업무를 못 하는 FC', ['BLOCKED']], ['추가 확인이 필요한 FC', ['NO_REPLY', 'NO_WORKAROUND']], ['업무를 재개한 FC', ['RESUMED']]];
+    var lines = [['업무를 못 함', ['BLOCKED']], ['추가 확인 필요', ['NO_REPLY', 'NO_WORKAROUND']], ['업무 재개', ['RESUMED']]];
     var rank = { BLOCKED: 0, NO_REPLY: 1, NO_WORKAROUND: 1, RESUMED: 2 }, worst = {}, order = [];
     groups.forEach(function (g) {
       g.fcs.forEach(function (fc) {
@@ -323,7 +323,7 @@
         var names = order.filter(function (name) { return line[1].indexOf(worst[name]) >= 0; });
         return [line[0], names.length + '명' + (names.length ? ' · ' + names.join(', ') : '')];
       })),
-      el('p', { cls: 'kn-meta' }, ['FC마다 가장 급한 상황 하나로 셌어요. 회신 없음은 업무 중단이 아니에요. 전화·메신저 연결은 이 화면에 없어요.'])]);
+      el('p', { cls: 'kn-meta' }, ['FC마다 여러 결함 중 가장 급한 상황 하나로 셌어요(아래 결함 카드는 결함별로 세요). 회신 없음은 업무 중단이 아니에요. 전화·메신저 연결은 이 화면에 없어요.'])]);
     card.setAttribute('data-team-summary', '');
     return card;
   }
@@ -338,8 +338,9 @@
       var count = d && d.status === 'RESOLVED' ? 'FC ' + n + '명 · 고쳐졌어요' : ['FC ' + n + '명'].concat(tally).join(' · ');
       var people = g.fcs.map(function (fc) {
         var row = el('details', { cls: 'pn-details pq-details kn-fc', 'data-fc': fc.id }, [
-          el('summary', null, [el('b', null, [fc.name + ' FC']), ' · 관련 신고 ' + fc.reports.length + '건 · 최근 업무 상황: ',
-            el('span', { cls: 'pn-tag' }, [SITUATION[fc.situation]])]),
+          // 요약은 한 줄 글로(접기 머리가 flex 라 글 조각이 칸으로 나뉘지 않게 span 하나로 감싼다)
+          el('summary', null, [el('span', { cls: 'kn-fc-line' }, [el('b', null, [fc.name + ' FC']),
+            ' · 관련 신고 ' + fc.reports.length + '건 · 최근 업무 상황: ', el('span', { cls: 'pn-tag' }, [SITUATION[fc.situation]])])]),
           el('div', { cls: 'pq-details-body' }, [rows(fc.reports.map(function (r) {
             var how = r.byMe ? '내가 대신 접수' : r.kind === 'ME_TOO' ? '같은 오류 참여' : '직접 접수';
             var parts = [fmtDate(r.createdAt) + ' ' + how, NOTICE_STATE[r.notice] || NOTICE_STATE.NONE, '업무 상황: ' + SITUATION[situationOf(r, d)]];

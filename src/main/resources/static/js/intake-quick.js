@@ -424,11 +424,12 @@
         form.consultNote ? el('p', { cls: 'pn-lead', id: 'quick-consult-note', role: 'status' }, [form.consultNote]) : null,
         select('device', '오류가 난 기기', devices, '선택 안 함')]
         .concat(Object.keys(facts.CONDITIONS).filter(function (key) { return form.conditions[key]; }).map(condSelect), [
-        noWorkaround ? rows([['임시조치', '승인된 임시조치 없음 · 결함 대장 기준']]) : null,
         proxied() ? el('p', { cls: 'pn-lead', id: 'quick-proxy-outcome' }, ['업무 재개 여부는 FC 본인이 내 접수내역에서 답해요.']) :
-          noWorkaround || form.supportNeeded ? select('supportNeeded', '지금 업무를 이어가기 어려운가요?', facts.SUPPORT, '선택 안 함') :
+          noWorkaround || form.supportNeeded ? select('supportNeeded', '업무 상황 (지금 업무를 이어가기 어려운가요?)', facts.SUPPORT, '선택 안 함') :
           select('workOutcome', '안내한 방법으로 업무를 이어갔나요?', facts.OUTCOMES, '선택 안 함'),
-        guided ? rows([['AI가 안내한 사례', guided.id + ' · 같은 오류인지는 담당자가 확인해요']]) : null]));
+        // 고칠 수 없는 줄(대장 기준·안내 사례)은 끝에 모은다
+        rows([noWorkaround ? ['임시조치', '승인된 임시조치 없음 · 결함 대장 기준'] : null,
+          guided ? ['AI가 안내한 사례', guided.id + ' · 같은 오류인지는 담당자가 확인해요'] : null])]));
       card.setAttribute('data-consult-facts', '');
       return card;
     }
