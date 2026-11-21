@@ -47,7 +47,7 @@ def ledger_panel(chrome, report_id, expect):
       expect.who.forEach(t => assert(who.includes(t), '신고자 정보: ' + t + ' / ' + who));
       (expect.facts || []).forEach(t => assert(facts.includes(t), '오류 발생 정보: ' + t + ' / ' + facts));
       (expect.notFacts || []).forEach(t => assert(!facts.includes(t), '오류 발생 정보에 없어야 함: ' + t));
-      assert(trace.includes('관련 시스템 로그') && trace.includes('연계 전') && trace.includes('관련 업무 요청 식별자') &&
+      assert(trace.includes('시스템 로그') && trace.includes('연계 전') && trace.includes('업무 요청 ID') && trace.includes('오류 코드\\n미확인') &&
         trace.includes('실제 로그를 조회하거나 분석한 결과가 아니에요'), '로그 추적 단서: 연계 전, 가짜 로그 없음');
       (expect.trace || []).forEach(t => assert(trace.includes(t), '로그 추적 단서: ' + t + ' / ' + trace));
       const heads = [...document.querySelectorAll('#ld-body h4')].map(h => h.textContent);
@@ -96,8 +96,9 @@ def check(chrome):
       const who = (await wait('[data-identity]')).innerText;
       assert(who.includes('남다래(가상) · FC · 계정 U-013') && who.includes('해오름지점(가상)'), '상담 뒤에도 로그인 정보 연결');
       const env = $('[data-incident-env]').innerText;
-      assert(env.includes('고객 휴대전화 · FC가 알려 줌') && env.includes('Android · FC가 알려 줌') && env.includes('뒷자리 입력 · FC가 알려 줌') &&
-        env.includes('키패드가 안 나타남') && env.includes('앱 안 브라우저'), '오류가 발생한 환경: 상담 값과 출처 ' + env);
+      assert($('#quick-device').value === 'CUSTOMER_PHONE' && $('#quick-cond-DEVICE_OS').value === 'ANDROID' && $('#quick-cond-INPUT_STEP').value === 'BACK',
+        '상담 값은 확인한 내용 카드에 그대로(다시 입력 없음)');
+      assert(env.includes('AI 문의에서 확인한 내용') && !env.includes('고객 휴대전화'), '오류가 발생한 환경은 위 카드 값을 되풀이하지 않음 ' + env);
       const browserRow = [...$('[data-incident-env]').querySelectorAll('.pn-rows > div')].find(d => d.querySelector('dt').textContent === '브라우저');
       assert(browserRow.querySelector('dd').textContent === '미확인' && !env.includes('Chrome'), '고객 브라우저는 미확인(접수 PC 값 복사 없음)');
       await selftest('확인 화면 오류가 발생한 환경');
@@ -136,7 +137,7 @@ def check(chrome):
       assert(IntakeDemoStore.read().reports.length === count, '검증 오류는 저장 0건');
       return saved.id;
     """)
-    ledger_panel(chrome, tc04, "{ who: ['정다솜(가상) · FC', 'U-011', '해오름지점(가상)', '박새벽(가상) · 관리자', 'U-010', '가 대신 접수'] }")
+    ledger_panel(chrome, tc04, "{ who: ['정다솜(가상) · FC · U-011', '해오름지점(가상)', '박새벽(가상) · 관리자 · U-010 (대신 접수)'] }")
 
     # TC-05 역할 변경·권한
     open_page(chrome, "index.html", "?selftest=1#role=MANAGER&panel=intake&step=problem")
@@ -168,6 +169,7 @@ def check(chrome):
       assert(d.submission.device === null && d.submission.browser === null && d.submission.screenCode === 'MAIN', '알 수 없으면 비움');
       const card = await review('DESIGN', '보험료 계산이 늦어요');
       assert(card.innerText.includes('접수 환경\\n미확인'), '접수 환경 미확인 표시 ' + card.innerText);
+      assert($('[data-incident-env]').innerText.includes('아직 확인된 발생 환경이 없어요'), '모두 미확인이면 한 줄');
       await click('[data-quick-section=extra] > summary');
       await click('[data-quick-section=incident] > summary');
       await fill('#quick-screen', '보험료 계산 화면');

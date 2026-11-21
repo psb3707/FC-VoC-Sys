@@ -117,7 +117,7 @@ def check(chrome):
       assert(sim.llmOutcome === 'RULE' && sim.candidates[0].defectId === 'D-2026-007' && sim.candidates.every(c => c.similarity === null) &&
         !sim.candidates.some(c => c.defectId === 'D-2026-001'), '다른 업무 결함은 후보 아님');
       const handling = $('#ld-body [data-report-handling]').innerText;
-      assert($('#ld-body [data-report-trace]').innerText.includes('추가로 필요한 정보') && handling.includes('기술 검토 뒤') && handling.includes('예정일은 정해지지 않아요'),
+      assert($('#ld-body [data-report-trace]').innerText.includes('더 필요한 정보') && handling.includes('기술 검토 뒤') && handling.includes('예정일은 정해지지 않아요'),
         '담당자 처리: 추가 확인·수정 계획 맥락');
       assert(!IntakeDemoStore.read().links[id], '추천만으로는 연결되지 않음');
       await selftest('고객 동의 대장 신고 패널');

@@ -551,7 +551,7 @@
     var card = el('div', { cls: 'pn-card' }, [el('p', { cls: 'pn-card-title' }, ['신고자 정보']),
       rows([['신고자', who ? [who.name + ' · ' + (ROLE[who.role] || who.role) + ' · ', el('span', { cls: 'ld-id' }, [who.id])] : '확인 필요'],
         ['소속 지점', who ? who.branchName : '확인 필요'],
-        ['대리 접수', by ? [by.name + ' · ' + (ROLE[by.role] || by.role) + ' · ', el('span', { cls: 'ld-id' }, [by.id]), ' 가 대신 접수'] : '아니요 · 본인 접수'],
+        ['대리 접수', by ? [by.name + ' · ' + (ROLE[by.role] || by.role) + ' · ', el('span', { cls: 'ld-id' }, [by.id]), ' (대신 접수)'] : '아니요 · 본인 접수'],
         ['접수 시각', [fmtWhen(r.createdAt), srcSpan('시스템')]],
         ['접수 화면', sub.screen ? [sub.screen + (sub.screenCode ? ' (' + sub.screenCode + ')' : ''), srcSpan('자동 확인')] : '미확인'],
         ['접수 환경', env ? [env, srcSpan(sub.source === 'BROWSER_CAPTURED' ? '자동 확인' : '이전 시연 기록')] : '미확인']])]);
@@ -573,9 +573,13 @@
   function factsCard(r) {
     var env = incidentEnv(r), list = factRows(r, true);
     var hasDevice = !!(r.incident && r.incident.device), hasOs = !!((r.conditions || {}).DEVICE_OS);
+    // 환경 줄(기기·조건·OS·브라우저·발생 시각)을 모은 뒤 업무 영향·임시조치·회신 줄
+    var later = ['업무 영향', '임시조치', '시도한 조치', '업무 상황', '업무 재개', 'AI 문의 안내 사례'];
+    var cut = list.findIndex(function (row) { return later.indexOf(row[0]) >= 0; });
+    if (cut < 0) cut = list.length;
     list = [['업무', BUSINESS[r.business] || r.business || '확인 필요'], ['증상', SYMPTOM[r.symptom] || r.symptom || '확인 필요']]
-      .concat(hasDevice ? [] : [['오류가 난 기기', env.device]], list,
-        hasOs ? [] : [['운영체제', '미확인']], [['브라우저', env.browser], ['발생 시각', env.at]]);
+      .concat(hasDevice ? [] : [['오류가 난 기기', env.device]], list.slice(0, cut),
+        hasOs ? [] : [[window.IntakeFacts.CONDITIONS.DEVICE_OS.label, '미확인']], [['브라우저', env.browser], ['발생 시각', env.at]], list.slice(cut));
     var card = el('div', { cls: 'pn-card' }, [el('p', { cls: 'pn-card-title' }, ['오류 발생 정보']), rows(list),
       el('p', { cls: 'ld-meta' }, ['고객 휴대전화의 기기·OS·접속 경로는 FC가 알려 준 값이에요. 접수한 PC의 브라우저는 여기에 쓰지 않아요.'])]);
     card.setAttribute('data-report-facts', '');
@@ -586,12 +590,12 @@
     var env = incidentEnv(r), sub = (r.diagnostics || {}).submission || {}, gaps = missingFacts(r);
     if (env.browser === '미확인') gaps.push('고객 브라우저 (확인 필요)');
     var card = el('div', { cls: 'pn-card' }, [el('p', { cls: 'pn-card-title' }, ['로그 추적 단서']),
-      rows([['확인된 오류 코드', env.errorCode || '없음'],
+      rows([['오류 코드', env.errorCode || '미확인'],
         ['화면 코드', '접수 ' + (sub.screenCode || '미확인') + ' · 발생 ' + (env.screenCode || '미확인')],
-        ['오류 발생 시각', env.at],
-        ['관련 업무 요청 식별자', '연계 전 · 고객 동의 요청 등 업무 시스템과 연계한 뒤 확인해요'],
-        ['관련 시스템 로그', '연계 전'],
-        ['추가로 필요한 정보', gaps.length ? el('ul', { cls: 'pn-plain ld-reasons' }, gaps.map(function (g) { return el('li', null, [g]); })) : '없음']]),
+        ['발생 시각', env.at],
+        ['업무 요청 ID', '연계 전 · 고객 동의 요청 등 관련 업무 요청 식별자는 업무 시스템과 연계한 뒤 확인해요'],
+        ['시스템 로그', '연계 전 · 관련 시스템 로그는 아직 조회하지 않아요'],
+        ['더 필요한 정보', gaps.length ? el('ul', { cls: 'pn-plain ld-reasons' }, gaps.map(function (g) { return el('li', null, [g]); })) : '없음']]),
       el('p', { cls: 'ld-meta' }, ['실제 로그를 조회하거나 분석한 결과가 아니에요. 신고자 계정·접수 시각·화면 코드로 담당 시스템에 로그를 요청할 수 있어요.'])]);
     card.setAttribute('data-report-trace', '');
     return card;
@@ -617,7 +621,7 @@
   function handlingCard(r) {
     var card = el('div', { cls: 'pn-card' }, [
       el('p', { cls: 'pn-card-title' }, ['같은 결함인지 확인하고 묶어 주세요']),
-      rows([['추가 확인', '위 "로그 추적 단서"의 추가로 필요한 정보를 FC나 담당 시스템에 확인해요'],
+      rows([['추가 확인', '위 "로그 추적 단서"의 더 필요한 정보를 FC나 담당 시스템에 확인해요'],
         ['수정 계획', '기술 검토 뒤 대표 결함의 [상태 바꾸기]에서 등록해요. 신고가 늘어도 예정일은 정해지지 않아요.']]),
       el('p', { cls: 'ld-meta' }, ['아래 [묶을 결함 고르기]나 후보의 [이 결함에 묶기]로 연결해요. 묶기 전에는 FC에게 "담당자 확인 전"으로 보여요.'])]);
     card.setAttribute('data-report-handling', '');

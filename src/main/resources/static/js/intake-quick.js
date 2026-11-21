@@ -447,17 +447,19 @@
         return v ? [label, v === 'UNKNOWN' ? '미확인' : said(facts.conditionLabel(key, v), fc('conditions'))] : null;
       }
       var when = [form.date, form.time].filter(Boolean).join(' ');
+      var consulted = form.origin === 'ASSISTANT';   // 기기·조건은 바로 위 "AI 문의에서 확인한 내용"에 있으므로 되풀이하지 않는다
       told = form.device && form.device !== 'UNKNOWN' ? facts.deviceLabel(form.device) : '';
+      var list = (consulted ? [] : [['오류가 난 기기', told ? said(told, fc('device')) : said(ev.device, evFrom)],
+        cond.DEVICE_OS ? condRow(facts.CONDITIONS.DEVICE_OS.label, 'DEVICE_OS') : null]).concat([
+        ['브라우저', said(ev.browser, evFrom)],
+        form.screen ? ['발생 화면', said(form.screen, 'FC가 알려 줌')] : ev.screen ? ['발생 화면', said(ev.screen, evFrom)] : null,
+        ['발생 시각', when ? said(when, 'FC가 알려 줌') : said(ev.at ? ui.fmtWhen(ev.at) : '', evFrom)]]).filter(Boolean);
+      var known = list.filter(function (row) { return row[1] !== '미확인'; }).length;
       var card = el('div', { cls: 'pn-card pq-incident', id: 'quick-incident' }, [
         el('p', { cls: 'pn-card-title' }, ['오류가 발생한 환경']),
-        rows([['발생 기기', told ? said(told, fc('device')) : said(ev.device, evFrom)],
-          cond.DEVICE_OS ? condRow('운영체제', 'DEVICE_OS') : ['운영체제', '미확인'],
-          ['브라우저', said(ev.browser, evFrom)],
-          condRow('오류 발생 단계', 'INPUT_STEP'), condRow('증상', 'KEYPAD_SYMPTOM'), condRow('접속 경로', 'URL_PATH'),
-          condRow(facts.CONDITIONS.SEMINAR_HISTORY.label, 'SEMINAR_HISTORY'),
-          form.screen ? ['발생 화면', said(form.screen, 'FC가 알려 줌')] : ev.screen ? ['발생 화면', said(ev.screen, evFrom)] : null,
-          ['발생 시각', when ? said(when, 'FC가 알려 줌') : said(ev.at ? ui.fmtWhen(ev.at) : '', evFrom)]]),
-        el('p', { cls: 'pn-lead' }, ['접수하는 환경과 따로 적어요. 확인하지 못한 값은 미확인으로 남겨요. 값은 위 카드나 아래 "오류가 난 환경 보완"에서 고칠 수 있어요.'])]);
+        known || consulted ? rows(list) : el('p', null, ['아직 확인된 발생 환경이 없어요. 접수하는 PC 정보를 대신 쓰지 않아요.']),
+        el('p', { cls: 'pn-lead' }, [consulted ? '오류가 난 기기와 조건은 위 "AI 문의에서 확인한 내용"에서 고칠 수 있어요. 확인하지 못한 값은 미확인으로 남겨요.'
+          : '아는 내용은 아래 "고객 범위·발생 환경·연락 방법 추가"를 펼쳐 보완할 수 있어요. 몰라도 접수할 수 있어요.'])]);
       card.setAttribute('data-incident-env', '');
       return card;
     }
@@ -488,8 +490,8 @@
           noWorkaround || form.supportNeeded ? select('supportNeeded', '업무 상황 (지금 업무를 이어가기 어려운가요?)', facts.SUPPORT, '선택 안 함') :
           select('workOutcome', '안내한 방법으로 업무를 이어갔나요?', facts.OUTCOMES, '선택 안 함'),
         // 고칠 수 없는 줄(대장 기준·안내 사례)은 끝에 모은다
-        rows([noWorkaround ? ['임시조치', '승인된 임시조치 없음 · 결함 대장 기준'] : null,
-          guided ? ['AI가 안내한 사례', guided.id + ' · 같은 오류인지는 담당자가 확인해요'] : null])]));
+        rows([noWorkaround ? ['임시조치', ['승인된 임시조치 없음', src('결함 대장 기준')]] : null,
+          guided ? ['AI가 안내한 사례', [guided.id, src('같은 오류인지는 담당자가 확인해요')]] : null])]));
       card.setAttribute('data-consult-facts', '');
       return card;
     }
