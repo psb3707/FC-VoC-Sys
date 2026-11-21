@@ -107,6 +107,10 @@ answerKey:
 | 8 | FC 처리경과 확인 | FC 남다래(가상, U-013) | `index.html#role=FC&user=U-013&popup=alarm` | 알림 항목 클릭 | 내 접수내역 카드: "담당자가 확인했어요" · ① 현재 확인된 임시조치가 없어요 · ② 12월 4일에 고칠 예정이에요 |
 | 8 | 관리자 지점 FC 문의 | 관리자 박새벽(가상, U-010) | `index.html#role=MANAGER&board=known&panel=known&tab=team&item=D-2026-007` | 맨 위 "먼저 살펴볼 FC" → D-2026-007 카드의 FC 줄 펼침 | "업무를 못 함"에 남다래(가상)·조은별(가상). FC 한 줄 = 관련 신고 N건·최근 업무 상황. 전화·메신저 버튼 없음 |
 
+### 5-4. 신고자 정보·진단정보 (ADR-028)
+새 시드는 없다. 로그인 사용자는 역할 전환의 가상 사용자(FC 김하늘 U-001·해오름지점, 관리자 박새벽 U-010·해오름지점, IT 정한결 U-030). 접수 환경은 시연하는 브라우저가 알려 주는 값(예: PC · Chrome)이라 PC마다 다르게 보일 수 있다. 고객 휴대전화의 OS·브라우저는 FC가 알려 준 값만 보이고 나머지는 미확인이다. 관련 시스템 로그는 "연계 전"으로 보인다(가짜 로그 없음).
+- 시연: ① `index.html#role=FC&panel=intake&step=problem` 업무·설명 → [확인으로] → "자동으로 연결된 정보"(김하늘(가상) · FC, 해오름지점(가상), U-001, 접수 환경 자동 확인) ② 고객 동의 상담(5-3-1절) 뒤 확인 화면 "오류가 발생한 환경"(고객 휴대전화·Android·브라우저 미확인) ③ IT `ledger.html#role=IT&tab=unlinked&q=R-Q1&item=R-Q1` → ① 신고자 정보·오류 발생 정보, ③ 로그 추적 단서 "연계 전" ④ 관리자 `index.html#role=MANAGER&panel=intake&step=problem` → 대리 접수 목록은 같은 지점 FC(정다솜·조은별·남다래·김하늘)만.
+
 ## 6. 평가용 데이터
 - `eval/masking-dev.yml`(30건+), `eval/masking-holdout.yml`(10건+, **동료 작성**, 개발 중 열람 금지, 12/2 1회 실행), 과잉 마스킹용 업무 문장 15건.
 - `eval/classification-gold.yml` 20건: 사용법/결함/개선 정답 라벨.

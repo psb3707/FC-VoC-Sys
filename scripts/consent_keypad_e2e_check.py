@@ -102,7 +102,7 @@ def check(chrome):
       await click('[data-open="' + id + '"]');
       const facts = await wait('#ld-body [data-report-facts]');
       const heads = [...document.querySelectorAll('#ld-body h4')].map(h => h.textContent);
-      assert(heads.join('|') === '① FC가 확인한 정보|② 기존 결함과의 연관성|③ 담당자 처리', '신고 패널 세 덩어리 ' + heads.join('|'));
+      assert(heads.join('|') === '① 신고자와 발생 환경|② 기존 결함과의 연관성|③ 담당자 처리', '신고 패널 세 덩어리 ' + heads.join('|'));
       const text = facts.innerText;
       assert(text.includes('고객 휴대전화 · FC가 알려 줌') && text.includes('뒷자리 입력') && text.includes('키패드가 안 나타남') &&
         text.includes('Android · FC가 알려 줌') && text.includes('앱 안 브라우저') && text.includes('승인된 임시조치 없음 · 결함 대장 기준') &&
@@ -117,7 +117,7 @@ def check(chrome):
       assert(sim.llmOutcome === 'RULE' && sim.candidates[0].defectId === 'D-2026-007' && sim.candidates.every(c => c.similarity === null) &&
         !sim.candidates.some(c => c.defectId === 'D-2026-001'), '다른 업무 결함은 후보 아님');
       const handling = $('#ld-body [data-report-handling]').innerText;
-      assert(handling.includes('추가 확인이 필요한 조건') && handling.includes('기술 검토 뒤') && handling.includes('예정일은 정해지지 않아요'),
+      assert($('#ld-body [data-report-trace]').innerText.includes('더 필요한 정보') && handling.includes('기술 검토 뒤') && handling.includes('예정일은 정해지지 않아요'),
         '담당자 처리: 추가 확인·수정 계획 맥락');
       assert(!IntakeDemoStore.read().links[id], '추천만으로는 연결되지 않음');
       await selftest('고객 동의 대장 신고 패널');

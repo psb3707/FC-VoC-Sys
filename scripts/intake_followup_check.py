@@ -50,7 +50,8 @@ def check(chrome):
       await act('quick-review');
       await click('[data-quick-section=diagnostics] summary');
       const diagnostic = $('[data-quick-section=diagnostics]').innerText;
-      assert(diagnostic.includes('사무실 컴퓨터') && diagnostic.includes('고객 휴대폰') &&
+      // ADR-028: 접수 환경은 브라우저가 알려 준 값(자동 확인), 발생 환경은 시연 진단 이벤트(가상)
+      assert(diagnostic.includes('PC · 자동 확인') && diagnostic.includes('고객 휴대폰 · 시연 진단 이벤트(가상)') &&
         diagnostic.includes('SFA-SIGN-LINK'), '두 환경과 오류코드 표시');
       await act('quick-submit');
       const receipt = await wait('#quick-receipt-id');
