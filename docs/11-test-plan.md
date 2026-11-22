@@ -47,6 +47,10 @@
 | 23 | AI 문의에 "주민 뒷자리 1234"처럼 키워드+숫자 (ADR-027) | 차단, 저장소·AI 입력 없음. 브라우저 자동 검사는 실제 OS 키패드 표시를 검증하지 않음 | 개인정보 |
 | 24 | 관리자가 다른 지점 FC 대신 접수 / 없는 사용자·지점으로 접수 요청 (ADR-028) | 저장 0건, 검증 오류. 대리 접수 목록에 다른 지점 FC 없음 | 신원 검증 |
 | 25 | 접수 환경을 알 수 없는 브라우저 / 진단 수집 실패 (ADR-028) | 미확인으로 보이고 접수는 됨. User-Agent 전체·주소·토큰은 저장 0건. 접수 환경이 발생 환경으로 복사되지 않음 | 진단 출처 |
+| 26 | 검증 없는 해결 / 검증 시각이 적용보다 앞·미래 / 공개 안내에 번호·주소 (ADR-029) | "수정 완료" 0건 / 저장 거부 | 검증 기록 |
+| 27 | 남의 신고·이전 해결 회차·해결 전 확인 / 같은 답 두 번 (ADR-029) | 거부 / 1건 | 현장 확인 권한·멱등 |
+| 28 | 재배포 뒤 이전 회차의 정상 답 (ADR-029) | 새 회차는 미확인. 이전 답은 이력에만 | 해결 회차 |
+| 29 | 빈 재신고가 앞선 업무 어려움을 덮음 / 건너뛴 단계 (ADR-029) | 덮지 않음 / 표시 0건 | 집계·단계 |
 
 ## 3. 추적표 (REQ → 화면 → API → 테스트)
 | REQ | 화면 | API | 테스트 |
@@ -73,6 +77,7 @@
 | NT-02, KN-04~06 | S2 AI 문의 결과·확인·완료, S3 카드·[지점 FC 문의], S1 알림 팝업, S4 알림 미리보기 | notifications, reports/{id}/work-resumption, reports/branch | `scripts/notify_two_track_check.py`(대리 접수 → FC 접수 알림, 상태 변경 역할별 수신·중복 제거, 업무 재개 회신 권한, 관리자 묶음 개인정보), 화면 자동 검사(`tab=team`·`item=` 펼침) |
 | IN-15, IN-16, LG-10, KN-06(ADR-027), KN-07 | S2 AI 문의 빠른 도움·간편 알리기·확인 화면·완료, S4 신고 패널 세 덩어리·현장 조건 모아 보기·수정 예정, S3 카드·[지점 FC 문의] FC별 묶음 | intake/question(`stage`·`supportQuestion`), quick-intake, known-errors/{id}/me-too(참여 extra), reports/{id}/work-resumption(중복), reports/branch, reports/{id}/similar-defects | `scripts/consent_keypad_e2e_check.py`(E2E-01~05), 회귀 `scripts/sign_link_e2e_check.py`·`ui_check.py`·`notify_two_track_check.py`·`intake_followup_check.py`·`intake_second_phase_check.py` |
 | IN-17, IN-18, LG-11 | S2 확인 화면 자동 연결 정보·오류가 발생한 환경, 대리 접수 목록, S4 신고 패널 신고자 정보·로그 추적 단서 | quick-intake(신원 검증), me-too(신원 검증), getReporterContext, getIntakeDiagnostics | `scripts/reporter_diagnostics_check.py`(TC-01~07), 회귀 TC-08 |
+| NT-03, LG-12, KN-08, KN-09 | S1 알림 요약, S3 내 접수·현장 확인·[지점 FC 문의], S4 상태 바꾸기·현장 확인 현황 | notifications, defects/{id}/status, reports/{id}/field-verifications, investigations, reports/branch | `scripts/field_verification_check.py`(TC-01~07), TC-08은 기존 검사 전체 |
 | AI-01~07 | - | - | LLM 계약, 등급 비의존 |
 | PV-01~06 | S2-4,6 | intake/preview | 마스킹 전 항목 |
 | OP-01/02 | - | admin/reset | 빈 상태 실행, 네트워크 차단 |
