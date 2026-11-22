@@ -163,15 +163,17 @@
     if (h.to === 'RESOLVED' && h.verified) return '배포·검증 완료(가상)';
     return h.to === 'WORKAROUND' ? '임시 방법 안내' : stageLabel(h.to);
   }
-  /* 내 접수의 기록된 단계(ADR-029): 접수 → 담당자 확인(담당자가 연결한 신고만) → 대표 결함에 기록된 단계 */
+  /* 내 접수의 기록된 단계(ADR-029): 접수(또는 참여)·담당자 확인(담당자가 연결한 신고만)·대표 결함에 기록된 단계를 시각 순으로.
+     지금 = 대표 결함의 현재 상태(내 접수보다 앞선 기록일 수 있다). 연결 시각이 없는 시드는 접수 바로 뒤에 둔다 */
   function progress(r) {
-    var list = [{ name: '접수', at: r.createdAt }];
+    var list = [{ name: r.kind === 'ME_TOO' ? '같은 오류 참여' : '접수', at: r.createdAt }];
     if (r.defect) {
-      list.push(r.kind === 'ME_TOO' ? { name: '같은 오류 참여' } : { name: '담당자 확인', at: r.linkedAt });
+      if (r.kind !== 'ME_TOO') list.push({ name: '담당자 확인', at: r.linkedAt });
       T.recorded(r.statusHistory).forEach(function (h) {
         if (h.to === 'RECEIVED') return;
-        list.push({ name: recordName(h) + (h.at < r.createdAt ? ' (접수 전부터)' : ''), at: h.at });   // 내 접수보다 앞선 결함 기록
+        list.push({ name: recordName(h) + (h.at < r.createdAt ? ' (접수 전부터)' : ''), at: h.at, now: h.to === r.defect.status });   // 내 접수보다 앞선 결함 기록
       });
+      list.sort(function (a, b) { return (a.at || r.createdAt).localeCompare(b.at || r.createdAt); });
     }
     return T.steps(list);
   }
@@ -190,7 +192,7 @@
       return el('p', { cls: 'kn-resume-status' }, ['FC 현장 확인 · ' + (answer ? verifyLabel(answer.result) + ' (' + fmtWhen(answer.at) + ')' : '확인 전')]);
     }
     var target = d.verifyTarget || '화면';
-    var said = !answer ? '읽음과는 따로 기록돼요.'
+    var said = !answer ? '알림을 읽은 것만으로는 확인으로 남지 않아요.'
       : answer.result === 'CONFIRMED_OK' ? fmtWhen(answer.at) + ' · 정상 진행으로 남겼어요.'
       : answer.result === 'STILL_FAIL' ? fmtWhen(answer.at) + ' · 문제가 있다고 남겼어요. IT가 확인해요. 어떤 상황인지 더 남겨 주세요.'
       : fmtWhen(answer.at) + ' · 확인 전으로 남겼어요. 확인한 뒤 다시 골라 주세요.';
@@ -205,13 +207,17 @@
         ? el('button', { type: 'button', cls: 'pn-btn-2', 'data-verify-add': '' }, ['추가 상황 남기기']) : null]);
   }
   /* D 상세 이력(접힘): 상태·일정 변경과 현장 확인. 처리자·내부 사유는 없다 */
-  function historyOf(r) {
+  function historyOf(r, me) {
     if (!r.defect) return null;
-    var list = (r.statusHistory || []).map(function (h) {
+    var own = r.kind === 'ME_TOO' ? '같은 오류 참여' : me && me.id === r.reporterId ? '내 접수' : '접수';
+    // 결함의 첫 접수는 다른 사람의 신고일 수 있어 이 신고의 접수 시각으로 바꾼다
+    var list = [{ at: r.createdAt, text: own }].concat((r.statusHistory || []).filter(function (h) {
+      return h.to !== 'RECEIVED' || h.from;
+    }).map(function (h) {
       var back = h.from === WONT_FIX || (h.from && h.to !== WONT_FIX && stageIndex(h.to) < stageIndex(h.from));
       var plan = h.to === 'FIX_PLANNED' && h.plannedFixDate ? ' · 예정일 ' + fmtDate(h.plannedFixDate) : '';
       return { at: h.at, text: (back ? '다시 검토 · ' : '') + (h.to === 'RESOLVED' && !h.verified ? '해결(검증 기록 없음)' : recordName(h)) + plan };
-    }).concat((r.fieldHistory || []).map(function (v) {
+    })).concat((r.fieldHistory || []).map(function (v) {
       var past = !r.defect.resolutionEventId || v.resolutionEventId !== r.defect.resolutionEventId;
       return { at: v.at, text: (past ? '이전 수정에 대한 확인 · ' : '현장 확인 · ') + verifyLabel(v.result) };
     }));
@@ -263,7 +269,7 @@
         T.view(d, { inReport: true, resolution: r.resolution, after: resumeView(r, me) || verifyView(r, me), progress: progress(r) }),
         el('details', { cls: 'pn-details pq-details kn-detail' }, [
           el('summary', null, ['상세 이력']), el('div', { cls: 'pq-details-body' }, [
-        historyOf(r),
+        historyOf(r, me),
         rows([
           r.department ? ['담당 창구', r.department] : null,
           r.contact === 'PHONE' ? ['연락 희망', '전화' + ({ AM: ' · 오전', PM: ' · 오후', ANY: ' · 시간 무관' }[r.contactTime] || '')] : null,
@@ -288,7 +294,9 @@
         r.resolution ? el('div', { cls: 'pn-note' }, [icon('i-check'), el('div', null, [
           el('b', null, [d && d.verification ? '수정 완료 안내(가상 검증)' : '해결 안내']),
           // 바뀐 동작은 진행상황에, 검증 없는 해결의 기존 건 처리는 대응에 이미 있다
-          rows([['적용 시각', fmtWhen(r.resolution.appliedAt)], ['적용 범위', r.resolution.scope],
+          rows([['적용 시각', fmtWhen(r.resolution.appliedAt)],
+            d && d.verification ? ['검증 완료', fmtWhen(d.verification.verifiedAt) + ' (가상)'] : null,
+            ['적용 범위', r.resolution.scope],
             d && d.verification ? ['기존 건 처리', r.resolution.action] : null])])]) :
         r.fcNotice && r.fcNotice.approvedText
           ? el('div', { cls: 'pn-note' }, [icon('i-info'), el('div', null, [el('b', null, ['담당자 안내 전문']), r.fcNotice.approvedText])])
@@ -367,8 +375,8 @@
   /* 맨 위 요약: 먼저 살펴볼 FC (지금 업무를 못 함 / 추가 확인 필요 / 업무 재개). FC마다 가장 급한 상황 하나로 센다 */
   function teamSummary(groups) {
     // 셋째 값 true: 해당자가 있을 때만 보이는 줄(수정 뒤 현장 확인, ADR-029)
-    var lines = [['수정 뒤 문제', ['FIELD_FAIL'], true], ['업무를 못 함', ['BLOCKED']],
-      ['추가 확인 필요', ['FIELD_WAIT', 'NO_REPLY', 'NO_WORKAROUND']], ['업무 재개', ['RESUMED']], ['수정 뒤 정상', ['FIELD_OK'], true]];
+    var lines = [['추가 지원 필요', ['FIELD_FAIL'], true], ['업무를 못 함', ['BLOCKED']],
+      ['추가 확인 필요', ['FIELD_WAIT', 'NO_REPLY', 'NO_WORKAROUND']], ['업무 재개', ['RESUMED']], ['정상 진행 확인', ['FIELD_OK'], true]];
     var rank = { FIELD_FAIL: 0, BLOCKED: 1, FIELD_WAIT: 2, NO_REPLY: 2, NO_WORKAROUND: 2, RESUMED: 3, FIELD_OK: 4 }, worst = {}, order = [];
     groups.forEach(function (g) {
       g.fcs.forEach(function (fc) {
@@ -405,8 +413,10 @@
             fc.failing && fc.situation !== 'FIELD_FAIL' ? ' · 문제 지속 신고 ' + fc.failing + '건' : null])]),
           el('div', { cls: 'pq-details-body' }, [rows(fc.reports.map(function (r) {
             var how = r.byMe ? '내가 대신 접수' : r.kind === 'ME_TOO' ? '같은 오류 참여' : '직접 접수';
-            var parts = [fmtDate(r.createdAt) + ' ' + how, NOTICE_STATE[r.notice] || NOTICE_STATE.NONE, (verifiedFix(d) ? '현장 확인: ' : '업무 상황: ') + SITUATION[situationOf(r, d)]];
-            if (verifiedFix(d) && r.fieldVerification) parts.push(verifyLabel(r.fieldVerification.result) + ' (' + fmtWhen(r.fieldVerification.at) + ')');
+            var v = verifiedFix(d) && r.fieldVerification;
+            var parts = [fmtDate(r.createdAt) + ' ' + how, NOTICE_STATE[r.notice] || NOTICE_STATE.NONE,
+              v ? '현장 확인: ' + verifyLabel(v.result) + ' (' + fmtWhen(v.at) + ')'
+                : (verifiedFix(d) ? '현장 확인: ' : '업무 상황: ') + SITUATION[situationOf(r, d)]];
             if (r.workResumption) parts.push('업무 재개 회신 ' + RESUME[r.workResumption.result] + ' (' + fmtWhen(r.workResumption.at) + ')');
             if (r.maskedText) parts.push('"' + r.maskedText + '"');
             return [r.id, parts.join(' · ')];
@@ -417,7 +427,7 @@
         el('div', { cls: 'kn-card-head' }, [el('p', { cls: 'pn-card-title', tabindex: '-1' }, [g.title]),
           el('span', { cls: 'pn-tag' }, [T.tag(d)])]),
         el('p', { cls: 'kn-meta' }, [count]),
-        T.view(d),
+        T.view(d, { team: true }),
         el('div', { cls: 'kn-fcs' }, people)]);
     });
     return [el('h3', { tabindex: '-1' }, ['지점 FC 문의']),
@@ -533,6 +543,9 @@
     if (status) status.textContent = '다시 생긴 조건과 상황을 적어 주세요. 시제품에서는 글 내용이 이 화면에만 남고, IT에는 추가 내용이 있다는 기록만 보여요.';
   }
 
+  function detailKey(box) {
+    return box.closest('[data-id]').getAttribute('data-id') + '|' + (box.getAttribute('data-fc') || box.querySelector('summary').textContent);
+  }
   function paintPanel(st) {
     var open = st.panel === 'known';
     $('known-panel').hidden = !open;
@@ -547,9 +560,18 @@
     });
     var body = $('kn-body');
     body.setAttribute('aria-labelledby', 'kn-tab-' + st.tab);
+    var view = st.tab + '|' + (st.item || '') + '|' + cache.userId;
+    var shown = st.tab + '|' + (currentUser(st) || {}).id;   // 답한 뒤 다시 그려도 펼쳐 둔 접기는 그대로
+    var opened = body.getAttribute('data-shown') === shown
+      ? Array.prototype.map.call(body.querySelectorAll('[data-id] details[open]'), detailKey) : [];
+    body.setAttribute('data-shown', shown);
     body.innerHTML = '';
     (st.tab === 'mine' ? mineView(st) : st.tab === 'team' ? teamView(st) : knownView(st)).forEach(function (n) { if (n) body.appendChild(n); });
-    var view = st.tab + '|' + (st.item || '') + '|' + cache.userId;
+    if (opened.length) {
+      Array.prototype.forEach.call(body.querySelectorAll('[data-id] details'), function (box) {
+        if (opened.indexOf(detailKey(box)) >= 0) box.open = true;
+      });
+    }
     if (view === lastView) return;
     var hadView = lastView !== null;
     lastView = view;

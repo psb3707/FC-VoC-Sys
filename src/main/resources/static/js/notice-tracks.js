@@ -32,8 +32,8 @@
     return !d ? '접수됨, 담당자 확인 전' : kind === 'ME_TOO' ? '같은 오류 참여로 연결됐어요' : '담당자가 확인했어요';
   }
 
-  function now(d, resolution, inReport) {
-    var again = inReport ? '문제가 계속되면 이 접수에서 알려 주세요.' : '문제가 계속되면 접수로 알려 주세요.';
+  function now(d, resolution, inReport, team) {
+    var again = team ? '문제가 계속되는 FC는 아래에서 확인해 주세요.' : inReport ? '문제가 계속되면 이 접수에서 알려 주세요.' : '문제가 계속되면 접수로 알려 주세요.';
     if (!d) return { answer: '담당자가 확인하면 지금 해볼 방법을 알려 드려요.', sub: null };
     if (d.status === 'RESOLVED') {
       var v = d.verification;
@@ -91,18 +91,19 @@
     });
     return path;
   }
-  /* steps: [{name, at}]. 마지막이 지금 단계. 색이 아니라 글자로 */
+  /* steps: [{name, at, now}]. now 가 없으면 마지막이 지금 단계. 색이 아니라 글자로. 시각을 지어내지 않는다 */
   function steps(list) {
-    var last = list.length - 1;
+    var current = list.length - 1;
+    list.forEach(function (s, i) { if (s.now) current = i; });
     var ol = el('ol', 'kn-stages is-recorded', list.map(function (s, i) {
-      var li = el('li', i === last ? 'is-now' : '', [el('span', '', [s.name + (i === last ? ' · 지금' : '')]),
-        s.at ? el('span', 'kn-stage-at', [fmtWhen(s.at)]) : null]);
-      if (i === last) li.setAttribute('aria-current', 'step');
+      var li = el('li', i === current ? 'is-now' : '', [el('span', '', [s.name + (i === current ? ' · 지금' : '')]),
+        el('span', 'kn-stage-at', [s.at ? fmtWhen(s.at) : '시각 기록 없음'])]);
+      if (i === current) li.setAttribute('aria-current', 'step');
       return li;
     }));
     ol.setAttribute('aria-label', '기록된 처리 단계');
     // 상태 태그·목록이 이미 말하므로 지금 단계 문장은 화면 읽기용으로만
-    return el('div', 'kn-progress', [el('p', 'kn-now pn-sr-only', ['지금 단계 · ', el('b', '', [last < 0 ? '접수' : list[last].name])]), ol]);
+    return el('div', 'kn-progress', [el('p', 'kn-now pn-sr-only', ['지금 단계 · ', el('b', '', [current < 0 ? '접수' : list[current].name])]), ol]);
   }
   /* opts.resolution: 해결 안내, opts.after: 대응 아래에 붙일 요소(업무 재개·현장 확인), opts.progress: 진행상황 아래 기록된 단계 */
   function view(d, opts) {
@@ -110,8 +111,11 @@
     var plan = fix(d, opts.resolution);
     // 단계 목록을 붙이면 같은 단계를 글로 되풀이하지 않는다
     if (opts.progress && d && ['RESOLVED', 'WONT_FIX', 'FIX_PLANNED'].indexOf(d.status) < 0) plan.sub = '일정이 정해지면 알려 드려요.';
+    if (opts.progress && d && d.status === 'RESOLVED' && d.verification) {   // 완료와 그 시각은 단계 목록과 상세 이력에
+      plan = { answer: (opts.resolution && opts.resolution.change) || '수정한 내용이 적용됐어요.', sub: null };
+    }
     return el('div', 'nt-tracks', [
-      track('지금 가능한 대응', now(d, opts.resolution, opts.inReport), opts.after),
+      track('지금 가능한 대응', now(d, opts.resolution, opts.inReport, opts.team), opts.after),
       track('오류 수정 진행상황', plan, opts.progress)]);
   }
 

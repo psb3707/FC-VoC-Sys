@@ -711,7 +711,7 @@
         var added = (r.followups || []).filter(function (e) { return e.action === 'ADD' && e.at >= x.at; }).length;
         return el('li', { 'data-field-fail': r.id }, [
           el('p', { cls: 'ld-field-who' }, [el('span', { cls: 'ld-id' }, [r.id]),
-            ' · ' + (r.reporter ? r.reporter.name + ' · ' + r.reporter.branchName : '') + ' · 추가 확인 대상']),
+            ' · ' + (r.reporter ? r.reporter.name + ' · ' + r.reporter.branchName : '') + ' · 후속 확인 대상']),
           el('p', { cls: 'ld-meta' }, [fmtWhen(x.at) + ' 문제 지속' + (added ? ' · 추가 내용 ' + added + '건' : '')]),
           factsDetails(r) || el('p', { cls: 'ld-meta' }, ['남은 발생 조건이 없어요. FC에게 추가로 확인해 주세요.']),
           el('p', { cls: 'ld-field-who' }, ['후속 조사 기록']),
@@ -736,6 +736,10 @@
     ]);
   }
 
+  function detailKey(box) {
+    var owner = box.closest('[data-field-fail], .ld-reports > li'), id = owner && owner.querySelector('.ld-id');
+    return (owner && owner.hasAttribute('data-field-fail') ? 'field|' : '') + (id ? id.textContent : '') + '|' + box.querySelector('summary').textContent;
+  }
   function paintPanel(st) {
     if (isReportId(st.item)) {
       var rOpen = !!unlinkedReport(st.item);
@@ -749,6 +753,9 @@
     if (!open) return false;
     var d = detail, body = $('ld-body');
     $('ld-panel-title').textContent = '대표 결함 ' + d.id;
+    // 조사 기록을 남겨 다시 그려도 펼쳐 둔 접기는 그대로
+    var opened = body.getAttribute('data-shown') === d.id ? Array.prototype.map.call(body.querySelectorAll('details[open]'), detailKey) : [];
+    body.setAttribute('data-shown', d.id);
     body.innerHTML = '';
     var reports = (d.reports || []).map(function (r) {
       var who = (r.reporter ? r.reporter.name + ' · ' + r.reporter.branchName : '') + ' · ' + fmtDate(r.createdAt) +
@@ -788,6 +795,11 @@
       el('h4', null, ['안내문']),
       noticeCard(d), deliveryCard(d)
     ].forEach(function (n) { if (n) body.appendChild(n); });
+    if (opened.length) {
+      Array.prototype.forEach.call(body.querySelectorAll('details'), function (box) {
+        if (opened.indexOf(detailKey(box)) >= 0) box.open = true;
+      });
+    }
     var foot = $('ld-foot');
     foot.innerHTML = '';
     foot.appendChild(btn('pn-btn-2', [icon('i-link'), '신고 연결'], 'to-link'));
@@ -816,28 +828,33 @@
     steps.push(['preview', '알림 미리보기']);
     return steps;
   }
+  /* 화면 순서로 첫 번째로 빠지거나 틀린 칸과 안내. 다 찼으면 null */
   function missing(st) {
     var from = detail.status, to = st.to;
-    if (!to) return '다음 상태를 골라 주세요';
+    function gap(field, text) { return { field: field, text: text }; }
+    if (!to) return gap('', '다음 상태를 골라 주세요');
     if (to === 'RESOLVED') {
-      if (!draft.verify) return '검증 여부를 골라 주세요.';
-      if (draft.verify === 'VERIFIED') {
-        if (!draft.verifiedAt || !draft.guide.trim()) return '검증 완료 시각과 정상 이용 안내를 적어 주세요.';
-        if (draft.applied && draft.verifiedAt < draft.applied) return '검증 완료 시각은 적용 시각보다 뒤여야 해요.';
-        if (Date.parse(draft.verifiedAt + ':00+09:00') > Date.now()) return '검증 완료 시각은 지금보다 앞이어야 해요.';
-        if ([draft.refId, draft.version].some(function (v) { return v && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,29}$/.test(v); })) {
-          return '참조 ID와 버전은 영문·숫자·점·밑줄·하이픈으로 30자까지 적어 주세요.';
-        }
+      var ok = draft.verify === 'VERIFIED', at = '#ld-resolution-';
+      if (!draft.verify) return gap(at + 'verify', '검증 여부를 골라 주세요.');
+      if (!draft.applied) return gap(at + 'applied', '적용 시각을 적어 주세요.');
+      if (ok) {
+        if (!draft.verifiedAt) return gap(at + 'verifiedAt', '검증 완료 시각을 적어 주세요.');
+        if (draft.verifiedAt < draft.applied) return gap(at + 'verifiedAt', '검증 완료 시각은 적용 시각보다 뒤여야 해요.');
+        if (Date.parse(draft.verifiedAt + ':00+09:00') > Date.now()) return gap(at + 'verifiedAt', '검증 완료 시각은 지금보다 앞이어야 해요.');
+        if (!draft.guide.trim()) return gap(at + 'guide', '정상 이용 안내를 적어 주세요.');
       }
-      if (!draft.applied || !draft.scope || !draft.change.trim() || !draft.action || !draft.approved) {
-        return '적용 시각, 적용 범위, 바뀐 동작, 기존 건 처리 방법을 적고 공개 안내를 확인해 주세요.';
-      }
+      if (!draft.scope) return gap(at + 'scope', '적용 범위를 골라 주세요.');
+      if (!draft.change.trim()) return gap(at + 'change', '바뀐 동작을 적어 주세요.');
+      if (!draft.action) return gap(at + 'action', '기존 건 처리 방법을 골라 주세요.');
+      var bad = ok && ['refId', 'version'].filter(function (key) { return draft[key] && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,29}$/.test(draft[key]); })[0];
+      if (bad) return gap(at + bad, '참조 ID와 버전은 영문·숫자·점·밑줄·하이픈으로 30자까지 적어 주세요.');
+      if (!draft.approved) return gap('[data-act="approve-resolution"]', '공개 안내를 확인해 주세요.');
     }
-    if (to === 'FIX_PLANNED' && !/^\d{4}-\d{2}-\d{2}$/.test(draft.date)) return '고칠 예정일을 골라 주세요';
-    if (to === WONT_FIX && !draft.reason) return '고치지 않는 이유를 골라 주세요';
-    if (to === WONT_FIX && draft.reason === 'ETC' && !draft.memo.trim()) return '기타 이유를 적어 주세요';
-    if (isBack(from, to) && !Object.prototype.hasOwnProperty.call(resolutionLabels.backReason, draft.back)) return '되돌리는 이유를 골라 주세요';
-    return '';
+    if (isBack(from, to) && !Object.prototype.hasOwnProperty.call(resolutionLabels.backReason, draft.back)) return gap('#ld-back', '되돌리는 이유를 골라 주세요');
+    if (to === 'FIX_PLANNED' && !/^\d{4}-\d{2}-\d{2}$/.test(draft.date)) return gap('#ld-date', '고칠 예정일을 골라 주세요');
+    if (to === WONT_FIX && !draft.reason) return gap('[data-reason]', '고치지 않는 이유를 골라 주세요');
+    if (to === WONT_FIX && draft.reason === 'ETC' && !draft.memo.trim()) return gap('#ld-memo', '기타 이유를 적어 주세요');
+    return null;
   }
   function reasonText() {
     return draft.reason === 'ETC' ? draft.memo.trim() : REASON_TEXT[draft.reason] || '';
@@ -864,19 +881,18 @@
         '임시조치·수정 예정·해결·수정하지 않음만 알리고, 문제 확인·원인 파악과 되돌리기는 기록만 해요.'])])];
   }
   function detailView(st) {
-    var from = detail.status, to = st.to, err = st.err === '1' ? missing(st) : '';
+    var from = detail.status, to = st.to, gap = st.err === '1' ? missing(st) : null, err = gap ? gap.text : '';
     var out = [el('h3', { tabindex: '-1' }, [stageLabel(from) + ' → ' + stageLabel(to)])];
     function dateField() {
       return el('div', { cls: 'pn-field' }, [el('label', { 'for': 'ld-date' }, ['고칠 예정일']),
-        el('input', { id: 'ld-date', type: 'date', cls: 'pn-input', 'data-draft': 'date', value: draft.date, min: '2026-11-04',
-          'aria-invalid': err ? 'true' : null, 'aria-describedby': err ? 'ld-err' : null })]);
+        el('input', { id: 'ld-date', type: 'date', cls: 'pn-input', 'data-draft': 'date', value: draft.date, min: '2026-11-04' })]);
     }
     if (to === 'RESOLVED') {
       out = out.concat(resolutionFields());
-      if (isBack(from, to)) out.push(backField(err));
+      if (isBack(from, to)) out.push(backField());
     } else if (isBack(from, to)) {
       out.push(el('p', { cls: 'pn-lead' }, ['앞 단계로 되돌려요. 되돌리기는 기록만 하고 알리지 않아요. 재배포는 되돌린 뒤 다시 해결해요.']));
-      out.push(backField(err));
+      out.push(backField());
       if (to === 'FIX_PLANNED') out.push(dateField());
       out.push(noteField('되돌림 설명 (선택)'));
     } else if (to === 'FIX_PLANNED') {
@@ -889,18 +905,30 @@
       })));
       if (draft.reason === 'ETC') {
         out.push(el('div', { cls: 'pn-field' }, [el('label', { 'for': 'ld-memo' }, ['기타 이유']),
-          el('textarea', { id: 'ld-memo', 'data-draft': 'memo', 'aria-invalid': err ? 'true' : null, 'aria-describedby': err ? 'ld-err' : null }, [draft.memo])]));
+          el('textarea', { id: 'ld-memo', 'data-draft': 'memo' }, [draft.memo])]));
       }
     }
     out.push(el('p', { cls: 'pn-err', id: 'ld-err', role: 'alert', hidden: !err }, [err]));
     return out;
   }
-  function backField(err) {
+  function backField() {
     return el('div', { cls: 'pn-field' }, [el('label', { 'for': 'ld-back' }, ['되돌리는 이유']),
-      el('select', { id: 'ld-back', 'data-draft': 'back', 'aria-invalid': err ? 'true' : null, 'aria-describedby': err ? 'ld-err' : null },
+      el('select', { id: 'ld-back', 'data-draft': 'back' },
         [el('option', { value: '' }, ['골라 주세요'])].concat(Object.keys(resolutionLabels.backReason).map(function (code) {
           return el('option', { value: code, selected: draft.back === code }, [resolutionLabels.backReason[code]]);
         })))]);
+  }
+  /* 막힌 칸 하나만 표시하고 안내를 그 칸 바로 아래로 옮긴다. [다음]·[확정]을 눌렀을 때만 초점 */
+  function markMissing(st, focus) {
+    var gap = st.err === '1' && detail ? missing(st) : null;
+    var field = gap && gap.field && $('ld-dlg-body').querySelector(gap.field), err = $('ld-err');
+    if (!field || !err) return;
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(field.tagName)) field.setAttribute('aria-invalid', 'true');
+    field.setAttribute('aria-describedby', 'ld-err');
+    var fold = field.closest('details');
+    if (fold) fold.open = true;
+    (field.closest('.pn-field, ul') || field).insertAdjacentElement('afterend', err);
+    if (focus) { field.focus(); err.scrollIntoView({ block: 'nearest' }); }
   }
   function noteField(label) {
     return el('div', { cls: 'pn-field' }, [el('label', { 'for': 'ld-note' }, [label]),
@@ -967,10 +995,11 @@
             : '문제 확인·원인 파악은 "확인 중" 알림이 반복되지 않도록 기록만 남겨요.'])])];
     }
     // ADR-025: 신고자(FC)와 대신 접수한 관리자에게 역할별 문구. 한 사람 1건
+    if (p.resolution) Array.prototype.slice.call(resolutionRows(p.resolution).children).forEach(function (row) { change.appendChild(row); });   // 한 목록(줄 사이 1px)
     var submitters = p.recipients.filter(function (r) { return r.audience === 'SUBMITTER'; });
     return [el('h3', { tabindex: '-1' }, ['묶인 신고자 ' + (p.reporterCount != null ? p.reporterCount : p.recipientCount) + '명' +
         (submitters.length ? ' · 대신 접수한 관리자 ' + submitters.length + '명' : '') + '에게 알림']),
-      el('div', { cls: 'pn-card' }, [change, p.resolution ? resolutionRows(p.resolution) : null]),
+      el('div', { cls: 'pn-card' }, [change]),
       p.summary ? el('div', { cls: 'pn-card', 'data-notice-preview': '' }, [el('p', { cls: 'pn-card-title' }, ['FC 알림에 보이는 요약']),
         rows([['오류명', p.summary.title], ['상태', p.summary.status], ['핵심 안내', p.summary.headline], ['보조 안내', p.summary.line],
           ['누르면', p.summary.action]])]) : null,
@@ -1109,11 +1138,12 @@
       $('ld-dlg-track').appendChild(el('li', { cls: i < at ? 'is-done' : i === at ? 'is-now' : null }));
     });
     view.forEach(function (n) { if (n) body.appendChild(n); });
+    if (kind === 'status') markMissing(st, false);
     return true;
   }
 
   /* ---- 그리기 ---- */
-  var lastFocus = '';
+  var lastFocus = '', blocked = false;   // blocked: 막힌 [다음]·[확정] 뒤 한 번만 그 칸으로
   function render() {
     var st = read();
     paintTop(st);
@@ -1158,6 +1188,7 @@
         if (dlg) $('ld-dlg-body').scrollTop = 0;
         else if (panel && !st.dialog) $('ld-body').scrollTop = 0;
       }
+      if (dlg && blocked && st.err === '1') { markMissing(st, true); blocked = false; }
     });
   }
 
@@ -1195,7 +1226,7 @@
       patch.dstep = needsDetail(detail.status, st.to) ? 'detail' : 'preview';
     } else if (step === 'detail') {
       st.date = draft.date; st.reason = draft.reason;
-      if (missing(st)) { patch.err = '1'; go(patch); return; }
+      if (missing(st)) { patch.err = '1'; blocked = true; go(patch); return; }
       patch.dstep = 'preview';
     }
     go(patch);
@@ -1270,7 +1301,7 @@
       });
     }
     else if (act === 'confirm') {
-      if (missing(st)) { go({ dstep: 'detail', err: '1' }); return; }
+      if (missing(st)) { blocked = true; go({ dstep: 'detail', err: '1' }); return; }
       b.disabled = true;
       A.postStatus(detail.id, statusRequest(st)).then(function (result) {
         if (result.error) { statusError = result.error; return render(); }

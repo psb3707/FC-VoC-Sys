@@ -25,6 +25,7 @@
   border-bottom: 1px solid var(--sfa-popup-border); background: #fff; text-align: left; cursor: pointer;
   font-size: var(--new-text); color: var(--new-ink); line-height: 1.45; word-break: keep-all; }
 .alarm-item:hover { background: #f5f8fb; }
+.alarm-item:focus-visible { outline: 3px solid var(--pn-accent); outline-offset: -3px; }
 .alarm-item .when { display: block; margin-top: 4px; font-size: var(--new-text); color: #525866; }
 .alarm-empty { margin: 0; padding: 20px 16px; font-size: var(--new-text); color: #525866; }
 

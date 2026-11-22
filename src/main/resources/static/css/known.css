@@ -77,6 +77,7 @@
 .kn-fcs > .pn-details { margin: 0; box-shadow: none; border: 1px solid var(--pn-line); }
 .kn-fcs > .pn-details > summary { padding-block: 12px; }
 .kn-fc-line { flex: 1; min-width: 0; color: var(--pn-sub); font-weight: 500; }
+.kn-fc-line .pn-tag { margin-left: 0; }
 .kn-fc-line b { color: var(--pn-ink); font-weight: 700; }
 .kn-card .kn-fcs .kn-team { margin: 0; padding: 0; border-top: 0; }
 @media (max-width: 480px) {
@@ -92,3 +93,10 @@
 .nt-track > .kn-progress { margin: 16px 0 0; }
 .kn-detail .kn-history + .pn-rows:not(:empty) { margin-top: 16px; border-top: 1px solid var(--pn-line-soft); padding-top: 8px; }
 .kn-detail .pq-details-body > .pn-note { margin-top: 16px; }
+/* 좁은 화면: 상세 이력은 다른 S3 정의 목록처럼 위아래, 현장 확인 버튼은 같은 폭 세로 */
+@media (max-width: 480px) {
+  .kn-detail .pn-rows div { display: block; }
+  .kn-detail .pn-rows dd { margin-top: 2px; }
+  .kn-detail .pn-note > div { min-width: 0; }
+  .kn-verify .pn-chips li, .kn-verify .pn-chip { width: 100%; }
+}

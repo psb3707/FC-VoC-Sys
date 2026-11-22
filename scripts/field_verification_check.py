@@ -268,8 +268,8 @@ def check_main(chrome):
       assert(card.innerText.includes('신고자 5명 · 신고 6건') && dd(card, '정상 확인').startsWith('1명') && dd(card, '문제 지속').startsWith('1명') &&
         dd(card, '미확인').startsWith('3명'), 'IT 현장 확인 현황 ' + card.innerText);
       const fail = card.querySelector('[data-field-fail=""" + r3 + """]');
-      assert(fail && fail.innerText.includes('추가 확인 대상') && fail.innerText.includes('추가 내용 1건') && fail.textContent.includes('iOS'), '문제 지속 FC·발생 조건');
-      assert($('.ld-field-flag').textContent === '현장 문제 1명', '목록에서 추가 확인 대상');
+      assert(fail && fail.innerText.includes('후속 확인 대상') && fail.innerText.includes('추가 내용 1건') && fail.textContent.includes('iOS'), '문제 지속 FC·발생 조건');
+      assert($('.ld-field-flag').textContent === '현장 문제 1명', '목록에서 후속 확인 대상');
       await click('[data-act=investigate][data-code=STARTED]');
       await wait('[data-act=investigate][data-code=STARTED][aria-pressed=true]');
       const x = IntakeDemoStore.read().investigations;
@@ -299,7 +299,7 @@ def check_main(chrome):
       assert(row('U-013').includes('정상 진행 확인') && row('U-012').includes('추가 지원 필요') && row('U-012').includes('관련 신고 2건') &&
         row('U-011').includes('확인 필요'), '관리자 FC별 현장 확인');
       assert(card.querySelector('[data-fc]').getAttribute('data-fc') === 'U-012', '지원 필요가 맨 위');
-      assert(dd(sum, '수정 뒤 문제').includes('조은별(가상)') && !dd(sum, '수정 뒤 문제').includes('정다솜') && !dd(sum, '업무를 못 함').includes('정다솜'),
+      assert(dd(sum, '추가 지원 필요').includes('조은별(가상)') && !dd(sum, '추가 지원 필요').includes('정다솜') && !dd(sum, '업무를 못 함').includes('정다솜'),
         '지원 필요 요약, 미확인은 중단 아님');
       card.querySelector('[data-fc=U-012]').open = true;
       assert(card.querySelectorAll('[data-fc=U-012] dt').length === 2, '신고 건별 기록');
@@ -359,6 +359,7 @@ def check_main(chrome):
       await fill('#ld-date', '2026-12-11');
       await click('[data-act=next][data-step=detail]');
       await wait(() => $('#ld-err') && $('#ld-err').textContent.includes('되돌리는 이유'));
+      assert($('#ld-back[aria-invalid=true]') && !$('#ld-date[aria-invalid=true]'), '빠진 칸만 표시(날짜는 채움)');
       await choose('#ld-back', 'REDEPLOY');
       await selftest('되돌림 입력');
       await click('[data-act=next][data-step=detail]');
@@ -441,7 +442,7 @@ def check_variants(chrome):
     open_real(chrome, "index.html", "?selftest=1#role=MANAGER&popup=alarm")
     run(chrome, """
       const item = await wait('.alarm-item[data-kn-defect="D-2026-007"]');
-      assert(item.innerText.includes('대신 접수 2건') && item.innerText.includes('지점 FC 현황 확인'), '관리자 요약');
+      assert(item.innerText.includes('대신 접수 2건') && item.innerText.includes('FC 현황 확인'), '관리자 요약');
       await selftest('관리자 알림');
       item.click();
       const card = await wait(() => location.hash.includes('tab=team') && $('#kn-body .is-target'));
@@ -455,11 +456,117 @@ def check_variants(chrome):
     """)
 
 
+def check_screen_rules(chrome):
+    """디자인 리뷰에서 나온 규칙: 단계·이력 시각, 반복 없음, 빠진 칸 안내, 좁은 폭, 접기 유지. 어긴 것을 한 번에 모은다."""
+    bad = []
+
+    def expect(name, body):
+        if not run(chrome, body):
+            bad.append(name)
+
+    rid = consult(chrome, "U-013", "YES", ["ANDROID", "IN_APP", "YES"])
+    link(chrome, rid)
+    open_real(chrome, "index.html", "#role=FC")
+    run(chrome, """
+      await ApiClient.postStatus(D7, { from: 'RECEIVED', to: 'FIX_PLANNED', eventId: 's1', actorId: 'U-030', plannedFixDate: '2026-12-04' });
+    """)
+
+    open_real(chrome, "ledger.html", "#role=IT&item=D-2026-007", 1280, 800)
+    run(chrome, """
+      await act('status');
+      await click('[data-to=RESOLVED]');
+      await click('[data-act=next][data-step=pick]');
+      await wait('#ld-resolution-verify');
+      await click('[data-act=next][data-step=detail]');
+      await wait(() => !$('#ld-err').hidden);
+      await new Promise(r => setTimeout(r, 300));
+    """)
+    expect("빠진 칸으로 초점", "return document.activeElement.id === 'ld-resolution-verify';")
+    expect("빠진 칸만 표시", """
+      const marked = [...document.querySelectorAll('#ld-dlg-body [aria-invalid=true]')];
+      return marked.length === 1 && marked[0].id === 'ld-resolution-verify' && marked[0].getAttribute('aria-describedby') === 'ld-err' &&
+        getComputedStyle(marked[0]).borderTopWidth === '2px';""")
+    expect("막힘 안내가 화면 안", """
+      const e = $('#ld-err').getBoundingClientRect(), b = $('#ld-dlg-body').getBoundingClientRect();
+      return e.top >= b.top && e.bottom <= b.bottom;""")
+
+    open_real(chrome, "ledger.html", "#role=IT&item=D-2026-007")
+    run(chrome, """
+      await act('status');
+      await click('[data-to=CAUSE_FOUND]');
+      await click('[data-act=next][data-step=pick]');
+      await wait('#ld-back');
+      await click('#ld-dlg-foot [data-act=prev]');
+      await click('[data-to=RECEIVED]');
+      await click('[data-act=next][data-step=pick]');
+      await wait('#ld-back');
+      await click('[data-act=next][data-step=detail]');
+      await wait('#ld-back[aria-invalid=true]');
+    """)
+    open_real(chrome, "index.html", "#role=FC")
+    run(chrome, """
+      const r = await ApiClient.postStatus(D7, { from: 'FIX_PLANNED', to: 'RESOLVED', eventId: 's2', actorId: 'U-030', resolution: {
+        appliedAt: kst(3) + ':00+09:00', scope: 'LINKED', change: '고객 동의 화면에서 숫자를 입력할 수 있어요.', action: 'RETRY', approved: true,
+        verification: { result: 'VERIFIED', verifiedAt: kst(1) + ':00+09:00', usageGuide: '기존 상품소개동의 절차대로 진행해 주세요.' } } });
+      assert(!r.error, '검증 완료 준비');
+    """)
+
+    open_real(chrome, "index.html", f"#role=FC&user=U-013&panel=known&tab=mine&item={rid}", 390, 844)
+    run(chrome, """
+      await click('#kn-body .is-target .kn-detail > summary');
+      await wait('#kn-body .is-target .kn-detail[open]');
+    """)
+    expect("상세 이력이 390px 안", """
+      return [...document.querySelectorAll('#kn-body .is-target .kn-detail .pn-note, #kn-body .is-target .kn-history, #kn-body .is-target .kn-detail .pn-rows')]
+        .every(x => x.scrollWidth <= x.clientWidth + 1);""")
+    expect("현장 확인 버튼은 좁은 폭에서 같은 폭", """
+      return new Set([...document.querySelectorAll('#kn-body .is-target [data-verify]')].map(x => Math.round(x.getBoundingClientRect().width))).size === 1;""")
+    expect("상세 이력 첫 줄은 내 접수", """
+      const own = (await ApiClient.getMyReports('U-013')).find(r => r.id === '""" + rid + """').createdAt;
+      const first = $('#kn-body .is-target .kn-history > div');
+      return first.querySelector('dt').textContent.includes(Number(own.slice(8, 10)) + '일 ' + own.slice(11, 16)) && first.querySelector('dd').textContent === '내 접수';""")
+    expect("진행상황에 완료를 한 번만", """
+      const track = $('#kn-body .is-target').querySelectorAll('.nt-track')[1].cloneNode(true);
+      track.querySelectorAll('.pn-sr-only').forEach(x => x.remove());   // 화면 읽기용 글은 보이지 않는다
+      return (track.textContent.match(/검증 완료/g) || []).length === 1;""")
+    run(chrome, """
+      await click('#kn-body .is-target [data-verify=NOT_TESTED]');
+      await wait('#kn-body .is-target [data-verify=NOT_TESTED][aria-pressed=true]');
+    """)
+    expect("답한 뒤에도 펼친 상세 이력 유지", "return $('#kn-body .is-target .kn-detail').open;")
+
+    open_real(chrome, "index.html", "#role=MANAGER&board=known&panel=known&tab=team&item=D-2026-007")
+    run(chrome, "await wait('#kn-body .kn-card.is-target');")
+    expect("관리자에게 접수하라고 하지 않음", "return !$('#kn-body .kn-card.is-target').innerText.includes('접수로 알려');")
+
+    open_real(chrome, "index.html", "#role=FC")
+    owners = run(chrome, "return (await ApiClient.getUsers()).filter(u => u.role === 'FC').map(u => u.id);")
+    for user in owners:
+        open_real(chrome, "index.html", f"#role=FC&user={user}&panel=known&tab=mine")
+        wrong = run(chrome, """
+          await wait('#kn-body h3');
+          const key = (t) => { const m = t.match(/(\\d+)월 (\\d+)일 (\\d+):(\\d+)/); return m ? m[1] * 1e6 + m[2] * 1e4 + m[3] * 100 + +m[4] : 0; };
+          const mine = await ApiClient.getMyReports('""" + user + """'), out = [];
+          for (const card of document.querySelectorAll('#kn-body .kn-card[data-id]')) {
+            const times = [...card.querySelectorAll('.kn-stage-at')].map(x => key(x.textContent)).filter(Boolean);
+            if (times.some((t, i) => i && t < times[i - 1])) out.push('시각 순서 ' + card.dataset.id);
+            const li = [...card.querySelectorAll('.kn-stages li')];
+            if (li.some(x => !x.querySelector('.kn-stage-at'))) out.push('시각 칸 빔 ' + card.dataset.id);
+            if (li.filter(x => x.classList.contains('is-now')).length !== 1) out.push('지금 단계 하나 ' + card.dataset.id);
+            const r = mine.find(x => x.id === card.dataset.id), now = card.querySelector('.kn-stages li.is-now');
+            if (r && r.defect && r.defect.status === 'WORKAROUND' && now && !now.textContent.includes('임시 방법 안내')) out.push('지금 = 현재 상태 ' + r.id);
+          }
+          return out;
+        """)
+        bad += wrong
+    assert not bad, "화면 규칙 어김: " + ", ".join(bad)
+
+
 if __name__ == "__main__":
     browser = find_browser()
     if not browser:
         raise SystemExit("Chrome/Edge를 찾지 못했습니다.")
-    for part in (check_main, check_variants):
+    for part in (check_main, check_variants, check_screen_rules):
         with tempfile.TemporaryDirectory(prefix="field-verification-") as profile:
             chrome = Chrome(browser, profile)
             try:

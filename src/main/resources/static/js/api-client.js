@@ -925,7 +925,7 @@
       out.headline = (to === 'FIX_PLANNED' && dayLabel(plannedFixDate) ? dayLabel(plannedFixDate) + ' 수정 예정 · ' : '') + '대신 접수 ' + count + '건';
       out.line = to === 'RESOLVED' && verification ? 'FC의 정상 이용 확인 결과를 살펴봐 주세요'
         : to === 'WORKAROUND' ? 'FC가 업무를 이어갈 수 있는지 확인해 주세요' : 'FC에게도 알렸어요';
-      out.action = '지점 FC 현황 확인';
+      out.action = 'FC 현황 확인';
     }
     return out;
   }

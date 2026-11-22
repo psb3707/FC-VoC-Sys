@@ -224,6 +224,11 @@ body.ld-page:has(.pn:not([hidden])) { overflow-y: hidden; }
 .ld-panel .ld-field-who { margin: 0 0 8px; font-weight: 700; color: var(--pn-ink); }
 [data-field-verification] > .pn-rows { margin-top: 8px; }
 [data-field-verification] > .pn-rows + .ld-meta { margin-top: 16px; }
-.ld-table .ld-field-flag { margin-top: 8px; white-space: nowrap; }
-.ld-evidence { margin-top: 16px; box-shadow: none; border: 1px solid var(--pn-line); }
-.ld-table .ld-field-flag { display: block; width: fit-content; }
+.ld-table .ld-field-flag { display: block; width: fit-content; margin-top: 8px; white-space: nowrap; }
+.ld-evidence { margin-top: 16px; }
+@media (max-width: 480px) {
+  [data-field-verification] .pn-rows div { display: block; }
+  [data-field-verification] .pn-rows dd { margin-top: 2px; }
+}
+/* ADR-029 입력 막힘 안내: 칸 바로 아래, 초점 테두리와 겹치지 않게 8px */
+#ld-dlg-body #ld-err { margin-top: 8px; }
