@@ -32,16 +32,17 @@
     return !d ? '접수됨, 담당자 확인 전' : kind === 'ME_TOO' ? '같은 오류 참여로 연결됐어요' : '담당자가 확인했어요';
   }
 
-  function now(d, resolution) {
+  function now(d, resolution, inReport) {
+    var again = inReport ? '문제가 계속되면 이 접수에서 알려 주세요.' : '문제가 계속되면 접수로 알려 주세요.';
     if (!d) return { answer: '담당자가 확인하면 지금 해볼 방법을 알려 드려요.', sub: null };
     if (d.status === 'RESOLVED') {
       var v = d.verification;
       if (v) {
         var ended = v.workaroundEnded ? '이전 임시 방법은 이제 쓰지 않아도 돼요. '
           : v.workaround ? '임시 방법(「' + v.workaround + '」) 종료 여부는 확인 전이에요. ' : '';
-        return { answer: v.usageGuide, sub: ended + '문제가 계속되면 이 접수에서 알려 주세요.' };
+        return { answer: v.usageGuide, sub: ended + again };
       }
-      return { answer: resolution ? resolution.action : '해결로 처리됐어요.', sub: '문제가 계속되면 이 접수에서 알려 주세요.' };
+      return { answer: resolution ? resolution.action : '해결로 처리됐어요.', sub: again };
     }
     if (d.workaround) {
       return { answer: d.workaround, sub: '이 방법으로 업무를 이어갈 수 있어요. 오류 자체가 고쳐진 것은 아니에요.' };
@@ -110,7 +111,7 @@
     // 단계 목록을 붙이면 같은 단계를 글로 되풀이하지 않는다
     if (opts.progress && d && ['RESOLVED', 'WONT_FIX', 'FIX_PLANNED'].indexOf(d.status) < 0) plan.sub = '일정이 정해지면 알려 드려요.';
     return el('div', 'nt-tracks', [
-      track('지금 가능한 대응', now(d, opts.resolution), opts.after),
+      track('지금 가능한 대응', now(d, opts.resolution, opts.inReport), opts.after),
       track('오류 수정 진행상황', plan, opts.progress)]);
   }
 

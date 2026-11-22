@@ -229,7 +229,7 @@
 ```
 
 ### 수정 검증과 현장 확인 (ADR-029, REQ-NT-03·LG-12·KN-08·09)
-- `postStatus`의 `resolution.verification`(선택): `{result:"VERIFIED", verifiedAt, usageGuide(40자), workaroundEnded, refId?, environment?, version?}`. 서버가 `simulated:true`(프론트), 형식, 시각 순서·미래 금지, 개인정보·주소 금지, 담당자 역할을 확인한다. `environment`는 `SIM_TEST|SIM_PROD_LIKE`, `refId`·`version`은 영문·숫자·`._-` 30자.
+- `postStatus`의 `resolution.verification`(선택): `{result:"VERIFIED", verifiedAt, usageGuide(30자), workaroundEnded, refId?, environment?, version?}`. 서버가 `simulated:true`(프론트), 형식, 시각 순서·미래 금지, 개인정보·주소 금지, 담당자 역할을 확인한다. `environment`는 `SIM_TEST|SIM_PROD_LIKE`, `refId`·`version`은 영문·숫자·`._-` 30자.
 - 되돌림은 `backReason`(`FIELD_RECHECK|REDEPLOY|MISRECORDED|ETC`) 필수. `note`는 프론트 단계에서 페이지 메모리에만 둔다.
 - 공개 결함 키에 `shortTitle`, `verifyTarget`, `resolutionEventId`, `verification{result,verifiedAt,usageGuide,workaroundEnded,workaround?,simulated}`를 더한다. 참조 ID·환경·버전·메모는 FC·관리자에게 내리지 않는다.
 - `postFieldVerification(reportId, userId, resolutionEventId, result, requestId)` → 기록 또는 `null`(권한·회차·상태 불일치). 같은 요청·같은 마지막 결과는 `duplicate:true`. 운영에서는 `userId`를 세션으로 정한다.

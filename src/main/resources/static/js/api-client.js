@@ -841,7 +841,7 @@
   var BACK_REASON = { FIELD_RECHECK: '현장 문제 재검토', REDEPLOY: '재배포 준비', MISRECORDED: '잘못 기록', ETC: '그 밖의 이유' };
   var INVESTIGATION = { STARTED: '조사 시작', NEED_INFO: '추가 정보 필요', NOT_REPRODUCED: '재현 안 됨', RESIDUAL_SUSPECTED: '잔존 가능성' };
   var FIELD_RESULT = ['CONFIRMED_OK', 'STILL_FAIL', 'NOT_TESTED'];
-  var GUIDE_MAX = 40;
+  var GUIDE_MAX = 30;   // 알림 두 줄(320px 팝업)에 드는 길이
   function hasAddress(text) { return /:\/\/|www\./i.test(text); }
   function safeReference(value) {
     if (!value) return '';

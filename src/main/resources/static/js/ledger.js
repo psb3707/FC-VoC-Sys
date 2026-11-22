@@ -928,7 +928,7 @@
       select('검증 여부', 'verify', { VERIFIED: '수정·배포 검증 완료 (가상)', NONE: '검증 근거 없음 · 해결로만 기록' }),
       text('적용 시각 (한국 시간)', 'applied', { type: 'datetime-local' }),
       ok ? text('검증 완료 시각 (한국 시간 · 가상)', 'verifiedAt', { type: 'datetime-local' }) : null,
-      ok ? text('정상 이용 안내 (FC에게 공개 · 40자)', 'guide', { maxlength: '40' }) : null,
+      ok ? text('정상 이용 안내 (FC에게 공개 · 30자)', 'guide', { maxlength: '30' }) : null,
       ok && detail.workaround ? select('기존 임시 방법', 'ended', { NO: '종료 여부 확인 전', YES: '사용 종료를 확인했어요' }) : null,
       select('적용 범위', 'scope', resolutionLabels.scope),
       input('바뀐 동작', 'change', el('textarea', { id: 'ld-resolution-change', 'data-draft': 'change', maxlength: '300' }, [draft.change])),

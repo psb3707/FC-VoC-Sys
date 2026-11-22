@@ -170,7 +170,7 @@
       list.push(r.kind === 'ME_TOO' ? { name: '같은 오류 참여' } : { name: '담당자 확인', at: r.linkedAt });
       T.recorded(r.statusHistory).forEach(function (h) {
         if (h.to === 'RECEIVED') return;
-        list.push({ name: recordName(h), at: h.at });
+        list.push({ name: recordName(h) + (h.at < r.createdAt ? ' (접수 전부터)' : ''), at: h.at });   // 내 접수보다 앞선 결함 기록
       });
     }
     return T.steps(list);
@@ -260,7 +260,7 @@
         el('p', { cls: 'kn-meta' }, [metaOf(r, me)]),
         el('p', { cls: 'kn-handled' }, ['내 문의 처리 · ', el('b', null, [T.handled(d, r.kind)])]),
         // ADR-029: A 상태(위) → B 대응·확인 → C 기록된 단계 → D 상세 이력(접힘)
-        T.view(d, { resolution: r.resolution, after: resumeView(r, me) || verifyView(r, me), progress: progress(r) }),
+        T.view(d, { inReport: true, resolution: r.resolution, after: resumeView(r, me) || verifyView(r, me), progress: progress(r) }),
         el('details', { cls: 'pn-details pq-details kn-detail' }, [
           el('summary', null, ['상세 이력']), el('div', { cls: 'pq-details-body' }, [
         historyOf(r),

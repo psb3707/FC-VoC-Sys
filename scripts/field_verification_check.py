@@ -186,7 +186,7 @@ def check_main(chrome):
       const good = { result: 'VERIFIED', verifiedAt: kst(1) + ':00+09:00', usageGuide: '기존 절차대로 진행해 주세요.' };
       const bad = [['미래 검증 시각', { verifiedAt: kst(-120) + ':00+09:00' }, 'U-030'],
         ['검증 시각이 적용보다 앞', { verifiedAt: kst(9) + ':00+09:00' }, 'U-030'], ['번호', { usageGuide: '010-1234-5678로 연락' }, 'U-030'],
-        ['주소', { usageGuide: 'www.example.invalid 확인' }, 'U-030'], ['긴 안내', { usageGuide: '가'.repeat(41) }, 'U-030'],
+        ['주소', { usageGuide: 'www.example.invalid 확인' }, 'U-030'], ['긴 안내', { usageGuide: '가'.repeat(31) }, 'U-030'],
         ['참조 형식', { refId: 'token=abc' }, 'U-030'], ['FC가 기록', {}, 'U-013'], ['관리자가 기록', {}, 'U-010'], ['행위자 없음', {}, null]];
       for (const [name, patch, actorId] of bad) {
         const r = await ApiClient.postStatus(D7, { from: 'FIX_PLANNED', to: 'RESOLVED', eventId: 'bad-' + name, actorId,
@@ -425,6 +425,11 @@ def check_variants(chrome):
       const card = await wait('#kn-body .is-target');
       assert(card.innerText.includes('종료 여부는 확인 전') && !card.innerText.includes('쓰지 않아도') && card.querySelector('.kn-verify'), '종료 확인 전에는 종료 안내 없음');
       assert($('[data-id=R-012]').innerText.includes('이전 임시 방법은 이제 쓰지 않아도 돼요'), '담당자가 확인한 종료만 안내');
+    """)
+    open_real(chrome, "index.html", "?selftest=1#role=FC&user=U-003&panel=known&tab=mine&item=R-041")
+    run(chrome, """
+      const steps = (await wait('#kn-body .is-target .kn-stages')).textContent;
+      assert(steps.includes('원인 파악 (접수 전부터)'), '내 접수보다 앞선 결함 기록을 구분 ' + steps);
     """)
     open_real(chrome, "index.html", "?selftest=1#role=FC&user=U-005&panel=known&tab=mine&item=R-044")
     run(chrome, """
