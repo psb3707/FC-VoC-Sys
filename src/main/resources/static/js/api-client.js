@@ -71,7 +71,7 @@
           }
           // 현장 확인: 지금 해결 회차의 답과, 이력에만 남는 모든 답
           item.fieldVerification = d && d.resolutionEventId ? latestAnswer(state, r.id, d.resolutionEventId) : null;
-          item.fieldHistory = state.verifications.filter(function (v) { return v.reportId === r.id && v.defectId === id; })
+          item.fieldHistory = fieldAnswers(state).filter(function (v) { return v.reportId === r.id && v.defectId === id; })
             .map(function (v) { return { result: v.result, at: v.at, resolutionEventId: v.resolutionEventId }; });
         }
         item.followups = reportFollowups(state, r.id);
@@ -519,7 +519,7 @@
           resolution: resolution, backReason: back ? req.backReason : null, summary: preview.summary,
           body: preview.body, recipients: preview.notifiable ? preview.recipients.map(function (r) {
             return r.audience === 'SUBMITTER' ? { userId: r.userId, reportId: null, audience: 'SUBMITTER', body: r.body, summary: r.summary }
-              : { userId: r.userId, reportId: r.reportId, audience: 'REPORTER' };
+              : { userId: r.userId, reportId: r.reportId, audience: 'REPORTER', summary: r.summary };
           }) : [], delivery: sends ? (req.simulateFailure ? 'FAILED' : 'SENT') : 'NONE',
           attempts: sends ? 1 : 0 };
         state.history.push(event);
@@ -541,10 +541,10 @@
       }).then(ok);
     },
     /* ---- ADR-029 수정 뒤 현장 확인 ----
-       업무 재개(WorkResumption)와 다른 기록. 신고자 본인, 지금 해결 회차(검증 있음)만. 결함 상태·알림을 바꾸지 않는다.
-       백엔드 단계에서는 userId 를 인증 세션으로 정한다 */
+       업무 재개(WorkResumption)와 다른 기록. 신고자 본인이면서 FC 역할, 지금 해결 회차(검증 있음)만. 결함 상태·알림을 바꾸지 않는다.
+       백엔드 단계에서는 userId·역할을 인증 세션으로 정한다 */
     postFieldVerification: function (reportId, userId, resolutionEventId, result, requestId) {
-      if (!FIELD_RESULT.includes(result)) return ok(null);
+      if (!FIELD_RESULT.includes(result) || !isFc(userId)) return ok(null);
       return store.update(function (state) {
         var report = ledgerReports(state).find(function (r) { return r.id === reportId && r.reporterId === userId; });
         if (!report || !report.defectId) return null;
@@ -574,7 +574,7 @@
         var d = report && report.defectId ? ledgerDefects(state).find(function (x) { return x.id === report.defectId; }) : null;
         if (!d || !verified(d) || d.resolutionEventId !== resolutionEventId) return null;
         function ofRound(x) { return x.reportId === reportId && x.resolutionEventId === resolutionEventId; }
-        if (!state.verifications.some(function (v) { return ofRound(v) && v.result === 'STILL_FAIL'; })) return null;
+        if (!fieldAnswers(state).some(function (v) { return ofRound(v) && v.result === 'STILL_FAIL'; })) return null;
         var last = state.investigations.filter(ofRound).pop();
         if (last && last.code === code) return Object.assign({ duplicate: true }, last);
         var entry = { id: 'FI-' + (state.investigations.length + 1), reportId: reportId, defectId: d.id,
@@ -862,15 +862,19 @@
   }
   function verified(d) { return !!(d && d.status === 'RESOLVED' && d.resolution && d.resolution.verification); }
   function isStaff(id) { return (F.users || []).some(function (u) { return u.id === id && ['SALES', 'IT'].includes(u.role); }); }
+  function isFc(id) { return (F.users || []).some(function (u) { return u.id === id && u.role === 'FC'; }); }
   function isBackChange(from, to) { return from === 'WONT_FIX' || ORDER.indexOf(to) < ORDER.indexOf(from); }
+  /* 현장 확인으로 읽는 답: FC가 남긴 것만(ADR-029 보완. 규칙 전에 저장된 다른 역할의 답은 읽지 않는다) */
+  function fieldAnswers(state) { return state.verifications.filter(function (v) { return isFc(v.actorId); }); }
   function latestAnswer(state, reportId, eventId) {
-    var last = state.verifications.filter(function (v) { return v.reportId === reportId && v.resolutionEventId === eventId; }).pop();
+    var last = fieldAnswers(state).filter(function (v) { return v.reportId === reportId && v.resolutionEventId === eventId; }).pop();
     return last ? { result: last.result, at: last.at, seq: last.seq } : null;
   }
   /* 사람 수는 FC별 최신 실제 답으로(답 없는 다른 신고는 덮지 않음), 신고별 문제 지속은 따로 */
   function fieldSummaryOf(d, reports, state) {
     var byFc = new Map(), perReport = [];
-    reports.forEach(function (r) {
+    var asked = reports.filter(function (r) { return isFc(r.reporterId); });   // FC가 신고자인 신고만 센다
+    asked.forEach(function (r) {
       var answer = latestAnswer(state, r.id, d.resolutionEventId);
       var investigation = state.investigations.filter(function (x) { return x.reportId === r.id && x.resolutionEventId === d.resolutionEventId; }).pop();
       perReport.push({ reportId: r.id, reporterId: r.reporterId, result: answer ? answer.result : null, at: answer ? answer.at : null,
@@ -889,7 +893,7 @@
       counts[result]++;
       return { id: fc.id, name: fc.name, reportIds: fc.reportIds, result: result, at: fc.answer ? fc.answer.at : null };
     });
-    return { resolutionEventId: d.resolutionEventId, reporterCount: fcs.length, reportCount: reports.length, counts: counts, fcs: fcs,
+    return { resolutionEventId: d.resolutionEventId, reporterCount: fcs.length, reportCount: asked.length, counts: counts, fcs: fcs,
       reports: perReport, failReports: perReport.filter(function (r) { return r.result === 'STILL_FAIL'; }) };
   }
   /* FC에게 내리는 상태 이력: 처리자·내부 사유·참조 없이 */
@@ -990,7 +994,7 @@
       return event.recipients.map(function (r) {
         var submitter = r.audience === 'SUBMITTER';
         return { id: 'N-' + event.id + '-' + r.userId, historyId: event.id, defectId: event.defectId, reportId: r.reportId,
-          recipientId: r.userId, at: event.at, bodySnapshot: submitter ? r.body : event.body, summary: submitter ? r.summary : event.summary,
+          recipientId: r.userId, at: event.at, bodySnapshot: submitter ? r.body : event.body, summary: r.summary || event.summary,
           audience: submitter ? 'SUBMITTER' : 'REPORTER', kind: 'STATUS', resolution: submitter ? null : event.resolution };
       });
     });
@@ -1041,7 +1045,12 @@
         resolution.appliedAt.slice(11, 16) + ' 적용. ' + resolution.change + ' ' + resolution.action;
     }
     recipients.forEach(function (r) {
-      if (r.audience !== 'SUBMITTER') return;
+      if (r.audience !== 'SUBMITTER') {
+        if (v && !isFc(r.userId)) {   // FC가 아닌 신고자에게는 현장 확인을 청하지 않는다
+          r.summary = Object.assign(noticeSummary(d, req.to, req.plannedFixDate, v, 'REPORTER'), { action: '처리경과 확인' });
+        }
+        return;
+      }
       r.body = v ? '대신 접수한 문의 ' + r.count + '건 · ' + d.title + ' — 수정·배포 검증 완료(가상). FC의 정상 이용 확인 결과를 살펴봐 주세요'
         : fill((L.submitterTemplates || {})[req.to]).replace('{count}', String(r.count));
       r.summary = noticeSummary(d, req.to, req.plannedFixDate, v, 'SUBMITTER', r.count);

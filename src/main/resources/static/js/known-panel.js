@@ -183,10 +183,10 @@
   }
   /* 을/를: 끝 글자 받침 */
   function eul(word) { var c = word.charCodeAt(word.length - 1) - 0xac00; return c >= 0 && c < 11172 && c % 28 ? '을' : '를'; }
-  /* 수정 뒤 현장 확인(ADR-029 결정 2): 검증된 해결, 신고자 본인만. 업무 재개 회신과 다른 기록 */
+  /* 수정 뒤 현장 확인(ADR-029 결정 2): 검증된 해결, 신고자 본인이면서 FC만. 업무 재개 회신과 다른 기록 */
   function verifyView(r, me) {
     var d = r.defect;
-    if (!d || d.status !== 'RESOLVED' || !d.verification) return null;
+    if (!d || d.status !== 'RESOLVED' || !d.verification || !r.reporter || r.reporter.role !== 'FC') return null;
     var answer = r.fieldVerification;
     if (!me || me.id !== r.reporterId) {
       return el('p', { cls: 'kn-resume-status' }, ['FC 현장 확인 · ' + (answer ? verifyLabel(answer.result) + ' (' + fmtWhen(answer.at) + ')' : '확인 전')]);

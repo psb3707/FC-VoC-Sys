@@ -703,7 +703,7 @@
     }
     var card = el('div', { cls: 'pn-card' }, [
       el('p', { cls: 'pn-card-title' }, ['수정 완료 후 현장 확인']),
-      el('p', { cls: 'ld-meta' }, ['신고자 ' + f.reporterCount + '명 · 신고 ' + f.reportCount + '건 · 이번 수정에 대한 답만 세요']),
+      el('p', { cls: 'ld-meta' }, ['FC ' + f.reporterCount + '명 · 신고 ' + f.reportCount + '건 · 이번 수정에 대한 답만 세요']),
       rows([['정상 확인', tally('CONFIRMED_OK')], ['문제 지속', tally('STILL_FAIL')], ['미확인', tally('NOT_TESTED')]]),
       f.failReports.length ? el('ul', { cls: 'pn-plain ld-field-fails' }, f.failReports.map(function (x) {
         var r = d.reports.filter(function (y) { return y.id === x.reportId; })[0];

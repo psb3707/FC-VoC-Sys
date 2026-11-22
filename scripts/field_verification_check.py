@@ -265,7 +265,7 @@ def check_main(chrome):
     open_real(chrome, "ledger.html", "?selftest=1#role=IT&item=D-2026-007")
     run(chrome, """
       const card = await wait('[data-field-verification]');
-      assert(card.innerText.includes('신고자 5명 · 신고 6건') && dd(card, '정상 확인').startsWith('1명') && dd(card, '문제 지속').startsWith('1명') &&
+      assert(card.innerText.includes('FC 5명 · 신고 6건') && dd(card, '정상 확인').startsWith('1명') && dd(card, '문제 지속').startsWith('1명') &&
         dd(card, '미확인').startsWith('3명'), 'IT 현장 확인 현황 ' + card.innerText);
       const fail = card.querySelector('[data-field-fail=""" + r3 + """]');
       assert(fail && fail.innerText.includes('후속 확인 대상') && fail.innerText.includes('추가 내용 1건') && fail.textContent.includes('iOS'), '문제 지속 FC·발생 조건');
@@ -562,11 +562,87 @@ def check_screen_rules(chrome):
     assert not bad, "화면 규칙 어김: " + ", ".join(bad)
 
 
+def check_fc_only(chrome):
+    """현장 확인은 신고자 본인이면서 FC 역할만(ADR-029 보완). 어긴 것을 한 번에 모은다."""
+    bad = []
+
+    def expect(name, body):
+        if not run(chrome, body):
+            bad.append(name)
+
+    open_real(chrome, "index.html", "#role=FC")
+    event = run(chrome, """
+      const at = (m) => kst(m) + ':00+09:00';
+      // 시드 R-031 은 관리자 본인 명의. 영업·IT 본인 명의 신고를 같은 결함에 하나씩 더한다
+      for (const who of ['U-020', 'U-030']) {
+        const r = await ApiClient.postQuickIntake({ requestId: 'own-' + who, reporterId: who, submittedById: who, business: 'SUBSCRIPTION',
+          symptom: 'CANNOT_PROCEED', oneLine: '서명 화면이 멈춰요', urgent: [], extraSymptoms: [], incident: {} });
+        await ApiClient.postLinkReport('D-2026-002', r.id);
+      }
+      const r = await ApiClient.postStatus('D-2026-002', { from: 'FIX_PLANNED', to: 'RESOLVED', eventId: 'fc-only', actorId: 'U-030', resolution: {
+        appliedAt: at(3), scope: 'LINKED', change: '화면이 정상으로 열려요.', action: 'RETRY', approved: true,
+        verification: { result: 'VERIFIED', verifiedAt: at(1), usageGuide: '기존 절차대로 진행해 주세요.' } } });
+      assert(!r.error, '검증 완료 준비');
+      return r.historyId;
+    """)
+    for who in ("U-010", "U-020", "U-030"):
+        expect("저장 거부 " + who, """
+          const r = (await ApiClient.getMyReports('""" + who + """')).find(x => x.defectId === 'D-2026-002' && x.reporterId === '""" + who + """');
+          assert(r, '본인 명의 신고 준비');
+          const before = IntakeDemoStore.read().verifications.length;
+          const saved = await ApiClient.postFieldVerification(r.id, '""" + who + """', '""" + event + """', 'STILL_FAIL');
+          return saved === null && IntakeDemoStore.read().verifications.length === before && !(IntakeDemoStore.read().followups[r.id] || []).length;""")
+        expect("알림 행동 글 " + who, """
+          const n = (await ApiClient.getNotifications('""" + who + """')).find(x => x.historyId === '""" + event + """');
+          return n && n.audience === 'REPORTER' && n.summary.status === '수정 완료' && n.summary.action === '처리경과 확인';""")
+    expect("FC 알림은 그대로", """
+      const d = await ApiClient.getDefect('D-2026-002');
+      const fc = d.reports.find(r => r.reporterId !== 'U-010' && r.reporterId !== 'U-020' && r.reporterId !== 'U-030');
+      return (await ApiClient.getNotifications(fc.reporterId)).find(x => x.historyId === '""" + event + """').summary.action === '정상 이용 확인';""")
+    expect("집계는 FC 신고만", """
+      const d = await ApiClient.getDefect('D-2026-002'), f = d.fieldVerification;
+      const roles = new Map((await ApiClient.getUsers()).map(u => [u.id, u.role]));
+      const fcReports = d.reports.filter(r => roles.get(r.reporterId) === 'FC');
+      return f.fcs.every(x => roles.get(x.id) === 'FC') && f.reportCount === fcReports.length && f.reports.length === fcReports.length &&
+        f.reporterCount === new Set(fcReports.map(r => r.reporterId)).size;""")
+    expect("FC 본인은 그대로 저장", """
+      const d = await ApiClient.getDefect('D-2026-002');
+      const roles = new Map((await ApiClient.getUsers()).map(u => [u.id, u.role]));
+      const r = d.reports.find(x => roles.get(x.reporterId) === 'FC');
+      return !!(await ApiClient.postFieldVerification(r.id, r.reporterId, '""" + event + """', 'CONFIRMED_OK'));""")
+    expect("전에 저장된 관리자 답은 읽지 않음", """
+      await IntakeDemoStore.update(s => {
+        s.verifications.push({ id: 'FV-90', seq: 90, reportId: 'R-031', defectId: 'D-2026-002', resolutionEventId: '""" + event + """',
+          result: 'STILL_FAIL', at: kst(0) + ':00+09:00', actorId: 'U-010', requestId: null });
+      });
+      const r = (await ApiClient.getMyReports('U-010')).find(x => x.id === 'R-031');
+      const d = (await ApiClient.getDefects({})).find(x => x.id === 'D-2026-002');
+      return !r.fieldVerification && !r.fieldHistory.length && d.fieldFailCount === 0 &&
+        await ApiClient.postFieldInvestigation('R-031', 'U-030', '""" + event + """', 'STARTED') === null;""")
+
+    open_real(chrome, "index.html", "?selftest=1#role=MANAGER&user=U-010&panel=known&tab=mine&item=R-031")
+    run(chrome, "await wait('#kn-body .is-target'); await selftest('관리자 본인 신고');")
+    expect("관리자 본인 카드에 질문 없음", """
+      const card = $('#kn-body .is-target');
+      return card.innerText.includes('기존 절차대로 진행해 주세요.') && !card.querySelector('.kn-verify, [data-verify]') && !card.innerText.includes('FC 현장 확인');""")
+    for role, who in (("SALES", "U-020"), ("IT", "U-030")):
+        open_real(chrome, "index.html", f"#role={role}&user={who}&panel=known&tab=mine")
+        run(chrome, "await wait('#kn-body .kn-card');")
+        expect("본인 카드에 질문 없음 " + who, "return !document.querySelector('#kn-body [data-verify]');")
+    open_real(chrome, "ledger.html", "?selftest=1#role=IT&item=D-2026-002")
+    run(chrome, "await wait('[data-field-verification]'); await selftest('FC만 세는 현장 확인 현황');")
+    expect("IT 현황은 FC 기준", """
+      const card = $('[data-field-verification]'), f = (await ApiClient.getDefect('D-2026-002')).fieldVerification;
+      return card.innerText.includes('FC ' + f.reporterCount + '명 · 신고 ' + f.reportCount + '건') &&
+        !['박새벽', '최누리', '정한결'].some(name => card.innerText.includes(name));""")
+    assert not bad, "FC만 규칙 어김: " + ", ".join(bad)
+
+
 if __name__ == "__main__":
     browser = find_browser()
     if not browser:
         raise SystemExit("Chrome/Edge를 찾지 못했습니다.")
-    for part in (check_main, check_variants, check_screen_rules):
+    for part in (check_main, check_variants, check_screen_rules, check_fc_only):
         with tempfile.TemporaryDirectory(prefix="field-verification-") as profile:
             chrome = Chrome(browser, profile)
             try:
@@ -575,4 +651,4 @@ if __name__ == "__main__":
             finally:
                 chrome.close()
     print("PASS: TC-01 간결한 수정 예정 알림, TC-02 수정·배포 검증 완료(가상), TC-03 정상 확인, TC-04 문제 지속, "
-          "TC-05 미확인, TC-06 다중 신고·수신자·멱등·권한, TC-07 재배포, 검증 없는 해결·임시 방법 종료·대리 접수")
+          "TC-05 미확인, TC-06 다중 신고·수신자·멱등·권한, TC-07 재배포, 검증 없는 해결·임시 방법 종료·대리 접수, 화면 규칙, FC 역할만")
