@@ -3,7 +3,6 @@
    백엔드 API 는 없다(화면 시안 전용). 화면은 api-client.js 의 getSfaHome() 으로만 읽는다. */
 window.FIXTURES = window.FIXTURES || {};
 window.FIXTURES.sfaHome = {
-  "profileSub": "FC-01 · 가상지점",
   "performance": [
     { "label": "이번 달 실적", "unit": "건", "value": 3 },
     { "label": "이번 달 신계약", "unit": "건", "value": 1 }

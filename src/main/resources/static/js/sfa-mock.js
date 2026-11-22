@@ -131,10 +131,12 @@
     var list = usersOf(st.role);
     var cur = list.filter(function (u) { return u.id === st.user; })[0] || list[0];
     $('profile-name').textContent = cur ? cur.name : '';
-    $('profile-sub').textContent = home.profileSub || '';
+    // ADR-029 결정 10: 머리글은 로그인 사용자의 역할·소속 지점
+    $('profile-sub').textContent = cur ? (PROFILE_ROLE[cur.role] || cur.role) + ' · ' + cur.branchName : '';
     return cur ? cur.id : null;
   }
 
+  var PROFILE_ROLE = { FC: 'FC', MANAGER: '관리자', SALES: '영업 담당', IT: 'IT 담당' };
   function renderAlarm(st, items) {
     var badge = $('alarm-badge');
     var unread = items.filter(function (n) { return !n.read; }).length;

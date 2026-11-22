@@ -23,7 +23,10 @@
   window.ApiClient = {
     /* GET /api/users  -> AppUser[] (역할 전환·대리 접수 대상) */
     getUsers: function () {
-      return Promise.resolve(copy(F.users || []));
+      return Promise.resolve((F.users || []).map(function (u) {
+        var branch = (L.branches || []).find(function (b) { return b.id === u.branchId; });
+        return Object.assign(copy(u), { branchName: branch ? branch.name : '' });   // 홈 머리글(ADR-029 결정 10)
+      }));
     },
     /* S1 메인 화면 가상 데이터 (화면 시안 전용, ADR-012. 대응하는 백엔드 API 없음) */
     getSfaHome: function () {

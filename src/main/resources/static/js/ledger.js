@@ -300,7 +300,7 @@
     var note = el('div', { cls: 'pn-note ld-pick-note' }, [icon('i-info'), el('div', null, target
       ? [el('b', null, [target.id + ' 「' + target.title + '」에 묶을 신고를 고르세요']), '같은 원인으로 보이는 신고의 [묶기]를 누르세요.']
       : [el('b', null, ['같은 원인의 대표 결함에 묶어 주세요']),
-        '줄을 누르면 AI가 비슷한 대표 결함을 추천해요. 묶으면 그 결함의 상태가 바뀔 때 이 신고자에게도 알림이 가요.'])]);
+        '줄을 누르면 비슷한 대표 결함 후보를 보여 줘요. 새 신고는 규칙으로 찾은 후보예요. 묶으면 그 결함의 상태가 바뀔 때 이 신고자에게도 알림이 가요.'])]);
     var body, shown = shownReports;   // 찾기는 ApiClient.getUnlinkedReports 가 했다
     if (!shown.length && st.q) {
       body = emptySearch(st, '들어간 안 묶인 신고가 없어요');
@@ -368,7 +368,8 @@
       ? [el('b', null, [WONT_FIX_LABEL]), ' · ' + STAGES[Math.max(at, 0)][1] + ' 단계에서 끝났어요']
       : [STAGES.length + '단계 중 ' + (at + 1) + '단계 · ', el('b', null, [stageLabel(code)])]);
     var track = el('ol', { cls: 'pn-track', 'aria-hidden': 'true' }, STAGES.map(function (s, i) {
-      return el('li', { cls: wont ? (i <= at ? 'is-done' : null) : (i < at ? 'is-done' : i === at ? 'is-now' : null) });
+      var passed = i === 0 || (d.statusHistory || []).some(function (h) { return h.to === s[0]; });   // 건너뛴 단계는 칠하지 않는다
+      return el('li', { cls: i === at && !wont ? 'is-now' : i <= at && passed ? 'is-done' : null });
     }));
     var names = STAGES.map(function (s, i) {
       var cur = !wont && i === at;
@@ -951,7 +952,7 @@
     } else {
       aiPart = [el('div', { cls: 'pn-note' + (fallback ? ' pn-warn' : '') }, [icon(fallback ? 'i-warn' : 'i-spark'), el('div', null, fallback
         ? [el('b', null, ['AI 추천을 받지 못했어요']), '아래 목록에서 직접 골라 주세요.']
-        : [el('b', null, ['비슷한 대표 결함을 찾지 못했어요 (AI 추천)']), '같은 원인의 결함이 없으면 새 대표 결함으로 만들어요. 아래 목록도 한 번 더 봐 주세요.'])])];
+        : [el('b', null, ['비슷한 대표 결함을 찾지 못했어요 (' + (s.llmOutcome === 'RULE' ? '규칙 후보' : 'AI 추천') + ')']), '같은 원인의 결함이 없으면 새 대표 결함으로 만들어요. 아래 목록도 한 번 더 봐 주세요.'])])];
     }
     // 묶을 신고(정보 카드)와 고를 대표 결함(선택 버튼)은 소제목으로 나눠 카드끼리 붙어 보이지 않게 한다
     return [el('h3', { tabindex: '-1' }, ['어느 대표 결함에 묶을까요?']),

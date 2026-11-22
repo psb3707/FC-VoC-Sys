@@ -168,7 +168,8 @@
       ? [el('b', null, [WONT_FIX_LABEL]), ' · ' + STAGES[Math.max(at, 0)][1] + ' 단계에서 끝났어요']
       : [STAGES.length + '단계 중 ' + (at + 1) + '단계 · ', el('b', null, [stageLabel(code)])]);   // 06번 5절 "6단계 중 4단계 · 임시조치"
     var track = el('ol', { cls: 'pn-track', 'aria-hidden': 'true' }, STAGES.map(function (s, i) {
-      return el('li', { cls: wont ? (i <= at ? 'is-done' : null) : (i < at ? 'is-done' : i === at ? 'is-now' : null) });
+      var passed = i === 0 || (r.statusHistory || []).some(function (h) { return h.to === s[0]; });   // 건너뛴 단계는 칠하지 않는다
+      return el('li', { cls: i === at && !wont ? 'is-now' : i <= at && passed ? 'is-done' : null });
     }));
     var names = STAGES.map(function (s, i) {
       var cur = !wont && i === at;
@@ -276,6 +277,8 @@
     return d && d.workaround ? 'NO_REPLY' : 'NO_WORKAROUND';
   }
   function situationAt(r) { return (r.workResumption && r.workResumption.at) || r.createdAt; }
+  /* ADR-029 결정 6: FC가 명시한 상황만 앞선 상황을 덮는다 */
+  function explicit(r) { return !!r.workResumption || r.supportNeeded === 'YES' || r.supportNeeded === 'NO'; }
   function teamGroups() {
     var groups = [], byKey = {};
     cache.team.forEach(function (r) {
@@ -295,7 +298,8 @@
         var fc = byFc[id];
         if (!fc) { fc = byFc[id] = { id: id, name: r.reporter ? r.reporter.name : r.id, reports: [], latest: null }; g.fcs.push(fc); }
         fc.reports.push(r);
-        if (!fc.latest || situationAt(r) > situationAt(fc.latest)) fc.latest = r;
+        if (!fc.latest || (explicit(r) && !explicit(fc.latest)) ||
+            (explicit(r) === explicit(fc.latest) && situationAt(r) > situationAt(fc.latest))) fc.latest = r;
       });
       g.fcs.forEach(function (fc) {
         fc.reports.sort(function (a, b) { return a.createdAt < b.createdAt ? 1 : -1; });
