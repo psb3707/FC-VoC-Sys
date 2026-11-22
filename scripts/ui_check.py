@@ -43,7 +43,7 @@ EXTRA_UI_WORDS = {"사용자", "안내가", "부서가", "오류와", "설계일
                   "방법이", "안내된", "이어갈", "문의가",
                   # ADR-026 AI 문의 되묻기 문구(js/fixtures/intake-assistant.js)
                   "이전에", "기다리", "보내니", "진행할",
-                  "나오지", "나와도", "안에서", "사파리", "어려운",   # ADR-027 고객 동의 시나리오 문구
+                  "안내는", "나오지", "나와도", "안에서", "사파리", "어려운",   # ADR-027 고객 동의 시나리오 문구
                   # S1 업무 탭 표 머리
                   "설계명", "주상품",
                   # S2 접수 패널 고정 응답(js/fixtures/intake.js) 문구
@@ -101,7 +101,8 @@ LEDGER_STATES = ["role=SALES", "role=IT&grade=IMMEDIATE", "role=SALES&status=RES
                  LD + "to=RESOLVED&dstep=detail",
                  LD + "to=WONT_FIX&dstep=detail&reason=ETC&memo=" + "%EC%83%81%ED%92%88%20%EB%8B%A8%EC%A2%85",
                  LD + "to=WONT_FIX&dstep=preview&reason=NEW_SFA",
-                 LD + "to=CAUSE_FOUND&dstep=detail&memo=" + "%EC%9E%AC%ED%99%95%EC%9D%B8",
+                 LD + "to=CAUSE_FOUND&dstep=detail&back=FIELD_RECHECK",
+                 "role=IT&item=D-2026-002&dialog=status&to=CAUSE_FOUND&dstep=preview&back=REDEPLOY",   # ADR-029 되돌림 사유
                  "role=SALES&item=D-2026-006&dialog=status&to=REPRODUCED&dstep=preview",
                  LD + "to=FIX_PLANNED&dstep=done&date=2026-11-25",
                  "role=SALES&item=D-2026-006&dialog=status&to=REPRODUCED&dstep=done",
@@ -420,8 +421,9 @@ def quick_intake_check(chrome: Chrome, page: str) -> None:
       if (!find('.pn-receipt-enter .pn-success-mark svg')) throw Error('접수 완료 체크 누락');
       action('quick-mine');
       const record = await wait('#kn-body .is-target[data-id]');
-      if (!record.innerText.includes(message) || !record.innerText.includes('고객 상담 중') ||
-          !record.innerText.includes('시도한 임시 방법')) {
+      // ADR-029: 긴급 사정·시도한 방법은 접힌 상세 이력에 있다
+      if (!record.innerText.includes(message) || !record.querySelector('.kn-detail').textContent.includes('고객 상담 중') ||
+          !record.querySelector('.kn-detail').textContent.includes('시도한 임시 방법')) {
         throw Error('접수 상세에서 입력과 긴급 사정 확인 실패');
       }
       return 'ok';

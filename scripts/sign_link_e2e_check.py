@@ -39,7 +39,7 @@ def consult(chrome, device, seminar, waiting, outcome):
       await answer('""" + seminar + """');
       await wait(() => $('.pn-assist-result[aria-busy="false"]'));
       assert($('#pn-assist-reply').innerText.includes('알림톡 대신 문자로 서명 링크를 보내 주세요'), '승인된 임시 방법(대장 문장)');
-      assert($('#pn-assist-reply').innerText.includes('② 근본 오류는 언제 고쳐지나요?'), '근본 수정 진행');
+      assert($('#pn-assist-reply').innerText.includes('오류 수정 진행상황'), '근본 수정 진행');
       assert(!$('[data-act=assistant-draft]'), '되묻기 상담에서는 초안 만들기 알약을 숨김');
       assert(!asked().some(t => t.includes('휴대전화에서')), '담당자 확인용 항목은 결과 뒤에 물음');
       await wait('#pn-assist-ask');

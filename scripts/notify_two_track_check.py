@@ -94,12 +94,13 @@ def check(chrome):
       await wait(() => location.hash.includes('tab=team') && location.hash.includes('item=D-2026-001') && $('#kn-body .is-target'));
     """)
 
-    # 6) FC: 알림에서 연 카드는 펼친 채, 업무 재개 회신 버튼, FC 역할에는 [지점 FC 문의] 없음
+    # 6) FC: 알림에서 연 카드는 상태·대응·기록된 단계가 바로 보이고 상세 이력은 접힘(ADR-029), 업무 재개 회신 버튼, FC 역할에는 [지점 FC 문의] 없음
     open_page(chrome, "index.html", "#role=FC&panel=known&tab=mine&item=R-011")
     evaluate(chrome, """
       const card = await wait('#kn-body .kn-card.is-target');
-      assert(card.querySelector('details.pn-details').open, '알림에서 연 카드는 자세히 보기 펼침');
-      assert(card.innerText.includes('① 지금 업무를 이어갈 수 있나요?') && card.innerText.includes('② 근본 오류는 언제 고쳐지나요?'), '두 갈래');
+      assert(!card.querySelector('details.kn-detail').open && card.querySelector('.nt-track > .kn-progress [aria-current=step]').getClientRects().length,
+        '알림에서 연 카드: 기록된 단계는 바로, 상세 이력은 접힘');
+      assert(card.innerText.includes('지금 가능한 대응') && card.innerText.includes('오류 수정 진행상황'), '두 갈래');
       assert(!card.innerText.includes('11월 27일에 고칠 예정') || card.innerText.includes('수정 예정'), '예정일은 수정 예정일 때만');
       assert($('#kn-tab-team').hidden, 'FC에게 지점 FC 문의 탭 없음');
       await click('#kn-body .is-target [data-resume=STILL]');

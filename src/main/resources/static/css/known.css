@@ -83,3 +83,12 @@
   .kn-fcs .pn-rows div, .kn-team-summary .pn-rows div { display: block; }
   .kn-fcs .pn-rows dd, .kn-team-summary .pn-rows dd { margin-top: 2px; }
 }
+/* ADR-029 기록된 단계: 이름 왼쪽·시각 오른쪽, 정의 목록 줄과 같은 1px 연한 선 */
+.kn-stages.is-recorded { display: block; }
+.kn-stages.is-recorded li { display: flex; flex-wrap: wrap; justify-content: space-between; column-gap: 12px; padding: 8px 0; }
+.kn-stages.is-recorded li + li { border-top: 1px solid var(--pn-line-soft); }
+.kn-stages.is-recorded li::after { content: none; }
+.kn-stages .kn-stage-at { margin-left: auto; color: var(--pn-sub); font-weight: 500; }
+.nt-track > .kn-progress { margin: 16px 0 0; }
+.kn-detail .kn-history + .pn-rows:not(:empty) { margin-top: 16px; border-top: 1px solid var(--pn-line-soft); padding-top: 8px; }
+.kn-detail .pq-details-body > .pn-note { margin-top: 16px; }

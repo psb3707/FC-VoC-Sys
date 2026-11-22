@@ -137,6 +137,16 @@
   }
 
   var PROFILE_ROLE = { FC: 'FC', MANAGER: '관리자', SALES: '영업 담당', IT: 'IT 담당' };
+  /* ADR-029 결정 3: 오류명·상태 하나·핵심 안내·보조 안내·시각·행동. 긴 설명은 접수 카드에서 */
+  function alarmItem(n) {
+    var s = n.summary;
+    var line = el('span', 'al-line', [s.line]), title = el('span', 'al-title', [s.title]), head = el('span', 'al-headline', [s.headline]);
+    [line, title, head].forEach(function (e) { e.setAttribute('data-clip-ok', ''); });   // 2줄까지만, 전체는 상세
+    var b = el('button', 'alarm-item', [el('span', 'al-top', [title, el('span', 'pn-tag al-status', [s.status])]),
+      head, line,
+      el('span', 'al-foot', [el('span', 'when', [fmtWhen(n.at) + (n.read ? ' · 읽음' : '')]), el('span', 'al-action', [s.action])])]);
+    return b;
+  }
   function renderAlarm(st, items) {
     var badge = $('alarm-badge');
     var unread = items.filter(function (n) { return !n.read; }).length;
@@ -147,7 +157,7 @@
     var ul = $('alarm-list');
     ul.innerHTML = '';
     items.forEach(function (n) {
-      var b = el('button', 'alarm-item', [n.bodySnapshot, el('span', 'when', [fmtWhen(n.at) + (n.read ? ' · 읽음' : '')])]);
+      var b = alarmItem(n);
       b.type = 'button';
       // 누르면 S3 패널: FC 알림은 [내 신고]의 그 접수, 대리 접수자 알림은 [지점 FC 문의]의 그 결함 (js/known-panel.js, ADR-025)
       if (n.defectId) b.setAttribute('data-kn-defect', n.defectId);

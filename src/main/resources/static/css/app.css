@@ -41,3 +41,16 @@
 .demo [data-entry] { outline: 3px solid var(--demo-outline); outline-offset: 3px; }
 
 [hidden] { display: none !important; }
+
+/* ADR-029 알림 요약 줄(06번 0-3절): 기존 줄 버튼 안의 글 묶음. 선·배지를 더하지 않는다 */
+.alarm-item .al-top, .alarm-item .al-foot { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.alarm-item .al-title, .alarm-item .al-headline, .alarm-item .al-line {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere;
+}
+.alarm-item .al-title { min-width: 0; color: var(--pn-sub); font-weight: 700; }
+.alarm-item .al-status { flex: none; margin: 0; white-space: nowrap; }
+.alarm-item .al-headline { margin-top: 8px; color: var(--pn-ink); font-weight: 700; }
+.alarm-item .al-line { margin-top: 4px; color: var(--pn-sub); }
+.alarm-item .al-foot { flex-wrap: wrap; align-items: baseline; margin-top: 8px; }
+.alarm-item .al-foot .when { margin: 0; }
+.alarm-item .al-action { margin-left: auto; color: var(--pn-accent); font-weight: 700; }

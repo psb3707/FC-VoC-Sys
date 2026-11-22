@@ -14,7 +14,8 @@
      dstep=pick|detail|preview|done   대화상자 단계 (detail 은 예정일·사유가 필요한 경우만)
      date=YYYY-MM-DD      수정 예정일
      reason=NEW_SFA|WORKAROUND_OK|NOT_REPRODUCIBLE|ETC  수정하지 않음 사유 코드
-     memo=…               기타 사유·되돌림 사유
+     memo=…               수정하지 않음의 기타 사유 (내부 메모·되돌림 설명은 주소에 적지 않는다)
+     back=FIELD_RECHECK|REDEPLOY|MISRECORDED|ETC  되돌림 사유 코드 (ADR-029)
      err=1                빈칸으로 [다음]을 눌렀을 때의 막힘 안내를 보인 상태
      report=R-…  link=D-… 신고 묶기: 묶을 신고 / 고른 대표 결함
    영향 지점 수·신고 수는 저장하지 않고 묶인 신고와 신고자 지점으로 센다(REQ-LG-01). */
@@ -157,7 +158,7 @@
 
   /* ---- 주소 상태 (06번 11절) ---- */
   var KEYS = ['role', 'user', 'popup', 'tab', 'status', 'grade', 'type', 'q', 'item', 'for', 'dialog', 'report', 'link', 'to', 'dstep',
-    'date', 'reason', 'memo', 'err', 'llm', 'notify'];
+    'date', 'reason', 'back', 'memo', 'err', 'llm', 'notify'];
   function read() {
     var st = {};
     location.hash.replace(/^#/, '').split('&').forEach(function (kv) {
@@ -185,7 +186,7 @@
     }).join('&');
     if (location.hash !== next) location.hash = next; else render();
   }
-  var DIALOG_KEYS = { dialog: '', to: '', dstep: '', date: '', reason: '', memo: '', err: '', report: '', link: '' };
+  var DIALOG_KEYS = { dialog: '', to: '', dstep: '', date: '', reason: '', back: '', memo: '', err: '', report: '', link: '' };
   function closeDialogPatch(extra) {
     var p = {};
     Object.keys(DIALOG_KEYS).forEach(function (k) { p[k] = ''; });
@@ -287,7 +288,8 @@
           el('td', { cls: 'is-num' }, [branchCount(d) + '곳']),
           el('td', { cls: 'is-num' }, [(d.reports || []).length + '건']),
           el('td', null, [gradeTag(d.grade)]),
-          el('td', null, [statusTag(d.status)]),
+          el('td', null, [statusTag(d.status), d.fieldFailCount
+            ? el('span', { cls: 'ld-tag is-warn ld-field-flag' }, ['현장 문제 ' + d.fieldFailCount + '명']) : null]),
           el('td', { cls: 'is-nowrap' }, [DEPT[d.departmentCode] || d.departmentCode])]);
       });
       body = el('div', { cls: 'ld-card' }, [el('table', { cls: 'ld-table', 'aria-label': '대표 결함 목록, 영향 지점 수 × 업무 중요도 순' }, [
@@ -357,27 +359,12 @@
   }
 
   /* ---- ③ 상세 패널 ---- */
+  /* ADR-029 결정 4: 기록된 단계만(건너뛴 단계는 칠하지 않는다). S3 와 같은 목록 */
   function progress(d) {
-    var code = d.status, wont = code === WONT_FIX;
-    var at = stageIndex(code);
-    if (wont) {
-      var h = (d.statusHistory || []).filter(function (x) { return x.to === WONT_FIX; }).pop();
-      at = h ? stageIndex(h.from) : 0;
-    }
-    var now = el('p', { cls: 'kn-now' }, wont
-      ? [el('b', null, [WONT_FIX_LABEL]), ' · ' + STAGES[Math.max(at, 0)][1] + ' 단계에서 끝났어요']
-      : [STAGES.length + '단계 중 ' + (at + 1) + '단계 · ', el('b', null, [stageLabel(code)])]);
-    var track = el('ol', { cls: 'pn-track', 'aria-hidden': 'true' }, STAGES.map(function (s, i) {
-      var passed = i === 0 || (d.statusHistory || []).some(function (h) { return h.to === s[0]; });   // 건너뛴 단계는 칠하지 않는다
-      return el('li', { cls: i === at && !wont ? 'is-now' : i <= at && passed ? 'is-done' : null });
-    }));
-    var names = STAGES.map(function (s, i) {
-      var cur = !wont && i === at;
-      return el('li', { cls: cur ? 'is-now' : null, 'aria-current': cur ? 'step' : null }, [s[1] + (cur ? '(지금)' : '')]);
+    var list = window.NoticeTracks.recorded(d.statusHistory).map(function (h) {
+      return { name: h.verification ? '배포·검증 완료(가상)' : stageLabel(h.to), at: h.verification ? h.verification.verifiedAt : h.at };
     });
-    names.push(el('li', { cls: 'is-alt' + (wont ? ' is-now' : ''), 'aria-current': wont ? 'step' : null },
-      [WONT_FIX_LABEL + (wont ? '(지금)' : '')]));
-    return el('div', { cls: 'kn-progress' }, [now, track, el('ol', { cls: 'kn-stages', 'aria-label': '처리 단계' }, names)]);
+    return window.NoticeTracks.steps(list.length ? list : [{ name: stageLabel(d.status) }]);
   }
   function planRow(d) {
     if (d.status === WONT_FIX) return ['고치지 않는 이유', d.wontFixReasonText || REASON_TEXT[d.wontFixReasonCode] || ''];
@@ -389,7 +376,11 @@
       var what = (h.from ? stageLabel(h.from) + ' → ' : '') + stageLabel(h.to);
       return [fmtWhen(h.at), [el('span', null, [what + ' · ' + userName(h.actorId)]),
         el('span', { cls: 'ld-tag' + (h.notifiable ? '' : ' is-dim') }, [h.notifiable ? '알림 보냄' : '기록만']),
-        h.reason ? el('span', { cls: 'ld-why' }, ['사유: ' + h.reason]) : null]];
+        h.reason ? el('span', { cls: 'ld-why' }, ['사유: ' + h.reason]) : null,
+        h.to === 'FIX_PLANNED' && h.plannedFixDate ? el('span', { cls: 'ld-why' }, ['예정일: ' + fmtDate(h.plannedFixDate)]) : null,
+        h.verification ? el('span', { cls: 'ld-why' }, ['검증 완료(가상): ' + fmtWhen(h.verification.verifiedAt) +
+          (h.verification.refId ? ' · 참조 ' + h.verification.refId : '')]) : null,
+        h.note ? el('span', { cls: 'ld-why' }, ['메모(이 화면에만): ' + h.note]) : null]];
     });
   }
   function noticeCard(d) {
@@ -691,8 +682,47 @@
   }
 
   function resolutionRows(resolution) {
-    return rows([['적용 시각', fmtWhen(resolution.appliedAt)], ['적용 범위', resolution.scope],
-      ['바뀐 동작', resolution.change], ['기존 건 처리', resolution.action]]);
+    var v = resolution.verification;
+    return rows([v ? ['검증 여부', '수정·배포 검증 완료 · 가상 시연용'] : ['검증 여부', '검증 기록 없음 · 해결로만'],
+      ['적용 시각', fmtWhen(resolution.appliedAt)],
+      v ? ['검증 완료', fmtWhen(v.verifiedAt) + ' (가상)'] : null,
+      v ? ['정상 이용 안내', v.usageGuide] : null,
+      v && detail && detail.workaround ? ['기존 임시 방법', v.workaroundEnded ? '사용 종료 확인' : '종료 여부 확인 전'] : null,
+      ['적용 범위', resolution.scope], ['바뀐 동작', resolution.change], ['기존 건 처리', resolution.action],
+      v && v.refId ? ['참조 ID', v.refId + ' (가상)'] : null,
+      v && v.environment ? ['검증 환경', resolutionLabels.environment[v.environment]] : null,
+      v && v.version ? ['배포 버전', v.version + ' (가상)'] : null]);
+  }
+  /* ADR-029 결정 5 수정 완료 후 현장 확인. FC의 답은 보기만, 후속 조사는 코드로. 답으로 상태를 바꾸지 않는다 */
+  function fieldCard(d) {
+    var f = d.fieldVerification;
+    if (!f) return null;
+    function tally(code) {
+      var fcs = f.fcs.filter(function (x) { return x.result === code; });
+      return fcs.length + '명' + (fcs.length ? ' · ' + fcs.map(function (x) { return x.name; }).join(', ') : '');
+    }
+    var card = el('div', { cls: 'pn-card' }, [
+      el('p', { cls: 'pn-card-title' }, ['수정 완료 후 현장 확인']),
+      el('p', { cls: 'ld-meta' }, ['신고자 ' + f.reporterCount + '명 · 신고 ' + f.reportCount + '건 · 이번 수정에 대한 답만 세요']),
+      rows([['정상 확인', tally('CONFIRMED_OK')], ['문제 지속', tally('STILL_FAIL')], ['미확인', tally('NOT_TESTED')]]),
+      f.failReports.length ? el('ul', { cls: 'pn-plain ld-field-fails' }, f.failReports.map(function (x) {
+        var r = d.reports.filter(function (y) { return y.id === x.reportId; })[0];
+        if (!r) return null;
+        var added = (r.followups || []).filter(function (e) { return e.action === 'ADD' && e.at >= x.at; }).length;
+        return el('li', { 'data-field-fail': r.id }, [
+          el('p', { cls: 'ld-field-who' }, [el('span', { cls: 'ld-id' }, [r.id]),
+            ' · ' + (r.reporter ? r.reporter.name + ' · ' + r.reporter.branchName : '') + ' · 추가 확인 대상']),
+          el('p', { cls: 'ld-meta' }, [fmtWhen(x.at) + ' 문제 지속' + (added ? ' · 추가 내용 ' + added + '건' : '')]),
+          factsDetails(r) || el('p', { cls: 'ld-meta' }, ['남은 발생 조건이 없어요. FC에게 추가로 확인해 주세요.']),
+          el('p', { cls: 'ld-field-who' }, ['후속 조사 기록']),
+          el('ul', { cls: 'pn-chips', 'aria-label': r.id + ' 후속 조사 기록' }, Object.keys(resolutionLabels.investigation).map(function (code) {
+            return el('li', null, [btn('pn-chip', resolutionLabels.investigation[code], 'investigate', { 'data-report': r.id, 'data-code': code,
+              'aria-pressed': String(!!x.investigation && x.investigation.code === code) })]);
+          }))]);
+      })) : null,
+      el('p', { cls: 'ld-meta' }, ['FC의 답으로 상태가 바뀌지 않아요. 재발·잔존 여부는 담당자가 판단하고, 재검토는 [상태 바꾸기]에서 해요.'])]);
+    card.setAttribute('data-field-verification', '');
+    return card;
   }
 
   function deliveryCard(d) {
@@ -733,7 +763,7 @@
         r.hasAttachment ? attachmentDetails(r, st) : null,
         draftSummaryCard(r),
         (r.followups || []).length ? el('ul', { cls: 'pn-plain' }, r.followups.map(function (entry) {
-          var labels = { RECURRED: '다시 발생했어요', STILL: '아직 안 돼요', ADD: '추가 내용', URGENT: '긴급 사정 추가' };
+          var labels = { RECURRED: '다시 발생했어요', STILL: '아직 안 돼요', ADD: '추가 내용', URGENT: '긴급 사정 추가', FIELD_FAIL: '수정 뒤에도 문제가 있어요' };
           return el('li', null, [labels[entry.action], ' · ', fmtWhen(entry.at)]);
         })) : null]);
     });
@@ -742,7 +772,9 @@
       el('div', { cls: 'pn-card' }, [
         el('div', { cls: 'kn-card-head' }, [el('p', { cls: 'pn-card-title' }, ['지금 상태']), statusTag(d.status)]),
         progress(d),
-        rows([d.workaround ? ['임시로 이렇게', d.workaround] : ['임시로 이렇게', '아직 없어요'], planRow(d)])]),
+        rows([d.workaround ? ['임시로 이렇게', d.workaround] : ['임시로 이렇게', '아직 없어요'], planRow(d),
+          d.status === 'RESOLVED' ? ['수정·배포 검증', d.resolution && d.resolution.verification ? '완료 기록 있음 · 가상 시연용' : '기록 없음 · 해결로만 처리'] : null])]),
+      fieldCard(d),
       el('div', { cls: 'pn-card' }, [el('p', { cls: 'pn-card-title' }, ['요약']),
         rows([['유형', TYPE[d.type] || d.type], ['신·구 시스템', (GEN[d.systemGen] || '') + ' 시스템'],
           ['처리 등급', [gradeTag(d.grade)]], ['담당 부서', DEPT[d.departmentCode] || d.departmentCode],
@@ -768,30 +800,43 @@
     var key = st.dialog + '|' + st.item + '|' + st.to + '|' + st.report;
     if (key !== draftKey) {
       draftKey = key;
-      draft = { date: '', reason: '', memo: '', applied: '', scope: '', change: '', action: '', approved: false,
+      draft = { date: '', reason: '', back: '', memo: '', note: '', applied: '', scope: '', change: '', action: '', approved: false,
+        verify: '', verifiedAt: '', guide: '', ended: 'NO', refId: '', environment: '', version: '',
         eventId: window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : Date.now() + '-' + Math.random() };
       statusError = '';
     }
     if (st.date) draft.date = st.date;
     if (st.reason) draft.reason = st.reason;
     if (st.memo) draft.memo = st.memo;
+    if (st.back) draft.back = st.back;
   }
   function statusSteps(st) {
     var steps = [['pick', '다음 상태 고르기']];
-    if (st.to && needsDetail(detail.status, st.to)) steps.push(['detail', st.to === 'FIX_PLANNED' ? '예정일 적기' : st.to === 'RESOLVED' ? '해결 안내 확인' : '이유 적기']);
+    if (st.to && needsDetail(detail.status, st.to)) steps.push(['detail', st.to === 'FIX_PLANNED' ? '예정일 적기' : st.to === 'RESOLVED' ? '검증·안내 확인' : '이유 적기']);
     steps.push(['preview', '알림 미리보기']);
     return steps;
   }
   function missing(st) {
     var from = detail.status, to = st.to;
     if (!to) return '다음 상태를 골라 주세요';
-    if (to === 'RESOLVED' && (!draft.applied || !draft.scope || !draft.change.trim() || !draft.action || !draft.approved)) {
-      return '적용 시각, 적용 범위, 바뀐 동작, 기존 건 처리 방법을 적고 공개 안내를 확인해 주세요.';
+    if (to === 'RESOLVED') {
+      if (!draft.verify) return '검증 여부를 골라 주세요.';
+      if (draft.verify === 'VERIFIED') {
+        if (!draft.verifiedAt || !draft.guide.trim()) return '검증 완료 시각과 정상 이용 안내를 적어 주세요.';
+        if (draft.applied && draft.verifiedAt < draft.applied) return '검증 완료 시각은 적용 시각보다 뒤여야 해요.';
+        if (Date.parse(draft.verifiedAt + ':00+09:00') > Date.now()) return '검증 완료 시각은 지금보다 앞이어야 해요.';
+        if ([draft.refId, draft.version].some(function (v) { return v && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,29}$/.test(v); })) {
+          return '참조 ID와 버전은 영문·숫자·점·밑줄·하이픈으로 30자까지 적어 주세요.';
+        }
+      }
+      if (!draft.applied || !draft.scope || !draft.change.trim() || !draft.action || !draft.approved) {
+        return '적용 시각, 적용 범위, 바뀐 동작, 기존 건 처리 방법을 적고 공개 안내를 확인해 주세요.';
+      }
     }
-    if (to === 'FIX_PLANNED' && !isBack(from, to) && !/^\d{4}-\d{2}-\d{2}$/.test(draft.date)) return '고칠 예정일을 골라 주세요';
+    if (to === 'FIX_PLANNED' && !/^\d{4}-\d{2}-\d{2}$/.test(draft.date)) return '고칠 예정일을 골라 주세요';
     if (to === WONT_FIX && !draft.reason) return '고치지 않는 이유를 골라 주세요';
     if (to === WONT_FIX && draft.reason === 'ETC' && !draft.memo.trim()) return '기타 이유를 적어 주세요';
-    if (isBack(from, to) && !draft.memo.trim()) return '되돌리는 이유를 적어 주세요';
+    if (isBack(from, to) && !Object.prototype.hasOwnProperty.call(resolutionLabels.backReason, draft.back)) return '되돌리는 이유를 골라 주세요';
     return '';
   }
   function reasonText() {
@@ -801,7 +846,7 @@
     if (isBack(from, to)) return '되돌리기 · 기록만';
     if (to === 'FIX_PLANNED') return '예정일 필요 · 알림 가요';
     if (to === WONT_FIX) return '이유 필요 · 알림 가요';
-    if (to === 'RESOLVED') return '해결 안내 확인 · 알림 가요';
+    if (to === 'RESOLVED') return '검증 여부 확인 · 알림 가요';
     return notifiable(from, to) ? '알림 가요' : '기록만 해요';
   }
   function pickView(st) {
@@ -821,20 +866,22 @@
   function detailView(st) {
     var from = detail.status, to = st.to, err = st.err === '1' ? missing(st) : '';
     var out = [el('h3', { tabindex: '-1' }, [stageLabel(from) + ' → ' + stageLabel(to)])];
+    function dateField() {
+      return el('div', { cls: 'pn-field' }, [el('label', { 'for': 'ld-date' }, ['고칠 예정일']),
+        el('input', { id: 'ld-date', type: 'date', cls: 'pn-input', 'data-draft': 'date', value: draft.date, min: '2026-11-04',
+          'aria-invalid': err ? 'true' : null, 'aria-describedby': err ? 'ld-err' : null })]);
+    }
     if (to === 'RESOLVED') {
       out = out.concat(resolutionFields());
-      if (isBack(from, to)) out.push(el('div', { cls: 'pn-field' }, [
-        el('label', { for: 'ld-memo' }, ['이전 결정을 바꾸는 이유']),
-        el('textarea', { id: 'ld-memo', 'data-draft': 'memo' }, [draft.memo])]));
+      if (isBack(from, to)) out.push(backField(err));
     } else if (isBack(from, to)) {
-      out.push(el('p', { cls: 'pn-lead' }, ['앞 단계로 되돌려요. 되돌리기는 기록만 하고 알리지 않아요.']));
-      out.push(el('div', { cls: 'pn-field' }, [el('label', { 'for': 'ld-memo' }, ['되돌리는 이유']),
-        el('textarea', { id: 'ld-memo', 'data-draft': 'memo', 'aria-invalid': err ? 'true' : null, 'aria-describedby': err ? 'ld-err' : null }, [draft.memo])]));
+      out.push(el('p', { cls: 'pn-lead' }, ['앞 단계로 되돌려요. 되돌리기는 기록만 하고 알리지 않아요. 재배포는 되돌린 뒤 다시 해결해요.']));
+      out.push(backField(err));
+      if (to === 'FIX_PLANNED') out.push(dateField());
+      out.push(noteField('되돌림 설명 (선택)'));
     } else if (to === 'FIX_PLANNED') {
       out.push(el('p', { cls: 'pn-lead' }, ['기술 검토 뒤 정한 고칠 날짜를 넣어 주세요. 알림에 이 날짜가 함께 나가요. 시연 날짜는 가상이에요.']));
-      out.push(el('div', { cls: 'pn-field' }, [el('label', { 'for': 'ld-date' }, ['고칠 예정일']),
-        el('input', { id: 'ld-date', type: 'date', cls: 'pn-input', 'data-draft': 'date', value: draft.date, min: '2026-11-04',
-          'aria-invalid': err ? 'true' : null, 'aria-describedby': err ? 'ld-err' : null })]));
+      out.push(dateField());
     } else {
       out.push(el('p', { cls: 'pn-lead' }, ['고치지 않는 이유를 골라 주세요. 알림에 이 이유가 함께 나가요.']));
       out.push(el('ul', { cls: 'pn-chips', role: 'group', 'aria-label': '고치지 않는 이유' }, REASONS.map(function (r) {
@@ -848,6 +895,19 @@
     out.push(el('p', { cls: 'pn-err', id: 'ld-err', role: 'alert', hidden: !err }, [err]));
     return out;
   }
+  function backField(err) {
+    return el('div', { cls: 'pn-field' }, [el('label', { 'for': 'ld-back' }, ['되돌리는 이유']),
+      el('select', { id: 'ld-back', 'data-draft': 'back', 'aria-invalid': err ? 'true' : null, 'aria-describedby': err ? 'ld-err' : null },
+        [el('option', { value: '' }, ['골라 주세요'])].concat(Object.keys(resolutionLabels.backReason).map(function (code) {
+          return el('option', { value: code, selected: draft.back === code }, [resolutionLabels.backReason[code]]);
+        })))]);
+  }
+  function noteField(label) {
+    return el('div', { cls: 'pn-field' }, [el('label', { 'for': 'ld-note' }, [label]),
+      el('textarea', { id: 'ld-note', 'data-draft': 'note', maxlength: '300', 'aria-describedby': 'ld-note-help' }, [draft.note]),
+      el('p', { cls: 'pn-help', id: 'ld-note-help' }, ['이 화면에만 남고 새로고침하면 사라져요. 고객 정보는 적지 마세요.'])]);
+  }
+  /* ADR-029 결정 1: 검증 여부가 먼저. 검증 완료일 때만 검증 시각·정상 이용 안내·선택 참조를 연다 */
   function resolutionFields() {
     function input(label, key, field) {
       return el('div', { cls: 'pn-field' }, [el('label', { for: 'ld-resolution-' + key }, [label]), field]);
@@ -858,30 +918,47 @@
           return el('option', { value: code, selected: draft[key] === code }, [options[code]]);
         }))));
     }
+    function text(label, key, attrs) {
+      return input(label, key, el('input', Object.assign({ id: 'ld-resolution-' + key, cls: 'pn-input', 'data-draft': key,
+        value: draft[key], autocomplete: 'off' }, attrs)));
+    }
+    var ok = draft.verify === 'VERIFIED';
     return [
-      el('p', { cls: 'pn-lead' }, ['설계사가 고객에게 안내할 수 있는 내용만 적어 주세요. 고객 이름과 번호는 넣지 마세요.']),
-      input('적용 시각 (한국 시간)', 'applied', el('input', { id: 'ld-resolution-applied', type: 'datetime-local',
-        cls: 'pn-input', 'data-draft': 'applied', value: draft.applied })),
+      el('p', { cls: 'pn-lead' }, ['해결로 바꾸는 것과 실제 운영 배포는 달라요. 이 시제품의 검증 기록은 모두 가상 시연용이에요.']),
+      select('검증 여부', 'verify', { VERIFIED: '수정·배포 검증 완료 (가상)', NONE: '검증 근거 없음 · 해결로만 기록' }),
+      text('적용 시각 (한국 시간)', 'applied', { type: 'datetime-local' }),
+      ok ? text('검증 완료 시각 (한국 시간 · 가상)', 'verifiedAt', { type: 'datetime-local' }) : null,
+      ok ? text('정상 이용 안내 (FC에게 공개 · 40자)', 'guide', { maxlength: '40' }) : null,
+      ok && detail.workaround ? select('기존 임시 방법', 'ended', { NO: '종료 여부 확인 전', YES: '사용 종료를 확인했어요' }) : null,
       select('적용 범위', 'scope', resolutionLabels.scope),
       input('바뀐 동작', 'change', el('textarea', { id: 'ld-resolution-change', 'data-draft': 'change', maxlength: '300' }, [draft.change])),
       select('기존 건 처리 방법', 'action', resolutionLabels.action),
+      ok ? el('details', { cls: 'pn-details pq-details ld-evidence', open: !!(draft.refId || draft.environment || draft.version || draft.note) }, [
+        el('summary', null, ['검증 참조·내부 메모 (선택)']),
+        el('div', { cls: 'pq-details-body' }, [text('수정·배포 이력 참조 ID', 'refId', { maxlength: '30' }),
+          select('검증 환경', 'environment', resolutionLabels.environment),
+          text('관련 배포 버전', 'version', { maxlength: '30' }), noteField('내부 조치 메모')])]) : null,
+      el('p', { cls: 'pn-lead' }, ['설계사가 고객에게 안내할 수 있는 내용만 적어 주세요. 고객 이름·번호·주소(URL)는 넣지 마세요.']),
       btn('pn-chip', '공개 안내를 확인했어요', 'approve-resolution', { 'aria-pressed': String(draft.approved) })
-    ];
+    ].filter(Boolean);
   }
   function statusRequest(st) {
     var me = viewer(st);
+    function kst(value) { return value ? value + ':00+09:00' : null; }
+    var verification = draft.verify === 'VERIFIED' ? { result: 'VERIFIED', verifiedAt: kst(draft.verifiedAt), usageGuide: draft.guide,
+      workaroundEnded: draft.ended === 'YES', refId: draft.refId, environment: draft.environment, version: draft.version } : null;
     return { from: detail.status, to: st.to, plannedFixDate: draft.date || null, eventId: draft.eventId,
-      actorId: me ? me.id : null, simulateFailure: st.notify === 'fail',
+      actorId: me ? me.id : null, simulateFailure: st.notify === 'fail', backReason: draft.back || null, note: draft.note,
       wontFixReasonCode: st.to === WONT_FIX ? draft.reason : null, wontFixReasonText: st.to === WONT_FIX ? reasonText() : null,
-      resolution: st.to === 'RESOLVED' ? { appliedAt: draft.applied ? draft.applied + ':00+09:00' : null,
-        scope: draft.scope, change: draft.change, action: draft.action, approved: draft.approved } : null };
+      resolution: st.to === 'RESOLVED' ? { appliedAt: kst(draft.applied), scope: draft.scope, change: draft.change,
+        action: draft.action, approved: draft.approved, verification: verification } : null };
   }
   function previewView(st) {
     var from = detail.status, to = st.to, p = preview || {};
     var change = rows([['바뀌는 상태', stageLabel(from) + ' → ' + stageLabel(to)],
       to === 'FIX_PLANNED' && draft.date ? ['고칠 예정일', fmtDate(draft.date)] : null,
       to === WONT_FIX ? ['고치지 않는 이유', reasonText()] : null,
-      isBack(from, to) ? ['되돌리는 이유', draft.memo] : null]);
+      isBack(from, to) ? ['되돌리는 이유', resolutionLabels.backReason[draft.back] || ''] : null]);
     if (!p.notifiable) {
       return [el('h3', { tabindex: '-1' }, ['이 변경은 기록만 하고 알리지 않아요']),
         el('div', { cls: 'pn-card' }, [change]),
@@ -894,9 +971,12 @@
     return [el('h3', { tabindex: '-1' }, ['묶인 신고자 ' + (p.reporterCount != null ? p.reporterCount : p.recipientCount) + '명' +
         (submitters.length ? ' · 대신 접수한 관리자 ' + submitters.length + '명' : '') + '에게 알림']),
       el('div', { cls: 'pn-card' }, [change, p.resolution ? resolutionRows(p.resolution) : null]),
-      el('div', { cls: 'pn-card' }, [el('p', { cls: 'pn-card-title' }, [submitters.length ? 'FC에게 가는 알림 문구' : '알림 문구']),
+      p.summary ? el('div', { cls: 'pn-card', 'data-notice-preview': '' }, [el('p', { cls: 'pn-card-title' }, ['FC 알림에 보이는 요약']),
+        rows([['오류명', p.summary.title], ['상태', p.summary.status], ['핵심 안내', p.summary.headline], ['보조 안내', p.summary.line],
+          ['누르면', p.summary.action]])]) : null,
+      el('div', { cls: 'pn-card' }, [el('p', { cls: 'pn-card-title' }, [submitters.length ? 'FC 알림 기록 문구' : '알림 기록 문구']),
         el('p', { cls: 'ld-quote' }, [p.body])]),
-      submitters.length ? el('div', { cls: 'pn-card' }, [el('p', { cls: 'pn-card-title' }, ['대신 접수한 관리자에게 가는 알림 문구']),
+      submitters.length ? el('div', { cls: 'pn-card' }, [el('p', { cls: 'pn-card-title' }, ['대신 접수한 관리자 알림 기록 문구']),
         el('p', { cls: 'ld-quote' }, [submitters[0].body])]) : null,
       el('div', { cls: 'pn-card' }, [el('p', { cls: 'pn-card-title' }, ['받는 사람 ' + p.recipientCount + '명']),
         el('ul', { cls: 'ld-recipients' }, p.recipients.map(function (r) {
@@ -1109,12 +1189,12 @@
   }
   function nextStep(step) {
     var st = read();
-    var patch = { err: '', date: draft.date, reason: draft.reason, memo: draft.memo };
+    var patch = { err: '', date: draft.date, reason: draft.reason, back: draft.back, memo: st.to === WONT_FIX ? draft.memo : '' };
     if (step === 'pick') {
       if (!st.to) { go({ err: '1' }); return; }
       patch.dstep = needsDetail(detail.status, st.to) ? 'detail' : 'preview';
     } else if (step === 'detail') {
-      st.date = draft.date; st.reason = draft.reason; st.memo = draft.memo;
+      st.date = draft.date; st.reason = draft.reason;
       if (missing(st)) { patch.err = '1'; go(patch); return; }
       patch.dstep = 'preview';
     }
@@ -1124,7 +1204,7 @@
     var st = read();
     var steps = statusSteps(st).map(function (s) { return s[0]; });
     var i = steps.indexOf(st.dstep || 'pick');
-    go({ dstep: i > 1 ? steps[i - 1] : '', err: '', date: draft.date, reason: draft.reason, memo: draft.memo });
+    go({ dstep: i > 1 ? steps[i - 1] : '', err: '', date: draft.date, reason: draft.reason, back: draft.back, memo: st.to === WONT_FIX ? draft.memo : '' });
   }
 
   function onClick(e) {
@@ -1145,7 +1225,7 @@
     var row = t.closest('.ld-table:not(.is-static) tbody tr');
     if (row && !t.closest('button, a, select')) { openItem(row.getAttribute('data-id'), row.querySelector('.ld-open')); return; }
     var choice = t.closest('[data-to]');
-    if (choice) { go({ to: choice.getAttribute('data-to'), err: '', dstep: '', date: '', reason: '', memo: '' }); return; }
+    if (choice) { go({ to: choice.getAttribute('data-to'), err: '', dstep: '', date: '', reason: '', back: '', memo: '' }); return; }
     var reason = t.closest('[data-reason]');
     if (reason) { draft.reason = reason.getAttribute('data-reason'); go({ reason: draft.reason, memo: draft.memo, err: '' }); return; }
     var link = t.closest('[data-link]');
@@ -1155,7 +1235,7 @@
     var act = b.getAttribute('data-act'), st = read();
     if (act === 'reset') go({ status: '', grade: '', type: '' });
     else if (act === 'q-clear') { go({ q: '' }); setTimeout(function () { if ($('ld-q')) $('ld-q').focus(); }, 0); }
-    else if (act === 'status') { opener = b; statusResult = null; go({ dialog: 'status', to: '', dstep: '', err: '' }); }
+    else if (act === 'status') { opener = b; statusResult = null; go({ dialog: 'status', to: '', dstep: '', err: '', date: '', reason: '', back: '', memo: '' }); }
     else if (act === 'to-link') go(closeDialogPatch({ tab: 'unlinked', item: '', 'for': st.item }));
     else if (act === 'link') go({ dialog: 'link', report: b.getAttribute('data-report'), link: st['for'] || '', dstep: '', err: '' });
     // 신고 패널에서: AI 후보의 [이 결함에 묶기]는 그 결함을 미리 고른 신고 묶기, 주 버튼은 미리 고르지 않음 (연결은 [묶기]에서 사람이)
@@ -1171,6 +1251,16 @@
     else if (act === 'approve-resolution') {
       draft.approved = !draft.approved;
       b.setAttribute('aria-pressed', String(draft.approved));
+    }
+    else if (act === 'investigate') {
+      var report = b.getAttribute('data-report'), me = viewer(st);
+      if (!me || !detail || !detail.fieldVerification) return;
+      b.disabled = true;
+      A.postFieldInvestigation(report, me.id, detail.fieldVerification.resolutionEventId, b.getAttribute('data-code'))
+        .then(render).then(function () {
+          var again = document.querySelector('[data-act="investigate"][data-report="' + report + '"][aria-pressed="true"]');
+          if (again) again.focus();
+        });
     }
     else if (act === 'retry-notice') {
       b.disabled = true;
@@ -1193,7 +1283,7 @@
     var k = e.target.getAttribute && e.target.getAttribute('data-draft');
     if (!k || draft[k] === e.target.value) return;
     draft[k] = e.target.value;
-    if (['applied', 'scope', 'change', 'action'].includes(k)) {
+    if (['applied', 'scope', 'change', 'action', 'verify', 'verifiedAt', 'guide', 'ended'].includes(k)) {
       draft.approved = false;
       var approval = document.querySelector('[data-act="approve-resolution"]');
       if (approval) approval.setAttribute('aria-pressed', 'false');
@@ -1201,6 +1291,11 @@
   }
   function onChange(e) {
     onInput(e);
+    if (e.target.id === 'ld-resolution-verify') {   // 검증 여부에 따라 칸이 바뀐다
+      paintDialog(read());
+      $('ld-resolution-verify').focus();
+      return;
+    }
     var f = e.target.getAttribute && e.target.getAttribute('data-filter');
     if (f) { var p = {}; p[f] = e.target.value; go(p); }
   }
