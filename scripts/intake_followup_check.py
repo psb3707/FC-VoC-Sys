@@ -89,6 +89,7 @@ def check(chrome):
       await act('status');
       await click('[data-to=RESOLVED]');
       await act('next');
+      await fill('#ld-resolution-verify', 'NONE');   // ADR-029: 검증 근거 없는 해결
       await fill('#ld-resolution-applied', '2026-11-09T15:30');
       await fill('#ld-resolution-scope', 'LINKED');
       await fill('#ld-resolution-change', '알림톡에서 올바른 서명 화면이 열려요.');
@@ -115,7 +116,8 @@ def check(chrome):
       await click('[data-kn-report="' + location.hash.split('item=')[1].split('&')[0] + '"]');
       const card = await wait(() => {
         const target = $('#kn-body .is-target');
-        return target && target.innerText.includes('수정 완료 안내') && target;
+        // ADR-029: 검증 없는 해결은 "수정 완료"가 아니고, 해결 안내는 접힌 상세 이력에
+        return target && target.textContent.includes('해결 안내') && !target.textContent.includes('수정 완료') && target;
       });
       assert(card.innerText.includes('기존 링크를 다시 보내 주세요'), '알림에서 해당 접수와 후속 조치 확인');
       await wait(() => Number($('#alarm-badge').textContent) === """ + str(badge) + """);

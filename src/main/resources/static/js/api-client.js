@@ -7,7 +7,7 @@
   var I = F.intake || {};
   var Q = F.intakeAssistant || {};
   var store = window.IntakeDemoStore;
-  var quickReports = new Map(), followupText = new Map(), failedSubmissions = new Set(), failedAttachments = new Set(),
+  var quickReports = new Map(), followupText = new Map(), statusNotes = new Map(), failedSubmissions = new Set(), failedAttachments = new Set(),
     failedResumptions = new Set();
   var draftRules = window.IntakeDraftRules;
   var quick = I.quick || {};
@@ -23,7 +23,10 @@
   window.ApiClient = {
     /* GET /api/users  -> AppUser[] (역할 전환·대리 접수 대상) */
     getUsers: function () {
-      return Promise.resolve(copy(F.users || []));
+      return Promise.resolve((F.users || []).map(function (u) {
+        var branch = (L.branches || []).find(function (b) { return b.id === u.branchId; });
+        return Object.assign(copy(u), { branchName: branch ? branch.name : '' });   // 홈 머리글(ADR-029 결정 10)
+      }));
     },
     /* S1 메인 화면 가상 데이터 (화면 시안 전용, ADR-012. 대응하는 백엔드 API 없음) */
     getSfaHome: function () {
@@ -35,7 +38,7 @@
       var state = store.read();
       var list = allNotifications(state).filter(function (n) {
         return n.recipientId === userId;
-      }).map(function (n) { return Object.assign({}, n, { read: isRead(n, state) }); });
+      }).map(function (n) { return Object.assign({}, n, { read: isRead(n, state), summary: n.summary || summaryOfNotice(n, state) }); });
       list.sort(function (a, b) { return a.at < b.at ? 1 : -1; });
       return Promise.resolve(copy(list));
     },
@@ -61,11 +64,15 @@
           var d = defects.find(function (entry) { return entry.id === id; });
           item.defectId = id;
           item.defect = publicDefect(d, item.defect);
-          var changes = state.history.filter(function (h) { return h.defectId === id; });
-          if (changes.length) item.statusHistory = (item.statusHistory || []).concat(changes.map(function (h) {
-            return { from: h.from, to: h.to, at: h.at };
-          }));
-          if (d && d.resolution) item.resolution = d.resolution;
+          item.statusHistory = publicHistory(id, state);
+          item.linkedAt = (state.linkedAt || {})[r.id] || null;
+          if (d && d.resolution) {   // 참조 ID·환경·버전은 FC·관리자에게 내리지 않는다(ADR-029)
+            item.resolution = { appliedAt: d.resolution.appliedAt, scope: d.resolution.scope, change: d.resolution.change, action: d.resolution.action };
+          }
+          // 현장 확인: 지금 해결 회차의 답과, 이력에만 남는 모든 답
+          item.fieldVerification = d && d.resolutionEventId ? latestAnswer(state, r.id, d.resolutionEventId) : null;
+          item.fieldHistory = fieldAnswers(state).filter(function (v) { return v.reportId === r.id && v.defectId === id; })
+            .map(function (v) { return { result: v.result, at: v.at, resolutionEventId: v.resolutionEventId }; });
         }
         item.followups = reportFollowups(state, r.id);
         // ADR-025: 누구의 문의·누가 접수했는지, FC 업무 재개 회신
@@ -134,6 +141,8 @@
           createdAt: r.createdAt, defectId: r.defectId || null, defect: d ? publicDefect(d) : null,
           reporter: userBrief(r.reporterId), byMe: byMe, maskedText: byMe ? r.maskedText || null : null,
           workResumption: resumptionOf(r.id, state),
+          // ADR-029: 지금 해결 회차의 현장 확인
+          fieldVerification: d && d.resolutionEventId ? latestAnswer(state, r.id, d.resolutionEventId) : null,
           // ADR-027: FC 업무 상황 계산용 코드(대리 접수는 저장할 때 workOutcome·supportNeeded 가 null)
           workaroundState: window.IntakeFacts.clean(r).workaroundState, workOutcome: r.workOutcome || null,
           supportNeeded: window.IntakeFacts.clean(r).supportNeeded,
@@ -389,6 +398,7 @@
       }).map(function (d) {
         var x = copy(d);
         x.reports = linkedReports(d.id, state);
+        x.fieldFailCount = verified(d) ? fieldSummaryOf(d, x.reports, state).counts.STILL_FAIL : 0;   // ADR-029
         if (word) {
           x.matchedIn = [['ID', d.id], ['TITLE', d.title], ['WORKAROUND', d.workaround]]
             .filter(function (f) { return has(f[1], word); }).map(function (f) { return f[0]; });
@@ -407,7 +417,8 @@
       var x = copy(d);
       x.reports = linkedReports(id, state);
       x.statusHistory = copy((L.statusHistory || []).concat(state.history.map(historyView)).filter(function (h) { return h.defectId === id; })
-        .sort(function (a, b) { return a.at < b.at ? -1 : 1; }));
+        .sort(function (a, b) { return a.at.localeCompare(b.at); }));
+      x.fieldVerification = verified(d) ? fieldSummaryOf(d, x.reports, state) : null;   // ADR-029
       x.fcNotice = copy((L.fcNotices || []).filter(function (n) { return n.defectId === id; })[0] || null);
       return Promise.resolve(x);
     },
@@ -474,6 +485,7 @@
         if (!report || (report.defectId && report.defectId !== defectId) ||
             !ledgerDefects(state).some(function (d) { return d.id === defectId; })) return null;
         state.links[reportId] = defectId;
+        if (!report.defectId) state.linkedAt[reportId] = nowKst();   // 담당자가 연결한 시각
         return { defectId: defectId, reportId: reportId };
       }).then(ok);
     },
@@ -491,7 +503,10 @@
           return latest ? deliveryResult(latest) : { error: '이미 같은 상태예요.' };
         }
         if (d.status !== req.from) return { error: '상태가 바뀌었어요. 다시 열어 주세요.' };
-        var resolution = req.to === 'RESOLVED' ? safeResolution(req.resolution) : null;
+        var resolution = req.to === 'RESOLVED' ? safeResolution(req.resolution, d) : null;
+        if (resolution && resolution.verification && !isStaff(req.actorId)) return { error: '영업·IT 담당자만 검증 완료를 기록할 수 있어요.' };
+        var back = isBackChange(d.status, req.to);
+        if (back && !Object.hasOwn(BACK_REASON, req.backReason)) return { error: '되돌리는 이유를 골라 주세요.' };   // ADR-029 결정 7
         if (req.to === 'RESOLVED' && !resolution) return { error: '개인정보 없이 공개할 해결 안내를 확인해 주세요.' };
         if (req.to === 'FIX_PLANNED' && !validDay(req.plannedFixDate)) return { error: '수정 예정일을 확인해 주세요.' };
         if (req.to === 'WONT_FIX' && !Object.hasOwn(REASON_TEXT, req.wontFixReasonCode)) return { error: '사유를 확인해 주세요.' };
@@ -501,12 +516,16 @@
           from: d.status, to: req.to, at: nowKst(), actorId: req.actorId || null,
           plannedFixDate: req.to === 'FIX_PLANNED' ? req.plannedFixDate : null,
           wontFixReasonCode: req.to === 'WONT_FIX' ? req.wontFixReasonCode : null,
-          resolution: resolution, body: preview.body, recipients: preview.notifiable ? preview.recipients.map(function (r) {
-            return r.audience === 'SUBMITTER' ? { userId: r.userId, reportId: null, audience: 'SUBMITTER', body: r.body }
-              : { userId: r.userId, reportId: r.reportId, audience: 'REPORTER' };
+          resolution: resolution, backReason: back ? req.backReason : null, summary: preview.summary,
+          body: preview.body, recipients: preview.notifiable ? preview.recipients.map(function (r) {
+            return r.audience === 'SUBMITTER' ? { userId: r.userId, reportId: null, audience: 'SUBMITTER', body: r.body, summary: r.summary }
+              : { userId: r.userId, reportId: r.reportId, audience: 'REPORTER', summary: r.summary };
           }) : [], delivery: sends ? (req.simulateFailure ? 'FAILED' : 'SENT') : 'NONE',
           attempts: sends ? 1 : 0 };
         state.history.push(event);
+        // 담당자 자유 입력은 이 페이지 메모리에만(ADR-021)
+        var note = String(req.note || '').trim();
+        if (note && !containsPrivateValue(note)) statusNotes.set(event.id + event.eventId, note.slice(0, 300));
         return deliveryResult(event);
       }).then(ok);
     },
@@ -521,11 +540,59 @@
         return deliveryResult(event);
       }).then(ok);
     },
-    getResolutionLabels: function () { return ok({ scope: RESOLUTION_SCOPE, action: RESOLUTION_ACTION }); }
+    /* ---- ADR-029 수정 뒤 현장 확인 ----
+       업무 재개(WorkResumption)와 다른 기록. 신고자 본인이면서 FC 역할, 지금 해결 회차(검증 있음)만. 결함 상태·알림을 바꾸지 않는다.
+       백엔드 단계에서는 userId·역할을 인증 세션으로 정한다 */
+    postFieldVerification: function (reportId, userId, resolutionEventId, result, requestId) {
+      if (!FIELD_RESULT.includes(result) || !isFc(userId)) return ok(null);
+      return store.update(function (state) {
+        var report = ledgerReports(state).find(function (r) { return r.id === reportId && r.reporterId === userId; });
+        if (!report || !report.defectId) return null;
+        var d = ledgerDefects(state).find(function (x) { return x.id === report.defectId; });
+        if (!d || !verified(d) || d.resolutionEventId !== resolutionEventId) return null;
+        var round = state.verifications.filter(function (v) { return v.reportId === reportId && v.resolutionEventId === resolutionEventId; });
+        var same = requestId && round.find(function (v) { return v.requestId === requestId; });
+        var last = round[round.length - 1];
+        if (same || (last && last.result === result)) return Object.assign({ duplicate: true }, same || last);
+        var seq = state.verifications.length + 1, at = nowKst();
+        var entry = { id: 'FV-' + seq, seq: seq, reportId: reportId, defectId: d.id, resolutionEventId: resolutionEventId,
+          result: result, at: at, actorId: userId, requestId: requestId || null };
+        state.verifications.push(entry);
+        if (result === 'STILL_FAIL') {   // 미확인은 후속 조치를 만들지 않는다
+          var entries = state.followups[reportId] || [];
+          entries.unshift({ id: reportId + ':' + entries.length, action: 'FIELD_FAIL', at: at });
+          state.followups[reportId] = entries;
+        }
+        return entry;
+      }).then(ok);
+    },
+    /* 문제 지속 답이 있던 신고에 영업·IT가 남기는 후속 조사 코드. FC의 답은 고치지 않는다 */
+    postFieldInvestigation: function (reportId, actorId, resolutionEventId, code) {
+      if (!isStaff(actorId) || !Object.hasOwn(INVESTIGATION, code)) return ok(null);
+      return store.update(function (state) {
+        var report = ledgerReports(state).find(function (r) { return r.id === reportId; });
+        var d = report && report.defectId ? ledgerDefects(state).find(function (x) { return x.id === report.defectId; }) : null;
+        if (!d || !verified(d) || d.resolutionEventId !== resolutionEventId) return null;
+        function ofRound(x) { return x.reportId === reportId && x.resolutionEventId === resolutionEventId; }
+        if (!fieldAnswers(state).some(function (v) { return ofRound(v) && v.result === 'STILL_FAIL'; })) return null;
+        var last = state.investigations.filter(ofRound).pop();
+        if (last && last.code === code) return Object.assign({ duplicate: true }, last);
+        var entry = { id: 'FI-' + (state.investigations.length + 1), reportId: reportId, defectId: d.id,
+          resolutionEventId: resolutionEventId, code: code, at: nowKst(), actorId: actorId };
+        state.investigations.push(entry);
+        return entry;
+      }).then(ok);
+    },
+    getResolutionLabels: function () {
+      return ok({ scope: RESOLUTION_SCOPE, action: RESOLUTION_ACTION, environment: VERIFY_ENVIRONMENT, backReason: BACK_REASON, investigation: INVESTIGATION });
+    }
   };
 
   function visibleReports(userId, state) {
-    return (F.myReports || []).concat(state.reports.map(function (r) { return quickReports.get(r.id) || r; })).filter(function (r) {
+    var shown = F.myReports || [];
+    // ADR-029 결정 10: 알림을 받는 시드 신고자도 자기 접수 카드를 열 수 있게 대장의 시드 신고를 함께 읽는다
+    var seeds = (L.reports || []).filter(function (r) { return !shown.some(function (x) { return x.id === r.id; }); });
+    return shown.concat(seeds, state.reports.map(function (r) { return quickReports.get(r.id) || r; })).filter(function (r) {
       return !state.cancelled[r.id] && (r.reporterId === userId || r.submittedById === userId);
     });
   }
@@ -727,7 +794,7 @@
         }).filter(function (c) { return c.known || ++unknown <= 3; }) : [];
         return { outcome: 'MATCH', type: d.type, business: match.business, symptom: match.symptom,
           guidance: d.resolution ? d.resolution.change + ' ' + d.resolution.action : notice ? notice.approvedText : null,
-          defect: { id: d.id, title: d.title, status: d.status, workaround: d.status === 'RESOLVED' ? null : d.workaround,
+          defect: { id: d.id, title: d.title, status: d.status, verification: publicDefect(d).verification, workaround: d.status === 'RESOLVED' ? null : d.workaround,
             plannedFixDate: d.plannedFixDate, wontFixReasonText: d.wontFixReasonText },
           checks: checks, resumeQuestion: active && d.workaround ? match.resumeQuestion || null : null,
           // ADR-027 결정 4: 승인된 임시조치가 없으면 업무를 이어가기 어려운지 묻는다
@@ -756,13 +823,131 @@
   var RESOLUTION_ACTION = { RETRY: '기존 건을 다시 시도해 주세요.', RESEND: '기존 링크를 다시 보내 주세요.',
     NONE: '기존 건에 추가 작업은 필요 없어요.', UNKNOWN: '재시도 여부는 내 접수내역의 추가 내용에서 담당 창구에 확인해 주세요.' };
   function validDay(value) { return /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)); }
-  function safeResolution(raw) {
+  function safeResolution(raw, d) {
     if (!raw || raw.approved !== true || !validDate(raw.appliedAt) ||
         !Object.hasOwn(RESOLUTION_SCOPE, raw.scope) || !Object.hasOwn(RESOLUTION_ACTION, raw.action)) return null;
     var change = typeof raw.change === 'string' ? raw.change.trim() : '';
-    if (!change || change.length > 300 || containsPrivateValue(change)) return null;
+    if (!change || change.length > 300 || containsPrivateValue(change) || hasAddress(change)) return null;
+    var verification = null;
+    if (raw.verification) {
+      verification = safeVerification(raw.verification, raw.appliedAt, d);
+      if (!verification) return null;
+    }
     return { appliedAt: raw.appliedAt, scope: RESOLUTION_SCOPE[raw.scope], change: change,
-      action: RESOLUTION_ACTION[raw.action] };
+      action: RESOLUTION_ACTION[raw.action], verification: verification };
+  }
+  /* ADR-029 결정 1. 검증 시각은 적용 뒤·미래 아님, 공개 안내는 짧게, 참조는 형식만. 프론트 단계의 검증은 모두 가상 */
+  var VERIFY_ENVIRONMENT = { SIM_TEST: '가상 시험 환경', SIM_PROD_LIKE: '가상 운영 유사 환경' };
+  var BACK_REASON = { FIELD_RECHECK: '현장 문제 재검토', REDEPLOY: '재배포 준비', MISRECORDED: '잘못 기록', ETC: '그 밖의 이유' };
+  var INVESTIGATION = { STARTED: '조사 시작', NEED_INFO: '추가 정보 필요', NOT_REPRODUCED: '재현 안 됨', RESIDUAL_SUSPECTED: '잔존 가능성' };
+  var FIELD_RESULT = ['CONFIRMED_OK', 'STILL_FAIL', 'NOT_TESTED'];
+  var GUIDE_MAX = 30;   // 알림 두 줄(320px 팝업)에 드는 길이
+  function hasAddress(text) { return /:\/\/|www\./i.test(text); }
+  function safeReference(value) {
+    if (!value) return '';
+    return typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,29}$/.test(value) && !containsPrivateValue(value) ? value : null;
+  }
+  function safeVerification(raw, appliedAt, d) {
+    if (raw.result !== 'VERIFIED' || !validDate(raw.verifiedAt)) return null;
+    var when = Date.parse(raw.verifiedAt);
+    if (when < Date.parse(appliedAt) || when > Date.now()) return null;
+    var guide = typeof raw.usageGuide === 'string' ? raw.usageGuide.trim() : '';
+    if (!guide || guide.length > GUIDE_MAX || containsPrivateValue(guide) || hasAddress(guide)) return null;
+    var refId = safeReference(raw.refId), version = safeReference(raw.version);
+    if (refId === null || version === null) return null;
+    if (raw.environment && !Object.hasOwn(VERIFY_ENVIRONMENT, raw.environment)) return null;
+    return { result: 'VERIFIED', verifiedAt: raw.verifiedAt, usageGuide: guide,
+      workaroundEnded: !!(d && d.workaround) && raw.workaroundEnded === true,
+      refId: refId || null, version: version || null, environment: raw.environment || null, simulated: true };
+  }
+  function verified(d) { return !!(d && d.status === 'RESOLVED' && d.resolution && d.resolution.verification); }
+  function isStaff(id) { return (F.users || []).some(function (u) { return u.id === id && ['SALES', 'IT'].includes(u.role); }); }
+  function isFc(id) { return (F.users || []).some(function (u) { return u.id === id && u.role === 'FC'; }); }
+  function isBackChange(from, to) { return from === 'WONT_FIX' || ORDER.indexOf(to) < ORDER.indexOf(from); }
+  /* 현장 확인으로 읽는 답: FC가 남긴 것만(ADR-029 보완. 규칙 전에 저장된 다른 역할의 답은 읽지 않는다) */
+  function fieldAnswers(state) { return state.verifications.filter(function (v) { return isFc(v.actorId); }); }
+  function latestAnswer(state, reportId, eventId) {
+    var last = fieldAnswers(state).filter(function (v) { return v.reportId === reportId && v.resolutionEventId === eventId; }).pop();
+    return last ? { result: last.result, at: last.at, seq: last.seq } : null;
+  }
+  /* 사람 수는 FC별 최신 실제 답으로(답 없는 다른 신고는 덮지 않음), 신고별 문제 지속은 따로 */
+  function fieldSummaryOf(d, reports, state) {
+    var byFc = new Map(), perReport = [];
+    var asked = reports.filter(function (r) { return isFc(r.reporterId); });   // FC가 신고자인 신고만 센다
+    asked.forEach(function (r) {
+      var answer = latestAnswer(state, r.id, d.resolutionEventId);
+      var investigation = state.investigations.filter(function (x) { return x.reportId === r.id && x.resolutionEventId === d.resolutionEventId; }).pop();
+      perReport.push({ reportId: r.id, reporterId: r.reporterId, result: answer ? answer.result : null, at: answer ? answer.at : null,
+        investigation: investigation ? { code: investigation.code, at: investigation.at } : null });
+      var fc = byFc.get(r.reporterId);
+      if (!fc) {
+        fc = { id: r.reporterId, name: r.reporter ? r.reporter.name : r.reporterId, reportIds: [], answer: null };
+        byFc.set(r.reporterId, fc);
+      }
+      fc.reportIds.push(r.id);
+      if (answer && (!fc.answer || answer.seq > fc.answer.seq)) fc.answer = answer;
+    });
+    var counts = { CONFIRMED_OK: 0, STILL_FAIL: 0, NOT_TESTED: 0 };
+    var fcs = Array.from(byFc.values()).map(function (fc) {
+      var result = fc.answer ? fc.answer.result : 'NOT_TESTED';
+      counts[result]++;
+      return { id: fc.id, name: fc.name, reportIds: fc.reportIds, result: result, at: fc.answer ? fc.answer.at : null };
+    });
+    return { resolutionEventId: d.resolutionEventId, reporterCount: fcs.length, reportCount: asked.length, counts: counts, fcs: fcs,
+      reports: perReport, failReports: perReport.filter(function (r) { return r.result === 'STILL_FAIL'; }) };
+  }
+  /* FC에게 내리는 상태 이력: 처리자·내부 사유·참조 없이 */
+  function publicHistory(id, state) {
+    var base = (L.defects || []).find(function (d) { return d.id === id; }) || {};
+    var seeds = (L.statusHistory || []).filter(function (h) { return h.defectId === id; }).map(function (h) {
+      return { id: h.id, from: h.from, to: h.to, at: h.at, plannedFixDate: h.to === 'FIX_PLANNED' ? base.plannedFixDate : null, verified: false };
+    });
+    return seeds.concat(state.history.filter(function (h) { return h.defectId === id; }).map(function (h) {
+      var v = h.resolution && h.resolution.verification;
+      return { id: h.id, from: h.from, to: h.to, at: h.at, plannedFixDate: h.plannedFixDate, verified: !!v, verifiedAt: v ? v.verifiedAt : null };
+    }));
+  }
+  /* ADR-029 결정 3 알림 요약. 보낼 때의 상태로 만들고 저장한다. 날짜는 수정 예정에만 */
+  function dayLabel(day) { return validDay(day) ? Number(day.slice(5, 7)) + '월 ' + Number(day.slice(8, 10)) + '일' : ''; }
+  function noticeSummary(d, to, plannedFixDate, verification, audience, count) {
+    var out = { title: d.shortTitle || d.title };
+    function put(status, headline, line, action) { out.status = status; out.headline = headline; out.line = line; out.action = action; }
+    if (to === 'WORKAROUND') {
+      put('임시 방법 안내', d.workaround ? '안내된 임시 방법으로 진행해 주세요' : '담당자 안내를 확인해 주세요',
+        d.workaround || '현재 확인된 임시조치는 없어요', '방법 확인');
+    } else if (to === 'FIX_PLANNED') {
+      put('수정 예정', dayLabel(plannedFixDate) ? dayLabel(plannedFixDate) + ' 수정 예정' : '수정 예정',
+        d.workaround ? '그때까지 안내된 임시 방법을 써 주세요' : '현재 확인된 임시조치는 없어요', '처리경과 확인');
+    } else if (to === 'RESOLVED' && verification) {
+      put('수정 완료', verification.usageGuide, '배포·검증 완료(가상). 계속되면 접수에서 알려 주세요', '정상 이용 확인');
+    } else if (to === 'RESOLVED') {
+      put('해결', '해결로 처리됐어요', '기존 건 처리 방법은 상세에서 확인해 주세요', '처리경과 확인');
+    } else {
+      put('수정하지 않음', '이번 결함은 별도로 수정하지 않아요', '사유와 이용 방법은 상세에서 확인해 주세요', '사유 확인');
+    }
+    if (audience === 'SUBMITTER') {
+      out.headline = (to === 'FIX_PLANNED' && dayLabel(plannedFixDate) ? dayLabel(plannedFixDate) + ' 수정 예정 · ' : '') + '대신 접수 ' + count + '건';
+      out.line = to === 'RESOLVED' && verification ? 'FC의 정상 이용 확인 결과를 살펴봐 주세요'
+        : to === 'WORKAROUND' ? 'FC가 업무를 이어갈 수 있는지 확인해 주세요' : 'FC에게도 알렸어요';
+      out.action = 'FC 현황 확인';
+    }
+    return out;
+  }
+  /* 요약이 없는 시드·대리 접수 알림은 이력과 신고에서 만든다 */
+  function summaryOfNotice(n, state) {
+    if (n.kind === 'PROXY_RECEIPT') {
+      var r = ledgerReports(state).find(function (x) { return x.id === n.reportId; }) || {};
+      var business = (((I.metaForm || {}).businesses) || []).find(function (b) { return b.code === r.business; });
+      var by = userBrief(r.submittedById), joined = r.kind === 'ME_TOO';
+      return { title: (business ? business.label : '전산') + (joined ? ' 오류' : ' 문의'), status: joined ? '참여 기록' : '접수 완료',
+        headline: (by ? by.name + ' ' : '') + '관리자가 대신 ' + (joined ? '알렸어요' : '접수했어요'),
+        line: '진행 상황은 내 접수내역에서 알려 드려요', action: '접수 확인' };
+    }
+    var h = (L.statusHistory || []).concat(state.history).find(function (x) { return x.id === n.historyId; });
+    var d = (L.defects || []).find(function (x) { return x.id === n.defectId; });
+    if (!h || !d) return { title: '접수 경과', status: '안내', headline: '처리경과가 바뀌었어요', line: '', action: '처리경과 확인' };
+    var count = Number((/(\d+)건/.exec(n.bodySnapshot || '') || [])[1] || 1);
+    return noticeSummary(d, h.to, h.plannedFixDate || d.plannedFixDate, h.resolution && h.resolution.verification, n.audience, count);
   }
   function ledgerDefects(state) {
     state = state || store.read();
@@ -772,12 +957,18 @@
       var h = latest.get(d.id);
       return h ? Object.assign({}, d, { status: h.to, updatedAt: h.at, plannedFixDate: h.plannedFixDate,
         wontFixReasonCode: h.wontFixReasonCode, wontFixReasonText: REASON_TEXT[h.wontFixReasonCode] || null,
-        resolution: h.resolution, delivery: h.to === 'RESOLVED' ? deliveryResult(h) : null }) : d;
+        resolution: h.resolution, resolutionEventId: h.to === 'RESOLVED' ? h.id : null,
+        delivery: h.to === 'RESOLVED' ? deliveryResult(h) : null }) : d;
     });
   }
   function publicDefect(d, fallback) {
     if (!d) return fallback || null;
-    return { id: d.id, title: d.title, status: d.status, workaround: d.status === 'RESOLVED' ? null : d.workaround,
+    var v = verified(d) ? d.resolution.verification : null;
+    return { id: d.id, title: d.title, shortTitle: d.shortTitle || null, verifyTarget: d.verifyTarget || null,
+      resolutionEventId: d.resolutionEventId || null,
+      verification: v ? { result: v.result, verifiedAt: v.verifiedAt, usageGuide: v.usageGuide, simulated: v.simulated,
+        workaroundEnded: v.workaroundEnded, workaround: d.workaround && !v.workaroundEnded ? d.workaround : null } : null,
+      status: d.status, workaround: d.status === 'RESOLVED' ? null : d.workaround,
       plannedFixDate: d.plannedFixDate, wontFixReasonCode: d.wontFixReasonCode,
       wontFixReasonText: d.wontFixReasonText, updatedAt: d.updatedAt };
   }
@@ -790,7 +981,9 @@
   }
   function historyView(h) {
     return { id: h.id, defectId: h.defectId, from: h.from, to: h.to, at: h.at, actorId: h.actorId,
-      reason: REASON_TEXT[h.wontFixReasonCode] || null, notifiable: h.delivery === 'SENT' };
+      reason: REASON_TEXT[h.wontFixReasonCode] || BACK_REASON[h.backReason] || null, plannedFixDate: h.plannedFixDate,
+      verification: h.resolution ? h.resolution.verification || null : null, note: statusNotes.get(h.id + h.eventId) || null,
+      notifiable: h.delivery === 'SENT' };
   }
   function deliveryResult(h) {
     return { defectId: h.defectId, historyId: h.id, status: h.to, notificationCount: h.recipients.length,
@@ -801,7 +994,7 @@
       return event.recipients.map(function (r) {
         var submitter = r.audience === 'SUBMITTER';
         return { id: 'N-' + event.id + '-' + r.userId, historyId: event.id, defectId: event.defectId, reportId: r.reportId,
-          recipientId: r.userId, at: event.at, bodySnapshot: submitter ? r.body : event.body,
+          recipientId: r.userId, at: event.at, bodySnapshot: submitter ? r.body : event.body, summary: r.summary || event.summary,
           audience: submitter ? 'SUBMITTER' : 'REPORTER', kind: 'STATUS', resolution: submitter ? null : event.resolution };
       });
     });
@@ -842,17 +1035,30 @@
         .replace('{workaround}', d.workaround || '');
     }
     var body = notifiable ? fill((L.statusTemplates || {})[req.to]) : '';
-    var resolution = req.to === 'RESOLVED' ? safeResolution(req.resolution) : null;
-    if (resolution) {
-      body = d.title + ' · 수정 완료. ' + resolution.appliedAt.slice(0, 10) + ' ' +
+    var resolution = d && req.to === 'RESOLVED' ? safeResolution(req.resolution, d) : null;
+    var v = resolution && resolution.verification;
+    if (v && notifiable) {
+      body = d.title + ' · 수정·배포 검증 완료(가상). ' + v.usageGuide + (v.workaroundEnded ? ' 이전 임시 방법은 이제 쓰지 않아도 돼요.' : '') +
+        ' 문제가 계속되면 해당 접수에서 알려 주세요.';
+    } else if (resolution) {
+      body = d.title + ' · 해결. ' + resolution.appliedAt.slice(0, 10) + ' ' +
         resolution.appliedAt.slice(11, 16) + ' 적용. ' + resolution.change + ' ' + resolution.action;
     }
     recipients.forEach(function (r) {
-      if (r.audience === 'SUBMITTER') r.body = fill((L.submitterTemplates || {})[req.to]).replace('{count}', String(r.count));
+      if (r.audience !== 'SUBMITTER') {
+        if (v && !isFc(r.userId)) {   // FC가 아닌 신고자에게는 현장 확인을 청하지 않는다
+          r.summary = Object.assign(noticeSummary(d, req.to, req.plannedFixDate, v, 'REPORTER'), { action: '처리경과 확인' });
+        }
+        return;
+      }
+      r.body = v ? '대신 접수한 문의 ' + r.count + '건 · ' + d.title + ' — 수정·배포 검증 완료(가상). FC의 정상 이용 확인 결과를 살펴봐 주세요'
+        : fill((L.submitterTemplates || {})[req.to]).replace('{count}', String(r.count));
+      r.summary = noticeSummary(d, req.to, req.plannedFixDate, v, 'SUBMITTER', r.count);
     });
     var submitters = recipients.filter(function (r) { return r.audience === 'SUBMITTER'; }).length;
     return { notifiable: notifiable, recipientCount: recipients.length, reporterCount: recipients.length - submitters,
-      submitterCount: submitters, body: body, recipients: recipients, resolution: resolution };
+      submitterCount: submitters, body: body, recipients: recipients, resolution: resolution,
+      summary: notifiable ? noticeSummary(d, req.to, req.plannedFixDate, v, 'REPORTER') : null };
   }
   function norm(v) { return String(v == null ? '' : v).trim().toLowerCase().slice(0, 40); }
   function has(text, word) { return text != null && String(text).toLowerCase().indexOf(word) >= 0; }

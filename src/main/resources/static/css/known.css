@@ -77,9 +77,26 @@
 .kn-fcs > .pn-details { margin: 0; box-shadow: none; border: 1px solid var(--pn-line); }
 .kn-fcs > .pn-details > summary { padding-block: 12px; }
 .kn-fc-line { flex: 1; min-width: 0; color: var(--pn-sub); font-weight: 500; }
+.kn-fc-line .pn-tag { margin-left: 0; }
 .kn-fc-line b { color: var(--pn-ink); font-weight: 700; }
 .kn-card .kn-fcs .kn-team { margin: 0; padding: 0; border-top: 0; }
 @media (max-width: 480px) {
   .kn-fcs .pn-rows div, .kn-team-summary .pn-rows div { display: block; }
   .kn-fcs .pn-rows dd, .kn-team-summary .pn-rows dd { margin-top: 2px; }
+}
+/* ADR-029 기록된 단계: 이름 왼쪽·시각 오른쪽, 정의 목록 줄과 같은 1px 연한 선 */
+.kn-stages.is-recorded { display: block; }
+.kn-stages.is-recorded li { display: flex; flex-wrap: wrap; justify-content: space-between; column-gap: 12px; padding: 8px 0; }
+.kn-stages.is-recorded li + li { border-top: 1px solid var(--pn-line-soft); }
+.kn-stages.is-recorded li::after { content: none; }
+.kn-stages .kn-stage-at { margin-left: auto; color: var(--pn-sub); font-weight: 500; }
+.nt-track > .kn-progress { margin: 16px 0 0; }
+.kn-detail .kn-history + .pn-rows:not(:empty) { margin-top: 16px; border-top: 1px solid var(--pn-line-soft); padding-top: 8px; }
+.kn-detail .pq-details-body > .pn-note { margin-top: 16px; }
+/* 좁은 화면: 상세 이력은 다른 S3 정의 목록처럼 위아래, 현장 확인 버튼은 같은 폭 세로 */
+@media (max-width: 480px) {
+  .kn-detail .pn-rows div { display: block; }
+  .kn-detail .pn-rows dd { margin-top: 2px; }
+  .kn-detail .pn-note > div { min-width: 0; }
+  .kn-verify .pn-chips li, .kn-verify .pn-chip { width: 100%; }
 }

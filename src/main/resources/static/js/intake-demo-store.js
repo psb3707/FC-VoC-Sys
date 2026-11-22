@@ -4,7 +4,9 @@
   var KEY = 'fc-voc-intake-demo-v1', storageUsable = true;
   /* ADR-025: resumption = FC 업무 재개 회신(신고 ID별 {result, at}), notices = 대리 접수 알림(PROXY_RECEIPT, 설명 원문 없음) */
   function empty() { return { nextReport: 1, reports: [], links: {}, cancelled: {}, followups: {}, attachments: {}, history: [], read: {},
-    resumption: {}, notices: [] }; }
+    resumption: {}, notices: [],
+    /* ADR-029: 현장 확인·후속 조사(덧붙이기만), 담당자가 연결한 시각 */
+    verifications: [], investigations: [], linkedAt: {} }; }
   var memory = empty();
 
   function read() {
@@ -19,6 +21,9 @@
           state.attachments = state.attachments || {};
           state.resumption = state.resumption || {};
           state.notices = Array.isArray(state.notices) ? state.notices : [];
+          state.verifications = Array.isArray(state.verifications) ? state.verifications : [];
+          state.investigations = Array.isArray(state.investigations) ? state.investigations : [];
+          state.linkedAt = state.linkedAt || {};
           memory = state;
         }
       }

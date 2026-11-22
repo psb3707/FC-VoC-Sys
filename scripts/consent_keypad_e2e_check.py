@@ -273,7 +273,7 @@ def check(chrome):
       const rows = card.querySelectorAll('[data-fc="U-012"]');
       assert(rows.length === 1, '같은 FC는 한 줄 ' + rows.length);
       const row = rows[0], head = row.querySelector('summary').textContent;
-      assert(head.includes('조은별(가상) FC') && head.includes('관련 신고 2건') && head.includes('최근 업무 상황: 임시조치 미확인'), 'FC 한 줄 요약 ' + head);
+      assert(head.includes('조은별(가상) FC') && head.includes('관련 신고 2건') && head.includes('최근 업무 상황: 업무 진행 어려움'), 'FC 한 줄 요약 ' + head);
       row.querySelector('summary').click();
       await wait(() => row.open);
       assert(row.querySelectorAll('dt').length === 2 && row.textContent.includes('R-073') && row.textContent.includes('""" + second + """'),
@@ -284,9 +284,11 @@ def check(chrome):
       assert(nada.includes('남다래(가상) FC') && nada.includes('최근 업무 상황: 업무 진행 어려움'), '진행 어려움 FC');
       const summary = $('[data-team-summary]').innerText;
       const line = (label) => summary.split('\\n').find((t, i, all) => all[i - 1] === label) || '';
-      assert(line('업무를 못 함').includes('남다래(가상)') && !line('업무를 못 함').includes('조은별(가상)'),
-        '회신 없음·미확인을 업무 중단으로 세지 않음 ' + summary);
-      assert(line('추가 확인 필요').includes('조은별(가상)'), '추가 확인이 필요한 FC');
+      // ADR-029 결정 6: 상황을 적지 않은 재신고는 앞서 밝힌 업무 진행 어려움을 덮지 않는다(이전 검사는 누락을 정답으로 두었음)
+      assert(line('업무를 못 함').includes('남다래(가상)') && line('업무를 못 함').includes('조은별(가상)'),
+        '빈 재신고가 업무 진행 어려움을 덮지 않음 ' + summary);
+      assert(!line('업무를 못 함').includes('정다솜(가상)'), '회신 없음·미확인을 업무 중단으로 세지 않음 ' + summary);
+      assert(line('추가 확인 필요').includes('정다솜(가상)'), '추가 확인이 필요한 FC');
       const sign = [...document.querySelectorAll('#kn-body .kn-card')].find(c => c.getAttribute('data-id') === 'D-2026-001');
       assert(sign.querySelector('[data-fc="U-012"] summary').textContent.includes('회신 없음') &&
         sign.querySelector('[data-fc="U-011"] summary').textContent.includes('업무 재개'), '업무 재개와 회신 없음 구분');

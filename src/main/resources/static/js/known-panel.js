@@ -23,9 +23,11 @@
   var cache = { userId: null, mine: [], alarms: [], team: [] };
   var opener = null, lastView = null, feedback = null, posting = false;
   var T = window.NoticeTracks;
-  var FOLLOWUP = { ADD: '추가 내용', STILL: '아직 안 돼요', RECURRED: '다시 발생했어요', URGENT: '긴급 사정 추가' };
+  var FOLLOWUP = { ADD: '추가 내용', STILL: '아직 안 돼요', RECURRED: '다시 발생했어요', URGENT: '긴급 사정 추가',
+    FIELD_FAIL: '수정 뒤에도 문제가 있어요' };
   var FOLLOWUP_CHIPS = ['ADD', 'RECURRED', 'URGENT'];   // "아직 안 돼요"는 업무 재개 회신에서 남긴다(ADR-025)
   var RESUME = { RESUMED: '진행했어요', STILL: '아직 안 돼요' };
+  var VERIFY = [['CONFIRMED_OK', '정상 진행했어요'], ['STILL_FAIL', '아직 문제가 있어요'], ['NOT_TESTED', '아직 확인하지 못했어요']];   // ADR-029
   var NOTICE_STATE = { READ: '알림 확인함', UNREAD: '알림 아직 안 봄', NONE: '받은 알림 없음' };
   var URGENCY = { CONSULTING: '고객 상담 중', BLOCKED: '청약 진행 불가', DEADLINE: '오늘 처리 마감' };
 
@@ -157,27 +159,70 @@
         '전산 오류 접수에서 업무를 고르면 관련 오류에 참여하거나 새로 접수할 수 있어요.'])])];
   }
 
+  function recordName(h) {
+    if (h.to === 'RESOLVED' && h.verified) return '배포·검증 완료(가상)';
+    return h.to === 'WORKAROUND' ? '임시 방법 안내' : stageLabel(h.to);
+  }
+  /* 내 접수의 기록된 단계(ADR-029): 접수(또는 참여)·담당자 확인(담당자가 연결한 신고만)·대표 결함에 기록된 단계를 시각 순으로.
+     지금 = 대표 결함의 현재 상태(내 접수보다 앞선 기록일 수 있다). 연결 시각이 없는 시드는 접수 바로 뒤에 둔다 */
   function progress(r) {
-    var code = statusOf(r), wont = code === WONT_FIX;
-    var at = stageIndex(code);
-    if (wont) {   // 수정하지 않음: 그 직전 단계까지 지나온 것으로 표시
-      var h = (r.statusHistory || []).filter(function (x) { return x.to === WONT_FIX; })[0];
-      at = h ? stageIndex(h.from) : 0;
+    var list = [{ name: r.kind === 'ME_TOO' ? '같은 오류 참여' : '접수', at: r.createdAt }];
+    if (r.defect) {
+      if (r.kind !== 'ME_TOO') list.push({ name: '담당자 확인', at: r.linkedAt });
+      T.recorded(r.statusHistory).forEach(function (h) {
+        if (h.to === 'RECEIVED') return;
+        list.push({ name: recordName(h) + (h.at < r.createdAt ? ' (접수 전부터)' : ''), at: h.at, now: h.to === r.defect.status });   // 내 접수보다 앞선 결함 기록
+      });
+      list.sort(function (a, b) { return (a.at || r.createdAt).localeCompare(b.at || r.createdAt); });
     }
-    var now = el('p', { cls: 'kn-now' }, wont
-      ? [el('b', null, [WONT_FIX_LABEL]), ' · ' + STAGES[Math.max(at, 0)][1] + ' 단계에서 끝났어요']
-      : [STAGES.length + '단계 중 ' + (at + 1) + '단계 · ', el('b', null, [stageLabel(code)])]);   // 06번 5절 "6단계 중 4단계 · 임시조치"
-    var track = el('ol', { cls: 'pn-track', 'aria-hidden': 'true' }, STAGES.map(function (s, i) {
-      return el('li', { cls: wont ? (i <= at ? 'is-done' : null) : (i < at ? 'is-done' : i === at ? 'is-now' : null) });
+    return T.steps(list);
+  }
+  function verifyLabel(code) {
+    var hit = VERIFY.filter(function (v) { return v[0] === code; })[0];
+    return hit ? hit[1] : '아직 답 없음';
+  }
+  /* 을/를: 끝 글자 받침 */
+  function eul(word) { var c = word.charCodeAt(word.length - 1) - 0xac00; return c >= 0 && c < 11172 && c % 28 ? '을' : '를'; }
+  /* 수정 뒤 현장 확인(ADR-029 결정 2): 검증된 해결, 신고자 본인이면서 FC만. 업무 재개 회신과 다른 기록 */
+  function verifyView(r, me) {
+    var d = r.defect;
+    if (!d || d.status !== 'RESOLVED' || !d.verification || !r.reporter || r.reporter.role !== 'FC') return null;
+    var answer = r.fieldVerification;
+    if (!me || me.id !== r.reporterId) {
+      return el('p', { cls: 'kn-resume-status' }, ['FC 현장 확인 · ' + (answer ? verifyLabel(answer.result) + ' (' + fmtWhen(answer.at) + ')' : '확인 전')]);
+    }
+    var target = d.verifyTarget || '화면';
+    var said = !answer ? '알림을 읽은 것만으로는 확인으로 남지 않아요.'
+      : answer.result === 'CONFIRMED_OK' ? fmtWhen(answer.at) + ' · 정상 진행으로 남겼어요.'
+      : answer.result === 'STILL_FAIL' ? fmtWhen(answer.at) + ' · 문제가 있다고 남겼어요. IT가 확인해요. 어떤 상황인지 더 남겨 주세요.'
+      : fmtWhen(answer.at) + ' · 확인 전으로 남겼어요. 확인한 뒤 다시 골라 주세요.';
+    return el('div', { cls: 'kn-resume kn-verify', 'data-verify-event': d.resolutionEventId }, [
+      el('p', { cls: 'nt-q' }, ['수정된 ' + target + eul(target) + ' 정상적으로 이용할 수 있나요?']),
+      el('ul', { cls: 'pn-chips', 'aria-label': '수정 뒤 현장 확인' }, VERIFY.map(function (v) {
+        return el('li', null, [el('button', { type: 'button', cls: 'pn-chip', 'data-verify': v[0],
+          'aria-pressed': String(!!answer && answer.result === v[0]) }, [v[1]])]);
+      })),
+      el('p', { cls: 'kn-resume-status', role: 'status', tabindex: '-1', 'data-verify-status': '' }, [said]),
+      answer && answer.result === 'STILL_FAIL'
+        ? el('button', { type: 'button', cls: 'pn-btn-2', 'data-verify-add': '' }, ['추가 상황 남기기']) : null]);
+  }
+  /* D 상세 이력(접힘): 상태·일정 변경과 현장 확인. 처리자·내부 사유는 없다 */
+  function historyOf(r, me) {
+    if (!r.defect) return null;
+    var own = r.kind === 'ME_TOO' ? '같은 오류 참여' : me && me.id === r.reporterId ? '내 접수' : '접수';
+    // 결함의 첫 접수는 다른 사람의 신고일 수 있어 이 신고의 접수 시각으로 바꾼다
+    var list = [{ at: r.createdAt, text: own }].concat((r.statusHistory || []).filter(function (h) {
+      return h.to !== 'RECEIVED' || h.from;
+    }).map(function (h) {
+      var back = h.from === WONT_FIX || (h.from && h.to !== WONT_FIX && stageIndex(h.to) < stageIndex(h.from));
+      var plan = h.to === 'FIX_PLANNED' && h.plannedFixDate ? ' · 예정일 ' + fmtDate(h.plannedFixDate) : '';
+      return { at: h.at, text: (back ? '다시 검토 · ' : '') + (h.to === 'RESOLVED' && !h.verified ? '해결(검증 기록 없음)' : recordName(h)) + plan };
+    })).concat((r.fieldHistory || []).map(function (v) {
+      var past = !r.defect.resolutionEventId || v.resolutionEventId !== r.defect.resolutionEventId;
+      return { at: v.at, text: (past ? '이전 수정에 대한 확인 · ' : '현장 확인 · ') + verifyLabel(v.result) };
     }));
-    var names = STAGES.map(function (s, i) {
-      var cur = !wont && i === at;
-      return el('li', { cls: cur ? 'is-now' : null, 'aria-current': cur ? 'step' : null }, [s[1] + (cur ? '(지금)' : '')]);
-    });
-    names.push(el('li', { cls: 'is-alt' + (wont ? ' is-now' : ''), 'aria-current': wont ? 'step' : null },
-      [WONT_FIX_LABEL + (wont ? '(지금)' : '')]));
-    return el('div', { cls: 'kn-progress' }, [now, track,
-      el('ol', { cls: 'kn-stages', 'aria-label': '처리 단계' }, names)]);
+    list.sort(function (a, b) { return a.at.localeCompare(b.at); });
+    return list.length ? rows(list.map(function (x) { return [fmtWhen(x.at), x.text]; }), 'kn-history') : null;
   }
 
   /* 업무 재개 회신(ADR-025 결정 5): 신고자 본인만 답한다. 대신 접수한 관리자는 FC의 답을 글자로 본다 */
@@ -219,11 +264,12 @@
         el('div', { cls: 'kn-card-head' }, [el('p', { cls: 'pn-card-title', tabindex: '-1' }, [titleOf(r)]),
           el('span', { cls: 'pn-tag' }, [T.tag(d)])]),
         el('p', { cls: 'kn-meta' }, [metaOf(r, me)]),
-        el('p', { cls: 'kn-handled' }, ['내 문의 처리 · ', el('b', null, [T.handled(d)])]),
-        T.view(d, { resolution: r.resolution, after: resumeView(r, me) }),
-        el('details', { cls: 'pn-details pq-details', open: st.item === r.id }, [
-          el('summary', null, ['자세히 보기']), el('div', { cls: 'pq-details-body' }, [
-        progress(r),
+        el('p', { cls: 'kn-handled' }, ['내 문의 처리 · ', el('b', null, [T.handled(d, r.kind)])]),
+        // ADR-029: A 상태(위) → B 대응·확인 → C 기록된 단계 → D 상세 이력(접힘)
+        T.view(d, { inReport: true, resolution: r.resolution, after: resumeView(r, me) || verifyView(r, me), progress: progress(r) }),
+        el('details', { cls: 'pn-details pq-details kn-detail' }, [
+          el('summary', null, ['상세 이력']), el('div', { cls: 'pq-details-body' }, [
+        historyOf(r, me),
         rows([
           r.department ? ['담당 창구', r.department] : null,
           r.contact === 'PHONE' ? ['연락 희망', '전화' + ({ AM: ' · 오전', PM: ' · 오후', ANY: ' · 시간 무관' }[r.contactTime] || '')] : null,
@@ -234,7 +280,7 @@
           r.hasAttachment ? ['화면 첨부', '확인한 이미지 1장'] : null,
           r.incident && r.incident.screen ? ['오류 화면', r.incident.screen] : null,
           r.incident && (r.incident.date || r.incident.time) ? ['발생 시각', [r.incident.date, r.incident.time].filter(Boolean).join(' ')] : null,
-          d ? planOf(d) : null
+          d && d.status === WONT_FIX ? planOf(d) : null
         ]),
         r.aiDraft ? el('details', { cls: 'pn-details' }, [
           el('summary', null, ['확인하고 보낸 AI 접수 초안']),
@@ -246,9 +292,12 @@
         !d && related && related.workaround && related.workaround !== r.attemptedWorkaround
           ? rows([['비슷해 보이는 공개 방법', related.workaround]]) : guideSteps(d && related ? related : null),
         r.resolution ? el('div', { cls: 'pn-note' }, [icon('i-check'), el('div', null, [
-          el('b', null, ['수정 완료 안내']),
-          rows([['적용 시각', fmtWhen(r.resolution.appliedAt)], ['적용 범위', r.resolution.scope],
-            ['바뀐 동작', r.resolution.change], ['기존 건 처리', r.resolution.action]])])]) :
+          el('b', null, [d && d.verification ? '수정 완료 안내(가상 검증)' : '해결 안내']),
+          // 바뀐 동작은 진행상황에, 검증 없는 해결의 기존 건 처리는 대응에 이미 있다
+          rows([['적용 시각', fmtWhen(r.resolution.appliedAt)],
+            d && d.verification ? ['검증 완료', fmtWhen(d.verification.verifiedAt) + ' (가상)'] : null,
+            ['적용 범위', r.resolution.scope],
+            d && d.verification ? ['기존 건 처리', r.resolution.action] : null])])]) :
         r.fcNotice && r.fcNotice.approvedText
           ? el('div', { cls: 'pn-note' }, [icon('i-info'), el('div', null, [el('b', null, ['담당자 안내 전문']), r.fcNotice.approvedText])])
           : el('p', { cls: 'kn-none' }, [d ? '담당자 안내는 아직 없어요' : '접수 완료 · 담당자 확인 전'])])]),
@@ -265,10 +314,15 @@
   /* [지점 FC 문의] (관리자만, REQ-KN-06, ADR-025 결정 6, ADR-027 결정 9). 대표 결함별 카드 안에서 FC 한 줄로 묶고
      펼치면 신고 건별로 본다. 업무 상황은 FC의 가장 최근 기록으로 정한다. FC가 적은 설명은 내가 대신 접수한 건만(API 가 걸러 줌). */
   var SITUATION = { BLOCKED: '업무 진행 어려움', NO_REPLY: '회신 없음', NO_WORKAROUND: '임시조치 미확인', RESUMED: '업무 재개',
-    FIXED: '오류가 고쳐졌어요' };
-  var SITUATION_ORDER = ['BLOCKED', 'NO_REPLY', 'NO_WORKAROUND', 'RESUMED'];
-  /* 회신 없음 ≠ 업무 중단(02번 4-1절 ADR-027). 임시 방법이 없거나 연결 전이면 "임시조치 미확인" */
+    FIELD_FAIL: '추가 지원 필요', FIELD_WAIT: '확인 필요', FIELD_OK: '정상 진행 확인', FIXED: '해결로 처리됨' };
+  var SITUATION_ORDER = ['FIELD_FAIL', 'BLOCKED', 'FIELD_WAIT', 'NO_REPLY', 'NO_WORKAROUND', 'RESUMED', 'FIELD_OK', 'FIXED'];
+  function verifiedFix(d) { return !!(d && d.status === 'RESOLVED' && d.verification); }
+  /* 회신 없음·확인 전 ≠ 업무 중단(02번 4-1·4-2절) */
   function situationOf(r, d) {
+    if (verifiedFix(d)) {
+      var v = r.fieldVerification && r.fieldVerification.result;
+      return v === 'STILL_FAIL' ? 'FIELD_FAIL' : v === 'CONFIRMED_OK' ? 'FIELD_OK' : 'FIELD_WAIT';
+    }
     if (d && d.status === 'RESOLVED') return 'FIXED';
     var a = r.workResumption;
     if (a) return a.result === 'STILL' ? 'BLOCKED' : 'RESUMED';
@@ -276,6 +330,17 @@
     return d && d.workaround ? 'NO_REPLY' : 'NO_WORKAROUND';
   }
   function situationAt(r) { return (r.workResumption && r.workResumption.at) || r.createdAt; }
+  /* FC의 대표 신고(ADR-029 결정 6): 검증된 해결이면 그 회차의 최신 실제 답, 해결 전이면 명시한 최신 상황.
+     상황을 적지 않은 새 신고가 앞선 답을 덮지 않는다 */
+  function deciding(reports, d) {
+    var said = reports.filter(function (r) {
+      return verifiedFix(d) ? !!r.fieldVerification : !!r.workResumption || r.supportNeeded === 'YES' || r.supportNeeded === 'NO';
+    });
+    return (said.length ? said : reports).slice().sort(function (a, b) {
+      if (verifiedFix(d) && said.length) return b.fieldVerification.seq - a.fieldVerification.seq;
+      return situationAt(b).localeCompare(situationAt(a));
+    })[0];
+  }
   function teamGroups() {
     var groups = [], byKey = {};
     cache.team.forEach(function (r) {
@@ -293,24 +358,26 @@
       g.reports.forEach(function (r) {
         var id = r.reporter ? r.reporter.id : r.id;
         var fc = byFc[id];
-        if (!fc) { fc = byFc[id] = { id: id, name: r.reporter ? r.reporter.name : r.id, reports: [], latest: null }; g.fcs.push(fc); }
+        if (!fc) { fc = byFc[id] = { id: id, name: r.reporter ? r.reporter.name : r.id, reports: [] }; g.fcs.push(fc); }
         fc.reports.push(r);
-        if (!fc.latest || situationAt(r) > situationAt(fc.latest)) fc.latest = r;
       });
       g.fcs.forEach(function (fc) {
         fc.reports.sort(function (a, b) { return a.createdAt < b.createdAt ? 1 : -1; });
-        fc.situation = situationOf(fc.latest, g.defect);
+        fc.situation = situationOf(deciding(fc.reports, g.defect), g.defect);
+        fc.failing = fc.reports.filter(function (r) { return situationOf(r, g.defect) === 'FIELD_FAIL'; }).length;
       });
       g.fcs.sort(function (a, b) { return SITUATION_ORDER.indexOf(a.situation) - SITUATION_ORDER.indexOf(b.situation); });
-      g.blocked = g.fcs.filter(function (fc) { return fc.situation === 'BLOCKED'; }).length;
+      g.urgent = g.fcs.some(function (fc) { return fc.situation === 'BLOCKED' || fc.situation === 'FIELD_FAIL'; });
     });
-    groups.sort(function (a, b) { return (b.blocked > 0) - (a.blocked > 0) || (a.last < b.last ? 1 : -1); });
+    groups.sort(function (a, b) { return b.urgent - a.urgent || (a.last < b.last ? 1 : -1); });
     return groups;
   }
   /* 맨 위 요약: 먼저 살펴볼 FC (지금 업무를 못 함 / 추가 확인 필요 / 업무 재개). FC마다 가장 급한 상황 하나로 센다 */
   function teamSummary(groups) {
-    var lines = [['업무를 못 함', ['BLOCKED']], ['추가 확인 필요', ['NO_REPLY', 'NO_WORKAROUND']], ['업무 재개', ['RESUMED']]];
-    var rank = { BLOCKED: 0, NO_REPLY: 1, NO_WORKAROUND: 1, RESUMED: 2 }, worst = {}, order = [];
+    // 셋째 값 true: 해당자가 있을 때만 보이는 줄(수정 뒤 현장 확인, ADR-029)
+    var lines = [['추가 지원 필요', ['FIELD_FAIL'], true], ['업무를 못 함', ['BLOCKED']],
+      ['추가 확인 필요', ['FIELD_WAIT', 'NO_REPLY', 'NO_WORKAROUND']], ['업무 재개', ['RESUMED']], ['정상 진행 확인', ['FIELD_OK'], true]];
+    var rank = { FIELD_FAIL: 0, BLOCKED: 1, FIELD_WAIT: 2, NO_REPLY: 2, NO_WORKAROUND: 2, RESUMED: 3, FIELD_OK: 4 }, worst = {}, order = [];
     groups.forEach(function (g) {
       g.fcs.forEach(function (fc) {
         if (!(fc.situation in rank)) return;
@@ -321,6 +388,7 @@
     var card = el('div', { cls: 'pn-card kn-team-summary' }, [el('p', { cls: 'pn-card-title' }, ['먼저 살펴볼 FC']),
       rows(lines.map(function (line) {
         var names = order.filter(function (name) { return line[1].indexOf(worst[name]) >= 0; });
+        if (line[2] && !names.length) return null;
         return [line[0], names.length + '명' + (names.length ? ' · ' + names.join(', ') : '')];
       })),
       el('p', { cls: 'kn-meta' }, ['FC마다 여러 결함 중 가장 급한 상황 하나로 셌어요(아래 결함 카드는 결함별로 세요). 회신 없음은 업무 중단이 아니에요. 전화·메신저 연결은 이 화면에 없어요.'])]);
@@ -335,15 +403,20 @@
         var count = g.fcs.filter(function (fc) { return fc.situation === code; }).length;
         return count ? SITUATION[code] + ' ' + count + '명' : null;
       }).filter(Boolean);
-      var count = d && d.status === 'RESOLVED' ? 'FC ' + n + '명 · 고쳐졌어요' : ['FC ' + n + '명'].concat(tally).join(' · ');
+      var count = ['FC ' + n + '명', '신고 ' + g.reports.length + '건'].concat(tally).join(' · ');   // 사람 수와 건수를 따로
       var people = g.fcs.map(function (fc) {
         var row = el('details', { cls: 'pn-details pq-details kn-fc', 'data-fc': fc.id }, [
           // 요약은 한 줄 글로(접기 머리가 flex 라 글 조각이 칸으로 나뉘지 않게 span 하나로 감싼다)
           el('summary', null, [el('span', { cls: 'kn-fc-line' }, [el('b', null, [fc.name + ' FC']),
-            ' · 관련 신고 ' + fc.reports.length + '건 · 최근 업무 상황: ', el('span', { cls: 'pn-tag' }, [SITUATION[fc.situation]])])]),
+            ' · 관련 신고 ' + fc.reports.length + '건 · ' + (verifiedFix(d) ? '수정 뒤 확인: ' : '최근 업무 상황: '),
+            el('span', { cls: 'pn-tag' }, [SITUATION[fc.situation]]),
+            fc.failing && fc.situation !== 'FIELD_FAIL' ? ' · 문제 지속 신고 ' + fc.failing + '건' : null])]),
           el('div', { cls: 'pq-details-body' }, [rows(fc.reports.map(function (r) {
             var how = r.byMe ? '내가 대신 접수' : r.kind === 'ME_TOO' ? '같은 오류 참여' : '직접 접수';
-            var parts = [fmtDate(r.createdAt) + ' ' + how, NOTICE_STATE[r.notice] || NOTICE_STATE.NONE, '업무 상황: ' + SITUATION[situationOf(r, d)]];
+            var v = verifiedFix(d) && r.fieldVerification;
+            var parts = [fmtDate(r.createdAt) + ' ' + how, NOTICE_STATE[r.notice] || NOTICE_STATE.NONE,
+              v ? '현장 확인: ' + verifyLabel(v.result) + ' (' + fmtWhen(v.at) + ')'
+                : (verifiedFix(d) ? '현장 확인: ' : '업무 상황: ') + SITUATION[situationOf(r, d)]];
             if (r.workResumption) parts.push('업무 재개 회신 ' + RESUME[r.workResumption.result] + ' (' + fmtWhen(r.workResumption.at) + ')');
             if (r.maskedText) parts.push('"' + r.maskedText + '"');
             return [r.id, parts.join(' · ')];
@@ -354,7 +427,7 @@
         el('div', { cls: 'kn-card-head' }, [el('p', { cls: 'pn-card-title', tabindex: '-1' }, [g.title]),
           el('span', { cls: 'pn-tag' }, [T.tag(d)])]),
         el('p', { cls: 'kn-meta' }, [count]),
-        T.view(d),
+        T.view(d, { team: true }),
         el('div', { cls: 'kn-fcs' }, people)]);
     });
     return [el('h3', { tabindex: '-1' }, ['지점 FC 문의']),
@@ -441,6 +514,38 @@
     });
   }
 
+  /* 수정 뒤 현장 확인(ADR-029). 결함 상태를 바꾸지 않는다 */
+  function sendVerify(button) {
+    var st = read(), me = currentUser(st);
+    if (posting || !me) return;
+    var id = button.closest('[data-id]').getAttribute('data-id'), result = button.getAttribute('data-verify');
+    var event = button.closest('[data-verify-event]').getAttribute('data-verify-event');
+    posting = true;
+    button.disabled = true;
+    return A.postFieldVerification(id, me.id, event, result).catch(function () { return null; }).then(function (saved) {
+      cache.userId = null;
+      return render().then(function () {
+        var status = document.querySelector('[data-id="' + id + '"] [data-verify-status]');
+        if (status && !saved) status.textContent = '확인 결과를 남기지 못했어요. 다시 눌러 주세요.';
+        if (status) status.focus();
+      });
+    }).finally(function () {
+      posting = false;
+      button.disabled = false;
+    });
+  }
+  function addSituation(button) {
+    var card = button.closest('[data-id]'), box = card.querySelector('.pq-followup'), input = box && box.querySelector('textarea');
+    if (!input) return;
+    box.open = true;
+    input.focus();
+    var status = box.querySelector('[data-followup-status]');
+    if (status) status.textContent = '다시 생긴 조건과 상황을 적어 주세요. 시제품에서는 글 내용이 이 화면에만 남고, IT에는 추가 내용이 있다는 기록만 보여요.';
+  }
+
+  function detailKey(box) {
+    return box.closest('[data-id]').getAttribute('data-id') + '|' + (box.getAttribute('data-fc') || box.querySelector('summary').textContent);
+  }
   function paintPanel(st) {
     var open = st.panel === 'known';
     $('known-panel').hidden = !open;
@@ -455,9 +560,18 @@
     });
     var body = $('kn-body');
     body.setAttribute('aria-labelledby', 'kn-tab-' + st.tab);
+    var view = st.tab + '|' + (st.item || '') + '|' + cache.userId;
+    var shown = st.tab + '|' + (currentUser(st) || {}).id;   // 답한 뒤 다시 그려도 펼쳐 둔 접기는 그대로
+    var opened = body.getAttribute('data-shown') === shown
+      ? Array.prototype.map.call(body.querySelectorAll('[data-id] details[open]'), detailKey) : [];
+    body.setAttribute('data-shown', shown);
     body.innerHTML = '';
     (st.tab === 'mine' ? mineView(st) : st.tab === 'team' ? teamView(st) : knownView(st)).forEach(function (n) { if (n) body.appendChild(n); });
-    var view = st.tab + '|' + (st.item || '') + '|' + cache.userId;
+    if (opened.length) {
+      Array.prototype.forEach.call(body.querySelectorAll('[data-id] details'), function (box) {
+        if (opened.indexOf(detailKey(box)) >= 0) box.open = true;
+      });
+    }
     if (view === lastView) return;
     var hadView = lastView !== null;
     lastView = view;
@@ -553,6 +667,10 @@
     $('known-panel').addEventListener('click', function (e) {
       var resume = e.target.closest('[data-resume]');
       if (resume) return sendResume(resume);
+      var verify = e.target.closest('[data-verify]');
+      if (verify) return sendVerify(verify);
+      var add = e.target.closest('[data-verify-add]');
+      if (add) return addSituation(add);
       var followup = e.target.closest('[data-followup]');
       if (followup) return sendFollowup(followup);
       var copy = e.target.closest('[data-copy-guide]');

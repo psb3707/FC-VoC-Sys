@@ -13,6 +13,7 @@
    - reports[].workResumption: FC 업무 재개 회신 시드(RESUMED 진행했어요 / STILL 아직 안 돼요, ADR-025). 대표 결함 상태와 무관.
    - D-2026-007(ADR-027, docs/10-seed-scenarios.md 5-3절): 고객 동의 URL 키패드 오류 대표 시연. 원인·기종·OS·임시조치·실제 부서는 미확정이라
      값을 넣지 않는다. 묶인 신고의 conditions·factSources 는 FC 진술(USER_REPORTED)이고 입력란 값은 어디에도 없다.
+   - defects[].shortTitle·verifyTarget(ADR-029): 알림 요약의 짧은 공개 이름과 현장 확인 질문에 넣는 대상.
    업무 코드는 intake.js metaForm, 등급·부서 코드는 intake-panel.js 와 같다. 모든 값은 가상이다. */
 window.FIXTURES = window.FIXTURES || {};
 window.FIXTURES.ledger = {
@@ -26,31 +27,31 @@ window.FIXTURES.ledger = {
   ],
 
   "defects": [
-    { "id": "D-2026-001", "title": "서명 알림톡이 초대장 화면으로 열려요", "type": "DEFECT", "systemGen": "OLD",
+    { "id": "D-2026-001", "shortTitle": "서명 알림톡 연결 오류", "verifyTarget": "서명 알림톡", "title": "서명 알림톡이 초대장 화면으로 열려요", "type": "DEFECT", "systemGen": "OLD",
       "grade": "IMMEDIATE", "status": "WORKAROUND", "departmentCode": "SUBSCRIPTION_IT",
       "workaround": "알림톡 대신 문자로 서명 링크를 보내 주세요", "plannedFixDate": null,
       "wontFixReasonCode": null, "wontFixReasonText": null, "published": true, "updatedAt": "2026-11-02T10:20:00+09:00" },
-    { "id": "D-2026-002", "title": "청약 서명 화면이 멈춰요", "type": "DEFECT", "systemGen": "NEW",
+    { "id": "D-2026-002", "shortTitle": "청약 서명 화면 멈춤", "verifyTarget": "청약 서명 화면", "title": "청약 서명 화면이 멈춰요", "type": "DEFECT", "systemGen": "NEW",
       "grade": "IMMEDIATE", "status": "FIX_PLANNED", "departmentCode": "SUBSCRIPTION_IT",
       "workaround": "서명 화면을 닫았다가 다시 열면 이어서 할 수 있어요", "plannedFixDate": "2026-11-20",
       "wontFixReasonCode": null, "wontFixReasonText": null, "published": false, "updatedAt": "2026-11-01T16:05:00+09:00" },
-    { "id": "D-2026-003", "title": "가입설계에서 보험료 계산이 늦게 나와요", "type": "DEFECT", "systemGen": "NEW",
+    { "id": "D-2026-003", "shortTitle": "보험료 계산 지연", "verifyTarget": "가입설계 화면", "title": "가입설계에서 보험료 계산이 늦게 나와요", "type": "DEFECT", "systemGen": "NEW",
       "grade": "BATCH", "status": "CAUSE_FOUND", "departmentCode": "DESIGN_SUPPORT",
       "workaround": null, "plannedFixDate": null,
       "wontFixReasonCode": null, "wontFixReasonText": null, "published": true, "updatedAt": "2026-11-03T11:00:00+09:00" },
-    { "id": "D-2026-004", "title": "로그인할 때 글자가 다르게 들어가요", "type": "DEFECT", "systemGen": "OLD",
+    { "id": "D-2026-004", "shortTitle": "로그인 글자 입력 오류", "verifyTarget": "로그인 화면", "title": "로그인할 때 글자가 다르게 들어가요", "type": "DEFECT", "systemGen": "OLD",
       "grade": "NORMAL", "status": "WORKAROUND", "departmentCode": "LOGIN_SUPPORT",
       "workaround": "인터넷 기록(쿠키)을 지우고 다시 접속하면 잠시 괜찮아져요", "plannedFixDate": "2026-11-20",
       "wontFixReasonCode": null, "wontFixReasonText": null, "published": true, "updatedAt": "2026-11-02T09:00:00+09:00" },
-    { "id": "D-2026-005", "title": "고객 목록에서 이름을 눌러도 상세가 안 열려요", "type": "IMPROVEMENT", "systemGen": "OLD",
+    { "id": "D-2026-005", "shortTitle": "고객 상세 열기 오류", "verifyTarget": "고객 목록 화면", "title": "고객 목록에서 이름을 눌러도 상세가 안 열려요", "type": "IMPROVEMENT", "systemGen": "OLD",
       "grade": "BATCH", "status": "WONT_FIX", "departmentCode": "CUSTOMER_IT",
       "workaround": "이름 대신 같은 줄의 성별 칸을 누르면 열려요", "plannedFixDate": null,
       "wontFixReasonCode": "NEW_SFA", "wontFixReasonText": "새 시스템에서 고쳐질 예정이에요", "published": true, "updatedAt": "2026-10-30T15:00:00+09:00" },
-    { "id": "D-2026-006", "title": "계약 목록을 정렬하면 다른 계약 상세가 열려요", "type": "DEFECT", "systemGen": "OLD",
+    { "id": "D-2026-006", "shortTitle": "계약 목록 정렬 오류", "verifyTarget": "계약 목록 화면", "title": "계약 목록을 정렬하면 다른 계약 상세가 열려요", "type": "DEFECT", "systemGen": "OLD",
       "grade": "NORMAL", "status": "RECEIVED", "departmentCode": "CONTRACT_IT",
       "workaround": null, "plannedFixDate": null,
       "wontFixReasonCode": null, "wontFixReasonText": null, "published": false, "updatedAt": "2026-11-03T15:20:00+09:00" },
-    { "id": "D-2026-007", "title": "고객 동의 URL에서 뒷자리 숫자 키패드가 열리지 않아요", "type": "DEFECT", "systemGen": "OLD",
+    { "id": "D-2026-007", "shortTitle": "고객 동의 입력 오류", "verifyTarget": "고객 동의 화면", "title": "고객 동의 URL에서 뒷자리 숫자 키패드가 열리지 않아요", "type": "DEFECT", "systemGen": "OLD",
       "grade": "IMMEDIATE", "status": "RECEIVED", "departmentCode": "CONSENT_IT",
       "workaround": null, "plannedFixDate": null,
       "wontFixReasonCode": null, "wontFixReasonText": null, "published": true, "updatedAt": "2026-11-18T10:30:00+09:00" }
@@ -219,13 +220,13 @@ window.FIXTURES.ledger = {
   "statusTemplates": {
     "WORKAROUND": "{title} — 임시 방법이 나왔어요: {workaround}",
     "FIX_PLANNED": "{title} — {date}에 고칠 예정이에요. 그때까지는 안내된 임시 방법을 써 주세요",
-    "RESOLVED": "{title} — 고쳤어요. 이제 평소처럼 쓰시면 돼요",
+    "RESOLVED": "{title} — 해결로 처리됐어요. 자세한 안내는 내 접수내역에서 확인해 주세요",
     "WONT_FIX": "{title} — {reason}. 지금 화면은 고치지 않아요. 안내된 임시 방법을 계속 써 주세요"
   },
   "submitterTemplates": {
     "WORKAROUND": "대신 접수한 문의 {count}건 · {title} — 임시 방법이 나왔어요. FC가 업무를 이어갈 수 있는지 확인해 주세요",
     "FIX_PLANNED": "대신 접수한 문의 {count}건 · {title} — {date}에 고칠 예정이에요. FC에게도 알렸어요",
-    "RESOLVED": "대신 접수한 문의 {count}건 · {title} — 고쳤어요. FC에게도 알렸어요",
+    "RESOLVED": "대신 접수한 문의 {count}건 · {title} — 해결로 처리됐어요. FC에게도 알렸어요",
     "WONT_FIX": "대신 접수한 문의 {count}건 · {title} — {reason}. 지금 화면은 고치지 않아요"
   }
 };
