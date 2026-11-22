@@ -362,7 +362,7 @@
   /* ADR-029 결정 4: 기록된 단계만(건너뛴 단계는 칠하지 않는다). S3 와 같은 목록 */
   function progress(d) {
     var list = window.NoticeTracks.recorded(d.statusHistory).map(function (h) {
-      return { name: h.verification ? '배포·검증 완료(가상)' : stageLabel(h.to), at: h.verification ? h.verification.verifiedAt : h.at };
+      return { name: h.verification ? '배포·검증 완료(가상)' : stageLabel(h.to), at: h.at };
     });
     return window.NoticeTracks.steps(list.length ? list : [{ name: stageLabel(d.status) }]);
   }

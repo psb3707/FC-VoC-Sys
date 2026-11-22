@@ -170,7 +170,7 @@
       list.push(r.kind === 'ME_TOO' ? { name: '같은 오류 참여' } : { name: '담당자 확인', at: r.linkedAt });
       T.recorded(r.statusHistory).forEach(function (h) {
         if (h.to === 'RECEIVED') return;
-        list.push({ name: recordName(h), at: h.verifiedAt || h.at });
+        list.push({ name: recordName(h), at: h.at });
       });
     }
     return T.steps(list);

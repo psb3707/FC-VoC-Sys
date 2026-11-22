@@ -94,13 +94,14 @@
   function steps(list) {
     var last = list.length - 1;
     var ol = el('ol', 'kn-stages is-recorded', list.map(function (s, i) {
-      var li = el('li', i === last ? 'is-now' : '', [el('span', '', [s.name + (i === last ? '(지금)' : '')]),
+      var li = el('li', i === last ? 'is-now' : '', [el('span', '', [s.name + (i === last ? ' · 지금' : '')]),
         s.at ? el('span', 'kn-stage-at', [fmtWhen(s.at)]) : null]);
       if (i === last) li.setAttribute('aria-current', 'step');
       return li;
     }));
     ol.setAttribute('aria-label', '기록된 처리 단계');
-    return el('div', 'kn-progress', [el('p', 'kn-now', ['지금 단계 · ', el('b', '', [last < 0 ? '접수' : list[last].name])]), ol]);
+    // 상태 태그·목록이 이미 말하므로 지금 단계 문장은 화면 읽기용으로만
+    return el('div', 'kn-progress', [el('p', 'kn-now pn-sr-only', ['지금 단계 · ', el('b', '', [last < 0 ? '접수' : list[last].name])]), ol]);
   }
   /* opts.resolution: 해결 안내, opts.after: 대응 아래에 붙일 요소(업무 재개·현장 확인), opts.progress: 진행상황 아래 기록된 단계 */
   function view(d, opts) {
