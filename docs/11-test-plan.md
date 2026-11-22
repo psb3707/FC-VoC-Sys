@@ -45,6 +45,8 @@
 | 21 | 같은 업무 재개 회신을 다시 보냄 / 회신 저장 실패 (ADR-027) | 기록·후속 기록 1건. 실패하면 한 번만 시도하고 [다시 기록하기] | 업무 재개 멱등성 |
 | 22 | 한 FC가 같은 결함에 2건, 회신 없음과 업무 중단 (ADR-027) | 관리자 화면 FC 1줄·펼치면 2건, 회신 없음을 업무 진행 어려움으로 세지 않음 | 관리자 FC별 묶음 |
 | 23 | AI 문의에 "주민 뒷자리 1234"처럼 키워드+숫자 (ADR-027) | 차단, 저장소·AI 입력 없음. 브라우저 자동 검사는 실제 OS 키패드 표시를 검증하지 않음 | 개인정보 |
+| 24 | 관리자가 다른 지점 FC 대신 접수 / 없는 사용자·지점으로 접수 요청 (ADR-028) | 저장 0건, 검증 오류. 대리 접수 목록에 다른 지점 FC 없음 | 신원 검증 |
+| 25 | 접수 환경을 알 수 없는 브라우저 / 진단 수집 실패 (ADR-028) | 미확인으로 보이고 접수는 됨. User-Agent 전체·주소·토큰은 저장 0건. 접수 환경이 발생 환경으로 복사되지 않음 | 진단 출처 |
 
 ## 3. 추적표 (REQ → 화면 → API → 테스트)
 | REQ | 화면 | API | 테스트 |
@@ -70,6 +72,7 @@
 | IN-13, IN-14, LG-09 | S2 AI 문의 되묻기·확인 화면·완료, S4 신고 패널·묶인 신고, S3 카드, [지점 FC 문의] | intake/question(`checks`), quick-intake, reports/{id}/work-resumption, reports/{id}/similar-defects(`RULE`) | `scripts/sign_link_e2e_check.py`(FC 문의 → 되묻기 → 진행했어요 → 접수·재시도 → IT 찾기·규칙 후보·수동 연결 → 수정 예정·미리보기 → FC 알림·카드 → 관리자 묶음, 같은 신고번호), 기존 검사 4종 회귀 |
 | NT-02, KN-04~06 | S2 AI 문의 결과·확인·완료, S3 카드·[지점 FC 문의], S1 알림 팝업, S4 알림 미리보기 | notifications, reports/{id}/work-resumption, reports/branch | `scripts/notify_two_track_check.py`(대리 접수 → FC 접수 알림, 상태 변경 역할별 수신·중복 제거, 업무 재개 회신 권한, 관리자 묶음 개인정보), 화면 자동 검사(`tab=team`·`item=` 펼침) |
 | IN-15, IN-16, LG-10, KN-06(ADR-027), KN-07 | S2 AI 문의 빠른 도움·간편 알리기·확인 화면·완료, S4 신고 패널 세 덩어리·현장 조건 모아 보기·수정 예정, S3 카드·[지점 FC 문의] FC별 묶음 | intake/question(`stage`·`supportQuestion`), quick-intake, known-errors/{id}/me-too(참여 extra), reports/{id}/work-resumption(중복), reports/branch, reports/{id}/similar-defects | `scripts/consent_keypad_e2e_check.py`(E2E-01~05), 회귀 `scripts/sign_link_e2e_check.py`·`ui_check.py`·`notify_two_track_check.py`·`intake_followup_check.py`·`intake_second_phase_check.py` |
+| IN-17, IN-18, LG-11 | S2 확인 화면 자동 연결 정보·오류가 발생한 환경, 대리 접수 목록, S4 신고 패널 신고자 정보·로그 추적 단서 | quick-intake(신원 검증), me-too(신원 검증), getReporterContext, getIntakeDiagnostics | `scripts/reporter_diagnostics_check.py`(TC-01~07), 회귀 TC-08 |
 | AI-01~07 | - | - | LLM 계약, 등급 비의존 |
 | PV-01~06 | S2-4,6 | intake/preview | 마스킹 전 항목 |
 | OP-01/02 | - | admin/reset | 빈 상태 실행, 네트워크 차단 |

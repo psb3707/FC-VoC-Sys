@@ -101,6 +101,13 @@
 - 접수, 담당자 연결, 상태 이력, 발송 결과, 읽음은 가상 기록으로 유지한다. `postStatus`의 해결은 적용 시각·범위·변경 내용·재시도/재발송 여부·공개 승인과 요청 식별자를 받는다. 같은 이벤트의 수신자별 알림은 동일 ID를 사용한다.
 - 운영 단계에서는 인증된 사용자와 담당자만 열람할 수 있도록 서버에서 권한을 검증하고, 승인된 안내와 진단 허용 목록을 서버에서 다시 검증한다.
 
+### 신고자 정보와 접수·발생 환경 (ADR-028, REQ-IN-17·18, REQ-LG-11)
+- **신원.** 신고 저장본은 `reporterId`(오류를 겪은 사람)·`submittedById`(접수 버튼을 누른 로그인 사용자)만 둔다. 이름·역할·지점명은 `GET /api/users`·`Branch`로 조회한다. 프론트 단계의 로그인 사용자는 역할 전환으로 고른 가상 사용자다. **백엔드 단계에서는 `submittedById`를 인증 세션에서 정하고 요청 본문의 접수자·지점 값을 쓰지 않는다.**
+- **검증.** `postQuickIntake`·`postQuickParticipation`은 ① 두 사용자가 있고 ② 각자 지점이 있으며 ③ 신고자 ≠ 접수자이면 접수자는 `MANAGER`, 신고자는 같은 지점 `FC`일 때만 저장한다. 아니면 `{identityError: true}`(저장 0건). 화면용 `getReporterContext(viewerId, reporterId, submittedById)` → `{reporter:{id,name,role,roleLabel,branchId,branchName}, submitter:{…}, proxied, error}`. 보는 사람이 FC면 자기 자신만, 관리자는 자신과 같은 지점 FC만, 영업·IT는 모두 조회한다. 그 밖에는 `null`.
+- **접수 환경 `diagnostics.submission`.** `{screen, screenCode, device, deviceType, browser, at, source}`. `deviceType`은 `PC|PHONE|TABLET`, `browser`는 종류와 주 버전(예: `Chrome 131`)만, `source`는 `BROWSER_CAPTURED`(브라우저가 알려 줌). 알 수 없는 값은 `null`(화면 "미확인"). User-Agent 전체·주소·쿼리·쿠키·토큰은 저장하지 않는다. 화면 코드는 앱이 아는 코드(`MAIN` 등)만.
+- **발생 환경 `diagnostics.incident`.** 진단 이벤트가 준 값만(프론트 단계: `diagnostics=mobile` 시연 이벤트, `source: DEMO_CONTEXT`). 없으면 모든 값이 `null`. FC가 알려 준 발생 기기·조건·발생 날짜/시각은 `incident.device`·`conditions`·`incident.date/time`(출처 `factSources`)에 그대로 두고, 화면이 두 출처를 합쳐 "오류가 발생한 환경"으로 보인다. 접수 환경 값을 발생 환경에 복사하지 않는다.
+- **AI 요청.** `postIntakeQuestion`·`planIntakeDraft` 요청에는 신고자·접수자·지점·계정·접수 환경을 넣지 않는다.
+
 ### 2차 후속 요구 (ADR-022)
 
 - `previewIntakeDraft`는 텍스트 허용 필드만 가려 반환한다. `planIntakeDraft`에는 미리보기 텍스트와 확인 여부만 넘긴다. 결과는 선택 질문 최대 3개와 근거별 초안 필드다.

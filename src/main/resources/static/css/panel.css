@@ -231,3 +231,5 @@
 .pn-note .pn-rows { margin: 8px 0 0; }
 /* 결함 ID 등 하이픈에서 줄이 바뀌지 않게 */
 .pn-nowrap { white-space: nowrap; }
+/* ADR-028: 정의 목록 줄 값 뒤 출처(자동 확인·FC 진술 등)는 보조 글색, 한 덩어리로 줄바꿈 */
+.pn-rows .pn-src { color: var(--pn-sub); white-space: nowrap; }

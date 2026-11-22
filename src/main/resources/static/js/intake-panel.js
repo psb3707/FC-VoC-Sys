@@ -106,7 +106,7 @@
   }
   function rows(list) {
     return el('dl', { cls: 'pn-rows' }, list.filter(Boolean).map(function (r) {
-      return el('div', null, [el('dt', null, [r[0]]), el('dd', null, [r[1]])]);
+      return el('div', null, [el('dt', null, [r[0]]), el('dd', null, [].concat(r[1]))]);   // 값은 글 또는 [글, 출처 요소]
     }));
   }
   function fmtWhen(iso) {
@@ -354,7 +354,8 @@
     var sel = $('pn-proxy-select');
     sel.innerHTML = '';
     sel.appendChild(el('option', { value: '' }, ['나 (' + (me ? me.name : '관리자') + ')']));
-    users.filter(function (u) { return u.role === 'FC'; }).forEach(function (u) {
+    // ADR-028 결정 2: 관리자는 같은 지점 FC만 대신 접수한다(ADR-025 G9 "지점 FC")
+    users.filter(function (u) { return u.role === 'FC' && me && u.branchId === me.branchId; }).forEach(function (u) {
       sel.appendChild(el('option', { value: u.id }, [u.name + ' 대신 접수']));
     });
     sel.value = usesQuickForm(st) ? quick.onBehalf(st) : form.onBehalf;

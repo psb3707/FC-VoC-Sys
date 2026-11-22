@@ -9,7 +9,7 @@
     var symptoms = meta.symptoms.concat(options.symptoms);
     var drafts = new Map(), attachment = window.createIntakeAttachment(ui);
     var draftRules = window.IntakeDraftRules;
-    var actor, form, receipt, diagnostics, confirming, offer, error, invalid, busy, wide, ai, draftSession, restored;
+    var actor, form, receipt, diagnostics, confirming, offer, error, invalid, busy, wide, ai, draftSession, restored, identity;
     var steps = ['problem', 'review'];
     var expanded;
     var types = [['UNCLASSIFIED', '담당자가 확인해 주세요'], ['DEFECT', '전산 오류'],
@@ -29,7 +29,7 @@
         // ADR-026: AI 문의 상담에서 넘어온 코드와 출처. ADR-027: 조건은 시나리오별 키, 임시조치 상태·추가 지원 필요
         origin: '', conditions: {}, workaroundState: '', workOutcome: '', supportNeeded: '', suggestedDefectId: '', factSources: {},
         consultNote: '' };
-      receipt = diagnostics = null;
+      receipt = diagnostics = identity = null;
       confirming = busy = wide = restored = false;
       error = invalid = '';
       ai = draftSession = null;
@@ -52,15 +52,21 @@
       var mode = st.diagnostics || '', drafting = st.step === 'ai-draft';
       var getDiagnostics = (drafting || st.step === 'review') && (!diagnostics || diagnostics.mode !== mode);
       var getPreview = drafting && !draftSession.preview;
-      if (!getDiagnostics && !getPreview) return ui.paint(st);
+      // ADR-028: 확인 화면에서 로그인 사용자(접수자)와 신고자를 ID로 조회한다(이름·지점명은 저장하지 않음)
+      var whoKey = (form.onBehalf || actor) + '|' + actor;
+      var getIdentity = st.step === 'review' && (!identity || identity.key !== whoKey);
+      if (!getDiagnostics && !getPreview && !getIdentity) return ui.paint(st);
       var snapshot = form, activeDraft = draftSession, hash = location.hash;
       return Promise.all([
         getDiagnostics ? A.getIntakeDiagnostics(mode).catch(function () { return { failed: true }; }) : null,
-        getPreview ? A.previewIntakeDraft(draftInput()).catch(function () { return { failed: true }; }) : null
+        getPreview ? A.previewIntakeDraft(draftInput()).catch(function () { return { failed: true }; }) : null,
+        getIdentity ? (ui.user(st) ? A.getReporterContext(actor, form.onBehalf || actor, actor) : Promise.resolve(null))
+          .catch(function () { return null; }) : null
       ]).then(function (result) {
         if (snapshot !== form || location.hash !== hash) return;
         if (result[0]) diagnostics = Object.assign({}, result[0], { mode: mode });
         if (result[1] && draftSession === activeDraft) activeDraft.preview = result[1];
+        if (getIdentity) identity = Object.assign({}, result[2] || { error: 'LOGIN' }, { key: whoKey });   // 못 찾으면 신원을 만들지 않음
         ui.paint(st);
       });
     }
@@ -354,7 +360,9 @@
             form.extraSymptoms.length ? ['추가 증상', form.extraSymptoms.map(function (code) { return ui.labelOf(symptoms, code); }).join(', ')] : null,
             form.urgent.length ? ['우선 확인 요청', options.urgency.filter(function (pair) { return form.urgent.includes(pair[0]); })
               .map(function (pair) { return pair[1]; }).join(' · ')] : null])]),
+          identityCard(),
           factsCard(),
+          incidentCard(),
           form.draftFields ? details('draft', 'AI 접수 초안 확인·수정', [
             el('p', { cls: 'pn-lead' }, ['고객 진술과 직접 확인한 사실을 나눠 작성해 주세요. 수정한 내용으로 접수해요.']),
             form.draftSource !== form.oneLine ? el('p', { cls: 'pn-lead' }, ['한 줄 설명이 바뀌었어요. 초안도 다시 확인해 주세요.']) : null,
@@ -401,10 +409,64 @@
         ],
         foot: [btn('pn-btn-2', '이전', 'quick-back', { disabled: busy }),
           btn('pn-btn', busy ? '접수 중…' : ai && ai.state === 'waiting' ? '기다리지 않고 접수하기' : '접수하기',
-            'quick-submit', { disabled: busy })]
+            'quick-submit', { disabled: busy || !identityOk() })]
       };
     }
     function proxied() { return !!form.onBehalf && form.onBehalf !== actor; }
+    /* ---- ADR-028 자동으로 연결된 정보 / 오류가 발생한 환경 ---- */
+    function identityOk() { return !!identity && !identity.error && !!identity.reporter; }
+    function src(text) { return el('span', { cls: 'pn-src' }, [' · ' + text]); }
+    function identityCard() {
+      if (!identity) return el('p', { cls: 'pn-lead', role: 'status' }, ['신고자 정보를 확인하고 있어요.']);
+      if (!identityOk()) {
+        var bad = note('pn-warn', 'i-warn', '신고자와 지점 정보를 확인하지 못했어요',
+          '이 상태로는 접수할 수 없어요. 역할을 다시 고르거나 지점 관리자에게 확인해 주세요.');
+        bad.id = 'quick-identity-error';
+        return bad;
+      }
+      var r = identity.reporter, sb = identity.submitter, sub = (diagnostics && diagnostics.submission) || {};
+      var env = [sub.device, sub.browser].filter(Boolean).join(' · ');
+      var card = el('div', { cls: 'pn-card pq-identity' }, [
+        el('p', { cls: 'pn-card-title' }, ['자동으로 연결된 정보']),
+        rows([['신고자', r.name + ' · ' + r.roleLabel + ' · 계정 ' + r.id], ['소속', r.branchName],
+          identity.proxied ? ['접수자', sb.name + ' · ' + sb.roleLabel + ' · 계정 ' + sb.id + ' (대신 접수)'] : null,
+          ['접수 시각·화면', ['접수할 때 자동 기록' + (sub.screen ? ' · ' + sub.screen + ' (' + sub.screenCode + ')' : ''), src('자동 확인')]],
+          ['접수 환경', env ? [env, src('자동 확인')] : '미확인']]),
+        el('p', { cls: 'pn-lead' }, ['계정이나 지점이 다르면 접수하지 말고 지점 관리자에게 확인해 주세요. 이 정보는 AI에게 보내지 않아요.'])]);
+      card.setAttribute('data-identity', '');
+      return card;
+    }
+    /* 발생 환경은 FC가 알려 준 값과 진단 이벤트 값으로만. 접수하는 PC의 기기·브라우저를 복사하지 않는다 */
+    function incidentCard() {
+      var told = '', ev = (diagnostics && diagnostics.incident) || {}, evFrom = window.IntakeDiagnosticsSource(ev);
+      var cond = form.conditions || {}, sources = form.factSources || {};
+      function said(text, from) { return text ? [text, src(from)] : '미확인'; }
+      function fc(key) { return facts.sourceLabel(sources[key] || 'USER_REPORTED'); }
+      function condRow(label, key) {
+        var v = cond[key];
+        return v ? [label, v === 'UNKNOWN' ? '미확인' : said(facts.conditionLabel(key, v), fc('conditions'))] : null;
+      }
+      var when = [form.date, form.time].filter(Boolean).join(' ');
+      var consulted = form.origin === 'ASSISTANT';   // 기기·조건은 바로 위 "AI 문의에서 확인한 내용"에 있으므로 되풀이하지 않는다
+      told = form.device && form.device !== 'UNKNOWN' ? facts.deviceLabel(form.device) : '';
+      var list = (consulted ? [] : [['오류가 난 기기', told ? said(told, fc('device')) : said(ev.device, evFrom)],
+        cond.DEVICE_OS ? condRow(facts.CONDITIONS.DEVICE_OS.label, 'DEVICE_OS') : null]).concat([
+        ['브라우저', said(ev.browser, evFrom)],
+        form.screen ? ['발생 화면', said(form.screen, 'FC가 알려 줌')] : ev.screen ? ['발생 화면', said(ev.screen, evFrom)] : null,
+        ['발생 시각', when ? said(when, 'FC가 알려 줌') : said(ev.at ? ui.fmtWhen(ev.at) : '', evFrom)]]).filter(Boolean);
+      var known = list.filter(function (row) { return row[1] !== '미확인'; }).length;
+      var card = el('div', { cls: 'pn-card pq-incident', id: 'quick-incident' }, [
+        el('p', { cls: 'pn-card-title' }, ['오류가 발생한 환경']),
+        known || consulted ? rows(list) : el('p', null, ['아직 확인된 발생 환경이 없어요. 접수하는 PC 정보를 대신 쓰지 않아요.']),
+        el('p', { cls: 'pn-lead' }, [consulted ? '오류가 난 기기와 조건은 위 "AI 문의에서 확인한 내용"에서 고칠 수 있어요. 확인하지 못한 값은 미확인으로 남겨요.'
+          : '아는 내용은 아래 "고객 범위·발생 환경·연락 방법 추가"를 펼쳐 보완할 수 있어요. 몰라도 접수할 수 있어요.'])]);
+      card.setAttribute('data-incident-env', '');
+      return card;
+    }
+    function refreshIncident() {
+      var box = document.getElementById('quick-incident');
+      if (box) box.replaceWith(incidentCard());
+    }
     /* ADR-026: AI 문의에서 확인한 내용. 값은 고칠 수 있고 고친 값으로 제출한다. 대리 접수는 업무 재개를 정하지 않는다 */
     function condSelect(key) {
       var def = facts.CONDITIONS[key];
@@ -428,8 +490,8 @@
           noWorkaround || form.supportNeeded ? select('supportNeeded', '업무 상황 (지금 업무를 이어가기 어려운가요?)', facts.SUPPORT, '선택 안 함') :
           select('workOutcome', '안내한 방법으로 업무를 이어갔나요?', facts.OUTCOMES, '선택 안 함'),
         // 고칠 수 없는 줄(대장 기준·안내 사례)은 끝에 모은다
-        rows([noWorkaround ? ['임시조치', '승인된 임시조치 없음 · 결함 대장 기준'] : null,
-          guided ? ['AI가 안내한 사례', guided.id + ' · 같은 오류인지는 담당자가 확인해요'] : null])]));
+        rows([noWorkaround ? ['임시조치', ['승인된 임시조치 없음', src('결함 대장 기준')]] : null,
+          guided ? ['AI가 안내한 사례', [guided.id, src('같은 오류인지는 담당자가 확인해요')]] : null])]));
       card.setAttribute('data-consult-facts', '');
       return card;
     }
@@ -599,6 +661,7 @@
           return focusError(st, '', result.attachmentError);
         }
         if (result.blocked) return focusError(st, '', '설명이나 초안에서 번호·이메일을 지우고 다시 보내 주세요.');
+        if (result.identityError) return focusError(st, '', '신고자와 지점 정보를 확인하지 못해 접수하지 않았어요. 역할을 다시 고르거나 지점 관리자에게 확인해 주세요.');
         if (result.failed) return focusError(st, '', '접수하지 못했어요. 작성하신 내용은 남아 있어요. 다시 눌러 주세요.');
         finish(result);
       }).catch(function () {
@@ -650,7 +713,7 @@
         workOutcome: own ? c.outcome : null, supportNeeded: own ? c.support : null, factSources: sources
       }).catch(function () { return null; }).then(function (report) {
         busy = false;
-        if (snapshot !== form || !report) return false;
+        if (snapshot !== form || !report || report.identityError) return false;
         finish(report);
         return true;
       });
@@ -807,6 +870,7 @@
         form.factSources = Object.assign({}, form.factSources, { conditions: 'USER_REPORTED' });
         if (Object.keys(form.conditions).every(function (k) { return form.conditions[k] === 'UNKNOWN'; })) form.factSources.conditions = 'UNKNOWN';
         if (revalidate()) ui.paint(st);
+        else refreshIncident();
         return;
       }
       var sourceKey = { device: 'device', workOutcome: 'workOutcome', supportNeeded: 'supportNeeded' }[key];
@@ -820,6 +884,7 @@
         invalidateAi();
       }
       form[key] = target.value;
+      if (['device', 'screen', 'date', 'time'].includes(key)) refreshIncident();   // ADR-028 발생 환경 요약
       if (key === 'oneLine') {
         document.getElementById('quick-count').textContent = target.value.length + '/100자 · 고객 이름과 번호는 빼고 적어 주세요.';
         refreshAdvice();
