@@ -45,7 +45,7 @@
 | POST | `/api/reports` | 신고 최종 제출(A/B 공통, 사람 확인값 포함) |
 | GET | `/api/reports/mine?userId=` | 내 신고와 진행 단계 |
 | POST | `/api/reports/{id}/work-resumption` | FC 업무 재개 회신(신고자 본인만, REQ-KN-05) |
-| POST | `/api/reports/{id}/field-verifications` | 수정 뒤 현장 확인(신고자 본인만, REQ-KN-08) |
+| POST | `/api/reports/{id}/field-verifications` | 수정 뒤 현장 확인(신고자 본인이면서 FC 역할만, REQ-KN-08) |
 | POST | `/api/reports/{id}/investigations` | 문제 지속 신고의 후속 조사 코드(영업·IT, REQ-LG-12) |
 | GET | `/api/reports/branch?managerId=` | 관리자 [지점 FC 문의] (REQ-KN-06) |
 | GET | `/api/reports/unlinked?userId=&q=` | 아직 대표 결함에 안 묶인 신고(최신 순, 신고자 지점, 그 담당자 기준 `isNew`). `q`가 있으면 글자 찾기 (REQ-LG-02·07·08) |
@@ -232,9 +232,9 @@
 - `postStatus`의 `resolution.verification`(선택): `{result:"VERIFIED", verifiedAt, usageGuide(30자), workaroundEnded, refId?, environment?, version?}`. 서버가 `simulated:true`(프론트), 형식, 시각 순서·미래 금지, 개인정보·주소 금지, 담당자 역할을 확인한다. `environment`는 `SIM_TEST|SIM_PROD_LIKE`, `refId`·`version`은 영문·숫자·`._-` 30자.
 - 되돌림은 `backReason`(`FIELD_RECHECK|REDEPLOY|MISRECORDED|ETC`) 필수. `note`는 프론트 단계에서 페이지 메모리에만 둔다.
 - 공개 결함 키에 `shortTitle`, `verifyTarget`, `resolutionEventId`, `verification{result,verifiedAt,usageGuide,workaroundEnded,workaround?,simulated}`를 더한다. 참조 ID·환경·버전·메모는 FC·관리자에게 내리지 않는다.
-- `postFieldVerification(reportId, userId, resolutionEventId, result, requestId)` → 기록 또는 `null`(권한·회차·상태 불일치). 같은 요청·같은 마지막 결과는 `duplicate:true`. 운영에서는 `userId`를 세션으로 정한다.
+- `postFieldVerification(reportId, userId, resolutionEventId, result, requestId)` → 기록 또는 `null`(본인·FC 역할·회차·상태 불일치). 같은 요청·같은 마지막 결과는 `duplicate:true`. 운영에서는 `userId`·역할을 세션으로 정한다.
 - `postFieldInvestigation(reportId, actorId, resolutionEventId, code)` → 문제 지속 답이 있던 신고만, 영업·IT만.
-- `getDefect`는 `fieldVerification{resolutionEventId, reporterCount, reportCount, counts, failReports, fcs, reports}`, `getDefects`는 `fieldFailCount`, `getMyReports`·`getBranchReports`는 신고별 지금 회차의 `fieldVerification`을 내린다.
+- `getDefect`는 `fieldVerification{resolutionEventId, reporterCount, reportCount, counts, failReports, fcs, reports}`, `getDefects`는 `fieldFailCount`(모두 FC가 신고자인 신고만 세고, `reporterCount`·`reportCount`도 같음), `getMyReports`·`getBranchReports`는 신고별 지금 회차의 `fieldVerification`을 내린다.
 - `getMyReports.statusHistory`는 `id,from,to,at,plannedFixDate?,verified,verifiedAt?`. 처리자·내부 사유·참조는 없다. 연결 시각은 `linkedAt`.
 
 ### 실험 CSV
