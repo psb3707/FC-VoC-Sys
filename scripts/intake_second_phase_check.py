@@ -71,7 +71,9 @@ def check(chrome):
       await act('quick-review');
       await click('[data-quick-section=attachment] > summary');
       await selectFile(new File(['invalid'], 'not-an-image.txt', { type: 'text/plain' }));
-      await wait('.pq-attachment [role=alert]');
+      // 파일 읽기는 실제 비동기라 wait() 의 2초(가상 시간, 실제 약 1ms)보다 늦을 수 있다. 화면 변화를 기다린다
+      const rejected = await waitForFile().then(() => '', (error) => error.message);
+      assert(rejected.includes('PNG 또는 JPEG'), '잘못된 파일 거부 ' + rejected);
       assert($('#pn-body').innerText.includes('초대장이 떠요'), '파일 거부 때 설명 유지');
       await click('[data-quick-section=attachment] > summary');
       const preview = await attach();

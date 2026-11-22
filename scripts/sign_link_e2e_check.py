@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """전자서명 오류 E2E (ADR-026): 한 건의 신고가 FC → AI → IT → FC·관리자로 같은 신고번호로 이어지는지 확인한다.
 
-① FC AI 문의 → ② 되묻기(기기·초대장·고객 대기) → ③ 임시 방법 결과(진행했어요, 결함 상태 불변)
+① FC AI 문의 → ② 안내에 필요한 되묻기(초대장) → 결과 → ③ 임시 방법 결과(진행했어요, 결함 상태 불변) → 담당자 확인용 되묻기(기기·고객 대기)
+(ADR-027: 안내에 필요한 항목만 먼저 묻고 결과를 먼저 보인다)
 → ④ 확인 화면 자동 채움 → 첫 제출 실패·재시도(번호 1개) → ⑤ IT 대장 찾기·발생 조건·규칙 후보·수동 연결
 → ⑥ 수정 예정(가상 날짜) 미리보기·확정 → ⑦ FC 알림 → 같은 접수 카드 → ⑧ 관리자 [지점 FC 문의].
 이어서 아직 안 돼요·확인할 수 없어요·대리 접수·수정한 값·기존 추천 동작을 회귀로 본다.
@@ -31,26 +32,28 @@ def consult(chrome, device, seminar, waiting, outcome):
     """추천 질문 "서명 알림톡을 열면 초대장이 떠요"로 상담을 마치고 [확인한 내용으로 접수하기]까지 간다."""
     evaluate(chrome, ASK + """
       await click('[data-index="1"]');
-      await wait(() => $('#pn-assist-ask') && $('#pn-assist-ask').textContent.includes('휴대전화'));
-      assert(!$('.pn-assist-result'), '되묻기 전에는 결과를 보이지 않음');
+      await wait(() => $('#pn-assist-ask') && $('#pn-assist-ask').textContent.includes('초대장'));
+      assert(!$('.pn-assist-result'), '안내에 필요한 항목(초대장 발송 이력) 전에는 결과를 보이지 않음');
       assert(!$('[data-act=assistant-handoff]'), '되묻기 중에는 주 버튼 없음');
       await selftest('되묻기 화면');
-      await answer('""" + device + """');
-      await wait(() => $('#pn-assist-ask').textContent.includes('초대장'));
       await answer('""" + seminar + """');
-      await wait(() => $('#pn-assist-ask').textContent.includes('기다리고'));
-      await answer('""" + waiting + """');
       await wait(() => $('.pn-assist-result[aria-busy="false"]'));
       assert($('#pn-assist-reply').innerText.includes('알림톡 대신 문자로 서명 링크를 보내 주세요'), '승인된 임시 방법(대장 문장)');
-      assert($('#pn-assist-reply').innerText.includes('② 근본 오류는 언제 고쳐지나요?'), '근본 수정 진행');
+      assert($('#pn-assist-reply').innerText.includes('오류 수정 진행상황'), '근본 수정 진행');
       assert(!$('[data-act=assistant-draft]'), '되묻기 상담에서는 초안 만들기 알약을 숨김');
-      assert(asked().filter(t => t.includes('휴대전화에서')).length === 1, '같은 항목을 다시 묻지 않음');
+      assert(!asked().some(t => t.includes('휴대전화에서')), '담당자 확인용 항목은 결과 뒤에 물음');
       await wait('#pn-assist-ask');
       assert($('#pn-assist-ask').textContent.includes('문자로 서명 링크를 보내니 청약을 진행할 수 있었나요?'), '임시 방법 결과 질문');
       const before = (await ApiClient.getDefects({})).find(d => d.id === 'D-2026-001').status;
       const reports = IntakeDemoStore.read().reports.length;
       await click('[data-act=assistant-outcome][data-code=""" + outcome + """]');
+      await wait(() => $('#pn-assist-ask').textContent.includes('휴대전화'));
+      assert(!$('[data-act=assistant-handoff]'), '확인 항목 중에는 주 버튼 없음');
+      await answer('""" + device + """');
+      await wait(() => $('#pn-assist-ask').textContent.includes('기다리고'));
+      await answer('""" + waiting + """');
       await wait('[data-act=assistant-handoff]');
+      assert(asked().filter(t => t.includes('휴대전화에서')).length === 1, '같은 항목을 다시 묻지 않음');
       assert(document.querySelectorAll('#intake-panel .pn-btn').length === 1, '주 버튼 하나');
       await selftest('임시 방법 결과 뒤');
       assert((await ApiClient.getDefects({})).find(d => d.id === 'D-2026-001').status === before, '임시 방법 결과가 결함 상태를 바꾸지 않음');
@@ -68,7 +71,7 @@ def check(chrome):
     open_page(chrome, "index.html", "?selftest=1#role=FC&panel=intake&step=assistant")
     consult(chrome, "CUSTOMER_PHONE", "YES", "YES", "RESUMED")
     report_id = evaluate(chrome, ASK + """
-      assert($('#quick-device').value === 'CUSTOMER_PHONE' && $('#quick-seminarHistory').value === 'YES' &&
+      assert($('#quick-device').value === 'CUSTOMER_PHONE' && $('#quick-cond-SEMINAR_HISTORY').value === 'YES' &&
         $('#quick-workOutcome').value === 'RESUMED', '기기·조건·업무 재개 자동 반영');
       const body = $('#pn-body').innerText;
       assert(body.includes('청약·서명') && body.includes('엉뚱한 화면이 떠요') && body.includes('고객 상담 중') &&
@@ -163,8 +166,10 @@ def check(chrome):
     open_page(chrome, "index.html", "?selftest=1#role=MANAGER&board=known&panel=known&tab=team&item=D-2026-001")
     evaluate(chrome, ASK + """
       const card = await wait('#kn-body .kn-card.is-target');
-      assert(card.innerText.includes('김하늘(가상)') && card.innerText.includes('업무 재개 회신: 진행했어요') &&
-        card.innerText.includes('11월 27일에 고칠 예정이에요'), '관리자: FC 회신과 수정 계획');
+      // ADR-027: FC 한 줄로 묶이고, 펼치면 신고 건별 회신
+      const row = card.querySelector('[data-fc="U-001"]');
+      assert(row && row.querySelector('summary').textContent.includes('김하늘(가상) FC') && row.textContent.includes('""" + report_id + """') &&
+        row.textContent.includes('업무 재개 회신 진행했어요') && card.innerText.includes('11월 27일에 고칠 예정이에요'), '관리자: FC 회신과 수정 계획');
       const mine = (await ApiClient.getBranchReports('U-010')).find(r => r.id === '""" + report_id + """');
       assert(mine && !mine.maskedText && mine.workResumption.result === 'RESUMED', '관리자에게 설명 원문 없음');
       await selftest('관리자 지점 FC 문의');
@@ -198,8 +203,9 @@ def check(chrome):
       await fill('#pn-proxy-select', 'U-011');
       await click('.pn-head #pn-mode-toggle');
       await click('[data-index="1"]');
-      for (const code of ['CUSTOMER_PHONE', 'YES', 'YES']) { await wait('[data-act=assistant-check]'); await answer(code); }
+      await answer('YES');
       await click('[data-act=assistant-outcome][data-code=RESUMED]');
+      for (const code of ['CUSTOMER_PHONE', 'YES']) { await answer(code); }
       await act('assistant-handoff');
       await wait('[data-consult-facts]');
       assert($('#quick-proxy-outcome') && !$('#quick-workOutcome'), '대리 접수: 업무 재개를 정하지 않음');

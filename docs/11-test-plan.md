@@ -39,6 +39,18 @@
 | 15 | 상담에서 "진행했어요" 뒤 접수 실패 → 재시도 / 대리 접수 | 접수번호 1개, 업무 재개 회신 1건(본인만). 대리 접수는 회신·`workOutcome` 없음. 대표 결함 상태 불변 | 상담 인계 |
 | 16 | 공유 저장소에 허용 목록 밖 코드·대화 원문이 들어오려 함 | 버림. 저장소 문자열에 질문 원문 없음 | 저장 허용 목록 |
 | 17 | 고정 응답 없는 새 신고의 후보 계산 | 업무+증상 또는 안내 사례일 때만, ≤ 3, 중복·없는 ID 없음, 비슷함 정도 없음, 자동 연결 0건 | 규칙 후보 |
+| 18 | 임시조치가 없는 결함에서 "아직 안 돼요"·시도한 조치가 저장되려 함 (ADR-027) | `workaroundState=NONE`이면 `workOutcome`·시도한 조치를 버림 | 임시조치 상태 |
+| 19 | 상담 뒤 확인 화면에서 업무를 가입설계로 바꿈 (ADR-027) | 안내 사례·시도한 조치·그 결함의 조건이 지워지고 규칙 후보에 그 결함이 "AI 문의" 근거로 남지 않음 | 상담 사례 재검증 |
+| 20 | 간편 알리기를 두 번 누름 / 이미 연결된 접수가 있는 FC가 간편 알리기 (ADR-027) | 새 기록 없음, 기존 접수 돌려줌 | 간편 알리기 중복 |
+| 21 | 같은 업무 재개 회신을 다시 보냄 / 회신 저장 실패 (ADR-027) | 기록·후속 기록 1건. 실패하면 한 번만 시도하고 [다시 기록하기] | 업무 재개 멱등성 |
+| 22 | 한 FC가 같은 결함에 2건, 회신 없음과 업무 중단 (ADR-027) | 관리자 화면 FC 1줄·펼치면 2건, 회신 없음을 업무 진행 어려움으로 세지 않음 | 관리자 FC별 묶음 |
+| 23 | AI 문의에 "주민 뒷자리 1234"처럼 키워드+숫자 (ADR-027) | 차단, 저장소·AI 입력 없음. 브라우저 자동 검사는 실제 OS 키패드 표시를 검증하지 않음 | 개인정보 |
+| 24 | 관리자가 다른 지점 FC 대신 접수 / 없는 사용자·지점으로 접수 요청 (ADR-028) | 저장 0건, 검증 오류. 대리 접수 목록에 다른 지점 FC 없음 | 신원 검증 |
+| 25 | 접수 환경을 알 수 없는 브라우저 / 진단 수집 실패 (ADR-028) | 미확인으로 보이고 접수는 됨. User-Agent 전체·주소·토큰은 저장 0건. 접수 환경이 발생 환경으로 복사되지 않음 | 진단 출처 |
+| 26 | 검증 없는 해결 / 검증 시각이 적용보다 앞·미래 / 공개 안내에 번호·주소 (ADR-029) | "수정 완료" 0건 / 저장 거부 | 검증 기록 |
+| 27 | 남의 신고·FC가 아닌 신고자 본인·이전 해결 회차·해결 전 확인 / 같은 답 두 번 (ADR-029) | 거부 / 1건 | 현장 확인 권한·멱등 |
+| 28 | 재배포 뒤 이전 회차의 정상 답 (ADR-029) | 새 회차는 미확인. 이전 답은 이력에만 | 해결 회차 |
+| 29 | 빈 재신고가 앞선 업무 어려움을 덮음 / 건너뛴 단계 (ADR-029) | 덮지 않음 / 표시 0건 | 집계·단계 |
 
 ## 3. 추적표 (REQ → 화면 → API → 테스트)
 | REQ | 화면 | API | 테스트 |
@@ -63,6 +75,9 @@
 | KN-01/02 | S3 | reports/mine, notifications | 화면 검토 |
 | IN-13, IN-14, LG-09 | S2 AI 문의 되묻기·확인 화면·완료, S4 신고 패널·묶인 신고, S3 카드, [지점 FC 문의] | intake/question(`checks`), quick-intake, reports/{id}/work-resumption, reports/{id}/similar-defects(`RULE`) | `scripts/sign_link_e2e_check.py`(FC 문의 → 되묻기 → 진행했어요 → 접수·재시도 → IT 찾기·규칙 후보·수동 연결 → 수정 예정·미리보기 → FC 알림·카드 → 관리자 묶음, 같은 신고번호), 기존 검사 4종 회귀 |
 | NT-02, KN-04~06 | S2 AI 문의 결과·확인·완료, S3 카드·[지점 FC 문의], S1 알림 팝업, S4 알림 미리보기 | notifications, reports/{id}/work-resumption, reports/branch | `scripts/notify_two_track_check.py`(대리 접수 → FC 접수 알림, 상태 변경 역할별 수신·중복 제거, 업무 재개 회신 권한, 관리자 묶음 개인정보), 화면 자동 검사(`tab=team`·`item=` 펼침) |
+| IN-15, IN-16, LG-10, KN-06(ADR-027), KN-07 | S2 AI 문의 빠른 도움·간편 알리기·확인 화면·완료, S4 신고 패널 세 덩어리·현장 조건 모아 보기·수정 예정, S3 카드·[지점 FC 문의] FC별 묶음 | intake/question(`stage`·`supportQuestion`), quick-intake, known-errors/{id}/me-too(참여 extra), reports/{id}/work-resumption(중복), reports/branch, reports/{id}/similar-defects | `scripts/consent_keypad_e2e_check.py`(E2E-01~05), 회귀 `scripts/sign_link_e2e_check.py`·`ui_check.py`·`notify_two_track_check.py`·`intake_followup_check.py`·`intake_second_phase_check.py` |
+| IN-17, IN-18, LG-11 | S2 확인 화면 자동 연결 정보·오류가 발생한 환경, 대리 접수 목록, S4 신고 패널 신고자 정보·로그 추적 단서 | quick-intake(신원 검증), me-too(신원 검증), getReporterContext, getIntakeDiagnostics | `scripts/reporter_diagnostics_check.py`(TC-01~07), 회귀 TC-08 |
+| NT-03, LG-12, KN-08, KN-09 | S1 알림 요약, S3 내 접수·현장 확인·[지점 FC 문의], S4 상태 바꾸기·현장 확인 현황 | notifications, defects/{id}/status, reports/{id}/field-verifications, investigations, reports/branch | `scripts/field_verification_check.py`(TC-01~07), TC-08은 기존 검사 전체 |
 | AI-01~07 | - | - | LLM 계약, 등급 비의존 |
 | PV-01~06 | S2-4,6 | intake/preview | 마스킹 전 항목 |
 | OP-01/02 | - | admin/reset | 빈 상태 실행, 네트워크 차단 |

@@ -205,9 +205,30 @@ body.ld-page:has(.pn:not([hidden])) { overflow-y: hidden; }
 .ld-dlg .pn-choice .ld-choice-why { color: var(--ld-sub); font-weight: 500; }
 .ld-dlg .pn-choice[aria-pressed="true"] .ld-choice-why { color: var(--ld-ink); }
 /* ADR-026 발생 조건: 출처는 보조 글색, 묶인 신고 안 접기는 그림자 없이 1px(0-3 "카드 안 접기") */
-.pn-rows .pn-src { color: var(--pn-sub); }
 .ld-reports .pn-details { box-shadow: none; border: 1px solid var(--pn-line); }
 @media (max-width: 480px) {
   [data-report-facts] .pn-rows div, .ld-cands .pn-rows div { display: block; }
   [data-report-facts] .pn-rows dd, .ld-cands .pn-rows dd { margin-top: 2px; }
 }
+/* ADR-028 신고자 정보: 계정 ID는 값 안에서 이어 쓴다. 좁은 화면은 신고자 정보·로그 추적 단서도 이름·값 위아래 */
+[data-report-reporter] .ld-id { display: inline; }
+@media (max-width: 480px) {
+  [data-report-reporter] .pn-rows div, [data-report-trace] .pn-rows div { display: block; }
+  [data-report-reporter] .pn-rows dd, [data-report-trace] .pn-rows dd { margin-top: 2px; }
+}
+/* ADR-029 수정 완료 후 현장 확인: 문제 지속 신고마다 1px 연한 선으로 묶는다 */
+.ld-field-fails { margin-top: 16px; }
+.ld-field-fails > li { padding: 16px 0; border-top: 1px solid var(--pn-line-soft); }
+.ld-field-fails .pn-details { margin: 12px 0; box-shadow: none; border: 1px solid var(--pn-line); }
+.ld-field-fails .ld-id { display: inline; }
+.ld-panel .ld-field-who { margin: 0 0 8px; font-weight: 700; color: var(--pn-ink); }
+[data-field-verification] > .pn-rows { margin-top: 8px; }
+[data-field-verification] > .pn-rows + .ld-meta { margin-top: 16px; }
+.ld-table .ld-field-flag { display: block; width: fit-content; margin-top: 8px; white-space: nowrap; }
+.ld-evidence { margin-top: 16px; }
+@media (max-width: 480px) {
+  [data-field-verification] .pn-rows div { display: block; }
+  [data-field-verification] .pn-rows dd { margin-top: 2px; }
+}
+/* ADR-029 입력 막힘 안내: 칸 바로 아래, 초점 테두리와 겹치지 않게 8px */
+#ld-dlg-body #ld-err { margin-top: 8px; }
