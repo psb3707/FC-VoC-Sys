@@ -185,7 +185,7 @@ def check_main(chrome):
       const base = { appliedAt: kst(3) + ':00+09:00', scope: 'LINKED', change: '숫자를 입력할 수 있어요.', action: 'RETRY', approved: true };
       const good = { result: 'VERIFIED', verifiedAt: kst(1) + ':00+09:00', usageGuide: '기존 절차대로 진행해 주세요.' };
       const bad = [['미래 검증 시각', { verifiedAt: kst(-120) + ':00+09:00' }, 'U-030'],
-        ['검증 시각이 적용보다 앞', { verifiedAt: kst(9) + ':00+09:00' }, 'U-030'], ['번호', { usageGuide: '010-1234-5678로 연락' }, 'U-030'],
+        ['검증 시각이 적용보다 앞', { verifiedAt: kst(9) + ':00+09:00' }, 'U-030'], ['번호', { usageGuide: '010-0000-0000로 연락' }, 'U-030'],
         ['주소', { usageGuide: 'www.example.invalid 확인' }, 'U-030'], ['긴 안내', { usageGuide: '가'.repeat(31) }, 'U-030'],
         ['참조 형식', { refId: 'token=abc' }, 'U-030'], ['FC가 기록', {}, 'U-013'], ['관리자가 기록', {}, 'U-010'], ['행위자 없음', {}, null]];
       for (const [name, patch, actorId] of bad) {
