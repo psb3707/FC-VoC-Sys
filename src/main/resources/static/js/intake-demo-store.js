@@ -6,7 +6,9 @@
   function empty() { return { nextReport: 1, reports: [], links: {}, cancelled: {}, followups: {}, attachments: {}, history: [], read: {},
     resumption: {}, notices: [],
     /* ADR-029: 현장 확인·후속 조사(덧붙이기만), 담당자가 연결한 시각 */
-    verifications: [], investigations: [], linkedAt: {} }; }
+    verifications: [], investigations: [], linkedAt: {},
+    /* ADR-030: 분류 이력·인수·상세 열람·대응 기록·문의자 추가 정보 답(모두 덧붙이기, 자유 메모 없음) */
+    routes: {}, assign: {}, views: {}, actions: {}, infoReplies: {} }; }
   var memory = empty();
 
   function read() {
@@ -24,6 +26,7 @@
           state.verifications = Array.isArray(state.verifications) ? state.verifications : [];
           state.investigations = Array.isArray(state.investigations) ? state.investigations : [];
           state.linkedAt = state.linkedAt || {};
+          ['routes', 'assign', 'views', 'actions', 'infoReplies'].forEach(function (k) { state[k] = state[k] || {}; });
           memory = state;
         }
       }

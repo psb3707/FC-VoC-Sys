@@ -729,7 +729,7 @@
   var OUTCOME_ANSWER = { RESUMED: '네, 진행했어요', STILL: '아직 안 돼요', UNKNOWN: '지금은 확인할 수 없어요' };
   var SUPPORT_ANSWER = { YES: '네, 진행이 어려워요', NO: '아니요, 기다릴 수 있어요', UNKNOWN: '잘 모르겠어요' };
   var SUPPORT_REPLY = {
-    YES: '업무를 이어가기 어려운 상황을 접수에 남길게요. 담당자가 확인하면 알림과 내 접수내역으로 알려 드려요.',
+    YES: '업무를 이어가기 어려운 상황을 접수에 남길게요. 담당자가 확인하면 알림과 내 문의로 알려 드려요.',
     NO: '알겠어요. 접수해 두시면 처리 경과를 알려 드려요.',
     UNKNOWN: '확인 전이어도 접수할 수 있어요.'
   };
@@ -745,7 +745,7 @@
       el('details', { cls: 'pn-details pq-details', 'data-help-path': '' }, [
         el('summary', null, ['사람의 도움을 받을 수 있는 경로']),
         el('ul', { cls: 'pn-plain pq-details-body' }, [
-          el('li', null, ['접수하면 담당 창구' + (result.department ? '(' + result.department + ')' : '') + '가 확인하고, 처리 경과를 알림과 내 접수내역으로 알려 드려요.']),
+          el('li', null, ['접수하면 담당 창구' + (result.department ? '(' + result.department + ')' : '') + '가 확인하고, 처리 경과를 알림과 내 문의로 알려 드려요.']),
           el('li', null, ['고객님이 기다리고 계시면 접수할 때 긴급 사정과 전화 연락 희망을 남길 수 있어요.']),
           el('li', null, ['이 화면에서 바로 전화·메신저로 연결하지는 않아요. 처리 시간도 아직 정해지지 않았어요.']),
           el('li', null, ['본인확인을 건너뛰거나 고객 정보를 다른 방법으로 받아 두지 마세요.'])])])]);
@@ -769,7 +769,7 @@
     var card = el('article', { cls: 'pn-card pn-assist-quick', 'aria-labelledby': 'pn-assist-quick-title' }, [
       el('p', { cls: 'pn-card-title', id: 'pn-assist-quick-title', tabindex: '-1' }, ['「' + d.title + '」' + wa(d.title) + ' 같은 오류로 알릴까요?']),
       list.length ? rows(list) : null,
-      el('p', { cls: 'pn-lead' }, ['같은 오류인지 직접 확인한 뒤 눌러 주세요. 대화 내용과 고객 정보는 남기지 않아요. 처리 경과는 알림과 내 접수내역으로 알려 드려요.']),
+      el('p', { cls: 'pn-lead' }, ['같은 오류인지 직접 확인한 뒤 눌러 주세요. 대화 내용과 고객 정보는 남기지 않아요. 처리 경과는 알림과 내 문의로 알려 드려요.']),
       c.error ? el('p', { cls: 'pn-err', role: 'alert' }, [c.error]) : null]);
     card.setAttribute('data-quick-confirm', '');
     return card;
@@ -777,7 +777,7 @@
   var OUTCOME_REPLY = {
     RESUMED: '업무를 이어가셨네요. 오류 자체는 아직 고쳐지지 않았어요. 접수해 두시면 수정 소식을 알려 드려요.',
     STILL: '시도한 방법을 접수에 함께 남길게요. 급하면 접수할 때 전화 연락을 요청할 수 있어요.',
-    UNKNOWN: '확인 전이어도 접수할 수 있어요. 결과는 나중에 내 접수내역에서 알려 주셔도 돼요.'
+    UNKNOWN: '확인 전이어도 접수할 수 있어요. 결과는 나중에 내 문의에서 알려 주셔도 돼요.'
   };
   function nextCheck(c, stage) {
     stage = stage || c.stage;

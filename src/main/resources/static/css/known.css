@@ -100,3 +100,7 @@
   .kn-detail .pn-note > div { min-width: 0; }
   .kn-verify .pn-chips li, .kn-verify .pn-chip { width: 100%; }
 }
+/* ADR-030 추가 정보 답(06번 0-3 "추가 정보 답"): 현장 확인 질문과 같은 보조 버튼 선택 */
+.kn-info-item { margin: 16px 0 0; }
+.kn-info-q { margin: 0; font-weight: 700; }
+[data-info-request] > .pn-btn-2 { margin-top: 16px; }

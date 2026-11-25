@@ -165,7 +165,11 @@ window.FIXTURES.ledger = {
       "defectId": null, "createdAt": "2026-11-04T08:45:00+09:00" },
     { "id": "R-062", "reporterId": "U-010", "submittedById": "U-010", "kind": "FULL", "mode": "A", "business": "ETC", "symptom": "NOT_SHOWN",
       "maskedText": "첨부 메뉴 글자가 겹쳐 보여요", "finalType": "UNCLASSIFIED", "grade": "BATCH", "departmentCode": "SALES_SUPPORT",
-      "defectId": null, "createdAt": "2026-11-04T09:30:00+09:00" }
+      "defectId": null, "createdAt": "2026-11-04T09:30:00+09:00" },
+    /* ADR-030 보조 시연 A(docs/10-seed-scenarios.md 5-6절): 현업 자체 해결. 로그인·접속 → 영업지원팀(가상) 문의함 */
+    { "id": "R-066", "reporterId": "U-005", "submittedById": "U-005", "kind": "FULL", "mode": "B", "business": "LOGIN", "symptom": "HOW_TO",
+      "maskedText": "인증서를 새로 받는 화면을 못 찾겠어요", "finalType": "USAGE", "grade": null, "departmentCode": "LOGIN_SUPPORT",
+      "urgent": ["CONSULTING"], "defectId": null, "createdAt": "2026-11-04T10:10:00+09:00" }
   ],
 
   "statusHistory": [
@@ -220,7 +224,7 @@ window.FIXTURES.ledger = {
   "statusTemplates": {
     "WORKAROUND": "{title} — 임시 방법이 나왔어요: {workaround}",
     "FIX_PLANNED": "{title} — {date}에 고칠 예정이에요. 그때까지는 안내된 임시 방법을 써 주세요",
-    "RESOLVED": "{title} — 해결로 처리됐어요. 자세한 안내는 내 접수내역에서 확인해 주세요",
+    "RESOLVED": "{title} — 해결로 처리됐어요. 자세한 안내는 내 문의에서 확인해 주세요",
     "WONT_FIX": "{title} — {reason}. 지금 화면은 고치지 않아요. 안내된 임시 방법을 계속 써 주세요"
   },
   "submitterTemplates": {
