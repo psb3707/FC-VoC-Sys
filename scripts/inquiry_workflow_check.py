@@ -66,6 +66,12 @@ def check_routing(chrome):
       assert((await notes('U-023', 'NEW_INQUIRY')).length === n23 + 1, '새 문의함 알림 1건(같은 요청 두 번)');
       assert(!ids(await inbox('U-020')).includes('R-062') && ids(await inbox('U-023')).includes('R-062'), '문의함 이동');
       assert((await ApiClient.getInquiry('R-062', 'U-020')).forbidden, '보낸 뒤 앞 문의함 담당자는 상세 못 봄');
+      // 인수한 문의를 재분류하면 담당이 비고 새 문의함에서 신규로 시작한다
+      await ApiClient.claimInquiry('R-014', 'U-020', 'CL-14');
+      await ApiClient.postInquiryAction('R-014', 'U-020', { type: 'REROUTE', inboxId: 'IB-CUSTOMER', codes: ['WRONG_BUSINESS'], requestId: 'RR-14' });
+      const d14 = await ApiClient.getInquiry('R-014', 'U-024');
+      assert(!d14.assignment && d14.handling.code === 'NEW' && d14.can.claim, '재분류 뒤 담당 비움 ' + JSON.stringify(d14.assignment));
+      assert(!ids(await inbox('U-020')).includes('R-014'), '앞 담당자 문의함에서 빠짐');
 
       // E2E-14: 대리 접수는 문의자 기준으로 분류하고 문의자와 접수자를 구분
       const proxy = await intake('U-011', 'SUBSCRIPTION', { submittedById: 'U-010', symptom: 'WRONG_SCREEN', oneLine: '서명 화면이 멈춰요' });
