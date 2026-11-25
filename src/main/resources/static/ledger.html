@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>결함 대장</title>
+<title>전산 문의 관리</title>
 <link rel="stylesheet" href="css/sfa-tokens.css">
 <link rel="stylesheet" href="css/app.css">
 <link rel="stylesheet" href="css/panel.css">
@@ -31,12 +31,12 @@
 <!-- ① 페이지 머리 (SFA 밖 화면: SFA 헤더·파란 탭 바를 흉내 내지 않는다, 06번 0절 3항) -->
 <header class="ld-top" data-a11y="new">
   <span class="pn-ico"><svg aria-hidden="true"><use href="#i-ledger"/></svg></span>
-  <h1 class="ld-brand">결함 대장</h1>
-  <!-- 새 신고 알림 (ADR-017): S1 알림 아이콘 + 숫자 배지, 누르면 S1 알림 팝업 모양의 새 신고 목록 -->
+  <h1 class="ld-brand">전산 문의 관리</h1>
+  <!-- 담당자 알림 (ADR-017·030): S1 알림 아이콘 + 숫자 배지, 누르면 S1 알림 팝업 모양의 목록(신규 문의·IT 협의 요청) -->
   <div class="ld-alarm-wrap">
     <button type="button" class="pn-btn-2 ld-alarm" id="ld-alarm" aria-haspopup="true" aria-expanded="false" aria-controls="ld-alarm-pop">
       <span class="ld-alarm-ico"><svg aria-hidden="true"><use href="#i-bell"/></svg><span class="badge" id="ld-alarm-badge" data-a11y="badge" hidden></span></span>
-      <span id="ld-alarm-text">새 신고</span>
+      <span id="ld-alarm-text">새 알림</span>
     </button>
     <div class="alarm-pop ld-alarm-pop" id="ld-alarm-pop" role="region" aria-labelledby="ld-alarm-head" hidden>
       <div class="alarm-head" id="ld-alarm-head"></div>
@@ -48,11 +48,9 @@
 
 <!-- ② 목록 (탭 → 필터 → 표 카드 → 총 건수). 내용은 js/ledger.js 가 그린다 -->
 <main class="ld-main" data-a11y="new">
-  <p class="ld-lead">같은 원인의 신고를 묶어 상태를 관리해요. 상태를 바꾸면 묶인 신고자에게 알림이 가요.</p>
-  <div class="ld-tabs" role="tablist" aria-label="목록 고르기">
-    <button type="button" role="tab" class="ld-tab" id="ld-tab-defects" data-tab="defects" aria-controls="ld-view">대표 결함 <span class="ld-count" id="ld-count-defects"></span></button>
-    <button type="button" role="tab" class="ld-tab" id="ld-tab-unlinked" data-tab="unlinked" aria-controls="ld-view">아직 안 묶인 신고 <span class="ld-count" id="ld-count-unlinked"></span><span class="badge ld-tab-badge" id="ld-new-badge" data-a11y="badge" hidden></span></button>
-  </div>
+  <p class="ld-lead" id="ld-lead"></p>
+  <!-- 탭은 역할별로 js/ledger.js 가 그린다(ADR-030): 현업 [전산 문의함]·IT [IT 협의 요청] · [공통 오류] · [오류·조치 이력] -->
+  <div class="ld-tabs" role="tablist" aria-label="목록 고르기" id="ld-tabs"></div>
   <section class="ld-view" id="ld-view" role="tabpanel"></section>
 </main>
 
@@ -68,7 +66,7 @@
   <div class="pn-foot" id="ld-foot"></div>
 </section>
 
-<!-- ④ 가운데 대화상자 (상태 바꾸기·신고 묶기) -->
+<!-- ④ 가운데 대화상자 (상태 바꾸기·관련 오류 연결·담당자 대응·ITGS 요청 초안) -->
 <div class="pn-scrim ld-dlg-scrim" id="ld-dlg-scrim" hidden></div>
 <section class="pn ld-dlg" id="ledger-dialog" role="dialog" aria-modal="true" aria-labelledby="ld-dlg-title" data-a11y="new" hidden>
   <header class="pn-head">
@@ -93,6 +91,7 @@
 <script src="js/fixtures/intake.js"></script>
 <script src="js/fixtures/intake-assistant.js"></script>
 <script src="js/intake-facts.js"></script>
+<script src="js/fixtures/business-routes.js"></script>
 <script src="js/api-client.js"></script>
 <script src="js/notice-tracks.js"></script>
 <script src="js/ledger.js"></script>

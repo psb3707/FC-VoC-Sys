@@ -391,7 +391,7 @@
                 field('date', '발생 날짜 (선택)', { type: 'date' }), field('time', '발생 시각 (선택)', { type: 'time' })])
             ], invalid === 'screen' || !!(form.device || form.screen || form.date || form.time)),
             details('contact', '연락받을 방법과 가능 시간', [
-              el('p', null, ['응답은 내 접수내역에서 확인할 수 있어요.']),
+              el('p', null, ['응답은 내 문의에서 확인할 수 있어요.']),
               select('contact', '연락 방법 (선택)', options.contact),
               form.contact === 'PHONE' ? select('contactTime', '연락 가능한 시간 (선택)', options.time) : null
             ], !!form.contact),
@@ -486,7 +486,7 @@
         form.consultNote ? el('p', { cls: 'pn-lead', id: 'quick-consult-note', role: 'status' }, [form.consultNote]) : null,
         select('device', '오류가 난 기기', devices, '선택 안 함')]
         .concat(Object.keys(facts.CONDITIONS).filter(function (key) { return form.conditions[key]; }).map(condSelect), [
-        proxied() ? el('p', { cls: 'pn-lead', id: 'quick-proxy-outcome' }, ['업무 재개 여부는 FC 본인이 내 접수내역에서 답해요.']) :
+        proxied() ? el('p', { cls: 'pn-lead', id: 'quick-proxy-outcome' }, ['업무 재개 여부는 FC 본인이 내 문의에서 답해요.']) :
           noWorkaround || form.supportNeeded ? select('supportNeeded', '업무 상황 (지금 업무를 이어가기 어려운가요?)', facts.SUPPORT, '선택 안 함') :
           select('workOutcome', '안내한 방법으로 업무를 이어갔나요?', facts.OUTCOMES, '선택 안 함'),
         // 고칠 수 없는 줄(대장 기준·안내 사례)은 끝에 모은다
@@ -561,13 +561,15 @@
                 (receipt.resumptionSaved ? ' · 접수에 기록했어요' : receipt.resumptionFailed ? ' · 아직 기록하지 못했어요' : '')] : null,
               receipt.workaroundState === 'NONE' ? ['임시조치', '승인된 임시조치 없음'] : null,
               receipt.supportNeeded ? ['업무 상황', facts.supportLabel(receipt.supportNeeded)] : null,
-              proxied && receipt.origin === 'ASSISTANT' ? ['업무 재개', 'FC 본인이 내 접수내역에서 답해요'] : null,
+              proxied && receipt.origin === 'ASSISTANT' ? ['업무 재개', 'FC 본인이 내 문의에서 답해요'] : null,
               receipt.hasAttachment ? ['화면 첨부', '확인한 이미지 1장'] : null,
               receipt.aiDraft ? ['AI 접수 초안', '확인하고 수정한 내용으로 접수했어요'] : null,
-              receipt.department ? ['담당 창구', receipt.department] : null,
+              // ADR-030: 규칙 분류로 전달된 문의함(가상). 없으면 기존 담당 창구 표시
+              receipt.routing ? ['전달된 곳', receipt.routing.inboxName + (/문의함$/.test(receipt.routing.inboxName) ? '' : ' 문의함') + ' · 규칙으로 분류'] :
+                receipt.department ? ['담당 창구', receipt.department] : null,
               ['연락', receipt.contact === 'PHONE' ? '전화 희망' +
-                (receipt.contactTime ? ' · ' + options.time.find(function (pair) { return pair[0] === receipt.contactTime; })[1] : '') : 'SFA 내 접수내역'],
-              ['다음 안내', '담당자가 확인하면 알림과 내 접수내역으로 알려 드려요. 다음 안내 일정은 아직 정해지지 않았어요.']
+                (receipt.contactTime ? ' · ' + options.time.find(function (pair) { return pair[0] === receipt.contactTime; })[1] : '') : 'SFA 내 문의'],
+              ['다음 안내', '담당자가 확인하면 알림과 내 문의로 알려 드려요. 다음 안내 일정은 아직 정해지지 않았어요.']
             ])]),
           receipt.resumptionFailed ? el('div', { cls: 'pn-card pq-actions', id: 'quick-resume-failed' }, [
             el('p', null, ['접수는 됐어요. 업무 재개 회신만 아직 기록하지 못했어요.']),

@@ -5,7 +5,7 @@
 
   var SOURCES = {
     USER_REPORTED: 'FC가 알려 줌', DEMO_CONTEXT: '접수 화면 자동 기록', BROWSER_CAPTURED: '브라우저에서 확인',
-    DEFECT_LEDGER: '결함 대장 기준', UNKNOWN: '미확인'
+    DEFECT_LEDGER: '공통 오류 기준', USER_ADDED: 'FC가 추가로 알려 줌', UNKNOWN: '미확인'
   };
   var DEVICES = [['SAME', '접수하는 기기와 같아요'], ['PC', '다른 컴퓨터'], ['PHONE', '휴대폰'], ['TABLET', '태블릿'],
     ['CUSTOMER_PHONE', '고객 휴대전화'], ['OTHER', '다른 기기'], ['UNKNOWN', '아직 모르겠어요']];
@@ -16,7 +16,9 @@
     INPUT_STEP: { label: '문제가 생긴 입력란', values: [['FRONT', '앞자리 입력'], ['BACK', '뒷자리 입력'], ['UNKNOWN', '모름']] },
     KEYPAD_SYMPTOM: { label: '발생 현상', values: [['NO_KEYPAD', '키패드가 안 나타남'], ['NO_INPUT', '키패드는 보이지만 입력 안 됨'], ['UNKNOWN', '모름']] },
     DEVICE_OS: { label: '고객 기기 환경', values: [['ANDROID', 'Android'], ['IOS', 'iOS'], ['UNKNOWN', '모름']] },
-    URL_PATH: { label: '링크를 연 경로', values: [['IN_APP', '앱 안 브라우저'], ['EXTERNAL', '외부 브라우저'], ['UNKNOWN', '모름']] }
+    URL_PATH: { label: '링크를 연 경로', values: [['IN_APP', '앱 안 브라우저'], ['EXTERNAL', '외부 브라우저'], ['UNKNOWN', '모름']] },
+    /* ADR-030: 담당자의 추가 정보 요청에만 쓰는 항목(AI 문의 확인 항목에는 없음) */
+    REPEAT: { label: '반복 여부', values: [['ALWAYS', '매번 생김'], ['SOMETIMES', '가끔 생김'], ['ONCE', '한 번만 생김'], ['UNKNOWN', '모름']] }
   };
   var OUTCOMES = [['RESUMED', '진행했어요'], ['STILL', '아직 안 돼요'], ['UNKNOWN', '지금은 확인할 수 없어요']];
   /* ADR-027 결정 5: 임시조치 상태와 추가 지원 필요 */

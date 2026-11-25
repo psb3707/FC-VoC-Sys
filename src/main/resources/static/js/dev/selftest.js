@@ -297,14 +297,14 @@
       add('s3-panel-token', kf, kW + 'px');
     }
 
-    // 14. S4 결함 대장 (06번 6절, 0-3절 데이터 표·페이지 머리·가운데 대화상자, ADR-014 결정 5)
+    // 14. S4 전산 문의 관리(옛 결함 대장) (06번 6절, 0-3절 데이터 표·페이지 머리·가운데 대화상자, ADR-014 결정 5, ADR-030)
     if (screen === 'ledger') {
       var lf = [], lvw = document.documentElement.clientWidth;
       var brand = document.querySelector('.ld-top h1');
       if (!brand || px(cs(brand).fontSize) < 24 - EPS) lf.push('페이지 제목 24px 미만');
       var ltabs = all('.ld-tabs [role="tab"]');
       if (!document.querySelector('.ld-tabs[role="tablist"]')) lf.push('role=tablist 없음');
-      if (ltabs.length !== 2) lf.push('목록 탭 ' + ltabs.length + '개 (2 필요)');
+      if (ltabs.length !== 3) lf.push('목록 탭 ' + ltabs.length + '개 (3 필요: 역할별 첫 탭·공통 오류·오류·조치 이력)');
       var lsel = ltabs.filter(function (b) { return b.getAttribute('aria-selected') === 'true'; });
       if (lsel.length !== 1) lf.push('선택된 탭 ' + lsel.length + '개');
       lsel.forEach(function (b) { if (parseInt(cs(b).fontWeight, 10) < 700) lf.push('선택 탭 굵게 아님'); });
@@ -383,13 +383,13 @@
       });
       add('s4-block-gap', gf);
 
-      // 새 신고 알림·AI 추천 (REQ-LG-06·07, ADR-017): 색만으로 알리지 않고, AI 추천은 표시가 있고 연결은 사람이 한다
+      // 담당자 알림·AI 추천 (REQ-LG-06·07·14, ADR-017·030): 색만으로 알리지 않고, AI 추천은 표시가 있고 연결은 사람이 한다
       var af = [];
-      all('#ld-alarm-badge, #ld-new-badge').forEach(function (b) {
+      all('#ld-alarm-badge, .ld-tab-badge').forEach(function (b) {
         if (!/\d/.test(b.textContent)) af.push(label(b) + ' 숫자 없음');
       });
       var alarm = document.getElementById('ld-alarm');
-      if (alarm && !/새 신고/.test(alarm.textContent)) af.push('알림 버튼 글자 없음');
+      if (alarm && !/새 알림/.test(alarm.textContent)) af.push('알림 버튼 글자 없음');
       all('.ld-ai').forEach(function (c) {
         var tag = c.querySelector('.kn-card-head .ld-tag'), load = c.querySelector('.pn-loading');
         if (!load && (!tag || !/AI 추천|규칙 후보/.test(tag.textContent))) af.push('AI 추천 카드에 "AI 추천" 표시 없음');
@@ -397,7 +397,7 @@
         Array.prototype.forEach.call(c.querySelectorAll('.ld-cands > li'), function (li) {
           var st = li.querySelector('.ld-cand-head .ld-tag');
           if (!rule && (!st || !/비슷함/.test(st.textContent))) af.push(label(li) + ' 비슷함 글자 없음');
-          if (!li.querySelector('[data-act="link-ai"]')) af.push(label(li) + ' [이 결함에 묶기] 없음');
+          if (!li.querySelector('[data-act="link-ai"]')) af.push(label(li) + ' [이 오류에 연결] 없음');
         });
       });
       // AI 추천이 보이는 곳에는 "사람이 확인" 안내가 있어야 한다

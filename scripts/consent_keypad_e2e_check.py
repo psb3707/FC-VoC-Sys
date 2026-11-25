@@ -93,8 +93,8 @@ def check(chrome):
       return id;
     """)
 
-    # E2E-01 ⑤ IT: 같은 번호 → 세 덩어리 → 규칙 후보·근거 → 수동 연결
-    open_page(chrome, "ledger.html", "?selftest=1#role=IT&tab=unlinked")
+    # E2E-01 ⑤ 현업(고객동의업무팀, ADR-030): 같은 번호 → 세 덩어리 → 규칙 후보·근거 → 수동 연결
+    open_page(chrome, "ledger.html", "?selftest=1#role=SALES&user=U-021&tab=unlinked")
     evaluate(chrome, CONSENT + """
       const id = '""" + report_id + """';
       await fill('#ld-q', id);
@@ -102,16 +102,16 @@ def check(chrome):
       await click('[data-open="' + id + '"]');
       const facts = await wait('#ld-body [data-report-facts]');
       const heads = [...document.querySelectorAll('#ld-body h4')].map(h => h.textContent);
-      assert(heads.join('|') === '① 신고자와 발생 환경|② 기존 결함과의 연관성|③ 담당자 처리', '신고 패널 세 덩어리 ' + heads.join('|'));
+      assert(heads.join('|') === '① 문의자와 발생 환경|② 관련 오류와 기존 조치|③ 추가 확인이 필요한 정보', '신고 패널 세 덩어리 ' + heads.join('|'));
       const text = facts.innerText;
       assert(text.includes('고객 휴대전화 · FC가 알려 줌') && text.includes('뒷자리 입력') && text.includes('키패드가 안 나타남') &&
-        text.includes('Android · FC가 알려 줌') && text.includes('앱 안 브라우저') && text.includes('승인된 임시조치 없음 · 결함 대장 기준') &&
+        text.includes('Android · FC가 알려 줌') && text.includes('앱 안 브라우저') && text.includes('승인된 임시조치 없음 · 공통 오류 기준') &&
         text.includes('업무 진행 어려움'), 'FC가 확인한 정보(값마다 출처)');
       const ai = await wait(() => $('#ld-body .ld-ai .ld-cands') && $('#ld-body .ld-ai'));
       const cand = ai.innerText;
       assert(cand.includes('규칙 후보') && cand.includes('D-2026-007') && cand.includes('업무: 고객동의·본인확인') &&
         cand.includes('증상: 입력할 수 없어요') && cand.includes('관련 조건: 문제가 생긴 입력란 뒷자리 입력') &&
-        cand.includes('AI 문의: 안내한 사례') && cand.includes('연결된 신고 3건 · 영향 지점 3곳') && cand.includes('임시 방법 없음') &&
+        cand.includes('AI 문의: 안내한 사례') && cand.includes('연결된 문의 3건 · 영향 지점 3곳') && cand.includes('임시 방법 없음') &&
         !cand.includes('비슷함'), '추천 근거·연관 규모·기존 조치, 점수 없음');
       const sim = await ApiClient.postSimilarDefects(id);
       assert(sim.llmOutcome === 'RULE' && sim.candidates[0].defectId === 'D-2026-007' && sim.candidates.every(c => c.similarity === null) &&
@@ -123,7 +123,7 @@ def check(chrome):
       await selftest('고객 동의 대장 신고 패널');
       await click('[data-ai-link="D-2026-007"]');
       await act('link-confirm');
-      await wait(() => $('#ledger-dialog') && $('#ledger-dialog').innerText.includes('신고를 묶었어요'));
+      await wait(() => $('#ledger-dialog') && $('#ledger-dialog').innerText.includes('문의를 연결했어요'));
       assert(IntakeDemoStore.read().links[id] === 'D-2026-007', '담당자가 묶어야 연결');
       const d = await ApiClient.getDefect('D-2026-007');
       assert(d.reports.some(r => r.id === id) && d.status === 'RECEIVED' && !d.plannedFixDate, '연결돼도 상태·예정일은 그대로');

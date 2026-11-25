@@ -114,13 +114,13 @@
     if (st.board !== 'known') return;
     ul.innerHTML = '';
     var lines = cache.mine.slice(0, SUMMARY_MINE).map(function (r) {
-      return { tab: 'mine', id: r.id, title: '[내 접수] ' + titleOf(r), side: T.tag(r.defect) };
+      return { tab: 'mine', id: r.id, title: '[내 문의] ' + titleOf(r), side: T.tag(r.defect) };
     }).concat(known.slice(0, SUMMARY_KNOWN).map(function (k) {
       return { tab: 'known', id: k.id, title: '[알려진 오류] ' + k.title,
         side: k.status === WONT_FIX ? WONT_FIX_LABEL : k.plannedFixDate ? mmdd(k.plannedFixDate) + ' 수정 예정' : stageLabel(k.status) };
     }));
     if (!lines.length) {
-      ul.appendChild(el('li', { 'data-a11y': 'sfa', cls: 'kn-sum' }, [el('span', { cls: 'b-title' }, ['오류 현황과 내 접수내역이 비어 있어요'])]));
+      ul.appendChild(el('li', { 'data-a11y': 'sfa', cls: 'kn-sum' }, [el('span', { cls: 'b-title' }, ['오류 현황과 내 문의가 비어 있어요'])]));
       return;
     }
     lines.forEach(function (l) {
@@ -156,7 +156,7 @@
       cards.length ? el('ul', { cls: 'pn-plain' }, cards)
         : el('div', { cls: 'pn-card kn-empty' }, [el('p', null, ['지금 알려진 오류가 없어요'])]),
       el('div', { cls: 'pn-note' }, [icon('i-info'), el('div', null, [el('b', null, ['같은 문제를 겪고 계신가요?']),
-        '전산 오류 접수에서 업무를 고르면 관련 오류에 참여하거나 새로 접수할 수 있어요.'])])];
+        '전산 문의하기에서 업무를 고르면 관련 오류에 참여하거나 새로 문의할 수 있어요.'])])];
   }
 
   function recordName(h) {
@@ -225,6 +225,50 @@
     return list.length ? rows(list.map(function (x) { return [fmtWhen(x.at), x.text]; }), 'kn-history') : null;
   }
 
+  /* ADR-030: 공통 오류 연결 전의 문의 단위 경과. 추가 정보 요청은 문의자 본인만 선택형으로 답한다 */
+  var infoDraft = {};
+  function inquiryView(r, me) {
+    if (r.defect) return null;
+    if (r.infoRequest) {
+      var q = r.infoRequest, own = me && me.id === r.reporterId, picked = infoDraft[r.id] || {};
+      if (q.answered) {
+        return el('div', { cls: 'kn-resume', 'data-info-request': '' }, [el('p', { cls: 'nt-q' }, ['보낸 답']),
+          rows(q.items.map(function (x) {
+            var v = q.answered[x.key];
+            return [x.label, v ? (v === 'UNKNOWN' ? '잘 모르겠어요' : window.IntakeFacts.conditionLabel(x.key, v)) : '답하지 않음'];
+          })),
+          el('p', { cls: 'kn-resume-status', role: 'status' }, ['담당 부서에서 확인하고 알림으로 알려 드려요.'])]);
+      }
+      if (!own) return el('p', { cls: 'kn-resume-status' }, ['담당 부서가 추가 정보를 요청했어요 · 문의자 본인이 답해요']);
+      return el('div', { cls: 'kn-resume', 'data-info-request': '' }, [el('p', { cls: 'nt-q' }, ['담당 부서에서 더 알고 싶어 해요']),
+        el('p', { cls: 'kn-resume-status' }, ['아는 것만 골라 주세요. 모르면 "잘 모르겠어요"를 골라도 돼요.'])].concat(q.items.map(function (x) {
+          return el('div', { cls: 'kn-info-item' }, [el('p', { cls: 'kn-info-q' }, [x.question]),
+            el('ul', { cls: 'pn-chips', 'aria-label': x.question }, x.choices.map(function (c) {
+              return el('li', null, [el('button', { type: 'button', cls: 'pn-chip', 'data-info-code': x.key, 'data-info-value': c[0],
+                'aria-pressed': String(picked[x.key] === c[0]) }, [c[0] === 'UNKNOWN' ? '잘 모르겠어요' : c[1]])]);
+            }))]);
+        }), [el('button', { type: 'button', cls: 'pn-btn-2', 'data-act': 'info-send', 'data-report': r.id }, ['답 보내기']),
+          el('p', { cls: 'kn-resume-status', role: 'status', tabindex: '-1', 'data-info-status': '' }, [''])]));
+    }
+    if (r.inquiryGuide) return null;   // 안내한 방법은 두 갈래의 "지금 가능한 대응"에 보인다
+    if (r.selfResolved) {
+      return el('div', { cls: 'pn-note' }, [icon('i-check'), el('div', null, [el('b', null, ['담당 부서에서 처리했어요']), r.selfResolved.text])]);
+    }
+    return null;
+  }
+  function sendInfo(button) {
+    var st = read(), me = currentUser(st), id = button.getAttribute('data-report'), picked = infoDraft[id] || {};
+    var status = button.parentElement.querySelector('[data-info-status]');
+    if (!Object.keys(picked).length) { status.textContent = '답할 항목을 하나 이상 골라 주세요.'; status.focus(); return; }
+    button.disabled = true;
+    A.postInfoReply(id, me ? me.id : '', picked, 'IR-' + id + '-' + Date.now()).then(function (res) {
+      if (!res) { button.disabled = false; status.textContent = '답을 보내지 못했어요. 다시 눌러 주세요.'; status.focus(); return; }
+      delete infoDraft[id];
+      cache.userId = null;
+      return render();
+    });
+  }
+
   /* 업무 재개 회신(ADR-025 결정 5): 신고자 본인만 답한다. 대신 접수한 관리자는 FC의 답을 글자로 본다 */
   function canResume(r) { return !!(r.defect && r.defect.workaround && r.defect.status !== 'RESOLVED'); }
   function resumeView(r, me) {
@@ -262,11 +306,15 @@
       var related = known.find(function (item) { return item.id === (r.guideId || r.defectId); });
       return el('li', { cls: 'pn-card kn-card' + (st.item === r.id ? ' is-target' : ''), 'data-id': r.id }, [
         el('div', { cls: 'kn-card-head' }, [el('p', { cls: 'pn-card-title', tabindex: '-1' }, [titleOf(r)]),
-          el('span', { cls: 'pn-tag' }, [T.tag(d)])]),
+          el('span', { cls: 'pn-tag' }, [!d && r.handling && r.handling.label ? r.handling.label : T.tag(d)])]),
         el('p', { cls: 'kn-meta' }, [metaOf(r, me)]),
-        el('p', { cls: 'kn-handled' }, ['내 문의 처리 · ', el('b', null, [T.handled(d, r.kind)])]),
+        // ADR-030: 인수 뒤에만 "담당자가 확인했어요". 전달된 문의함(가상)을 함께 보인다
+        el('p', { cls: 'kn-handled' }, ['내 문의 처리 · ', el('b', null, [!d && r.handling && r.handling.code !== 'NEW'
+          ? '담당자가 확인했어요' : T.handled(d, r.kind)]), !d && r.inboxName ? ' · ' + r.inboxName : '']),
+        inquiryView(r, me),
         // ADR-029: A 상태(위) → B 대응·확인 → C 기록된 단계 → D 상세 이력(접힘)
-        T.view(d, { inReport: true, resolution: r.resolution, after: resumeView(r, me) || verifyView(r, me), progress: progress(r) }),
+        T.view(d, { inReport: true, resolution: r.resolution, after: resumeView(r, me) || verifyView(r, me), progress: progress(r),
+          handling: r.handling, guideText: r.inquiryGuide ? r.inquiryGuide.text : '' }),
         el('details', { cls: 'pn-details pq-details kn-detail' }, [
           el('summary', null, ['상세 이력']), el('div', { cls: 'pq-details-body' }, [
         historyOf(r, me),
@@ -303,12 +351,12 @@
           : el('p', { cls: 'kn-none' }, [d ? '담당자 안내는 아직 없어요' : '접수 완료 · 담당자 확인 전'])])]),
         followupView(r)]);
     });
-    return [el('h3', { tabindex: '-1' }, ['내 접수내역']),
+    return [el('h3', { tabindex: '-1' }, ['내 문의 및 처리경과']),
       feedback && feedback.id === null ? el('p', { role: 'status', tabindex: '-1', id: 'kn-feedback' }, [feedback.text]) : null,
       el('p', { cls: 'pn-lead' }, [(me ? me.name + ' 님이 ' : '') + '접수한 건의 지금 할 일과 수정 일정이에요. 받은 알림은 위 종 모양에서 볼 수 있어요.']),
       cards.length ? el('ul', { cls: 'pn-plain' }, cards)
         : el('div', { cls: 'pn-card kn-empty' }, [el('p', { cls: 'pn-card-title' }, ['아직 접수한 건이 없어요']),
-          el('p', { cls: 'pn-lead' }, ['오류가 생기면 오른쪽 "전산 오류 접수"를 눌러 알려 주세요.'])])];
+          el('p', { cls: 'pn-lead' }, ['오류가 생기면 오른쪽 "전산 문의하기"를 눌러 알려 주세요.'])])];
   }
 
   /* [지점 FC 문의] (관리자만, REQ-KN-06, ADR-025 결정 6, ADR-027 결정 9). 대표 결함별 카드 안에서 FC 한 줄로 묶고
@@ -385,7 +433,7 @@
         if (!(fc.name in worst) || rank[fc.situation] < rank[worst[fc.name]]) worst[fc.name] = fc.situation;
       });
     });
-    var card = el('div', { cls: 'pn-card kn-team-summary' }, [el('p', { cls: 'pn-card-title' }, ['먼저 살펴볼 FC']),
+    var card = el('div', { cls: 'pn-card kn-team-summary' }, [el('p', { cls: 'pn-card-title' }, ['지원이 필요한 설계사']),
       rows(lines.map(function (line) {
         var names = order.filter(function (name) { return line[1].indexOf(worst[name]) >= 0; });
         if (line[2] && !names.length) return null;
@@ -430,7 +478,7 @@
         T.view(d, { team: true }),
         el('div', { cls: 'kn-fcs' }, people)]);
     });
-    return [el('h3', { tabindex: '-1' }, ['지점 FC 문의']),
+    return [el('h3', { tabindex: '-1' }, ['지점 전산 문의 현황']),
       el('p', { cls: 'pn-lead' }, ['같은 지점 FC의 문의와 내가 대신 접수한 문의예요. FC가 적은 설명과 고객 정보는 보이지 않아요. 알림 확인과 업무 상황은 따로 표시해요.']),
       cards.length ? teamSummary(groups) : null,
       cards.length ? el('ul', { cls: 'pn-plain' }, cards)
@@ -659,12 +707,24 @@
       if (!me) return;
       A.markNotificationRead(b.getAttribute('data-kn-notice'), me.id).then(function (marked) {
         if (!marked || location.hash !== hash) return;
-        if (submitter && me.role === 'MANAGER') return open('team', d || '', $('alarm-btn'));
+        var perInquiry = ['INFO_REQUEST', 'INQUIRY_GUIDE'].indexOf(b.getAttribute('data-kn-kind')) >= 0;   // ADR-030
+        if (submitter && me.role === 'MANAGER' && !perInquiry) return open('team', d || '', $('alarm-btn'));
         var r = d ? cache.mine.find(function (x) { return x.defectId === d; }) : null;
         open('mine', reportId || (r ? r.id : ''), $('alarm-btn'));
       });
     });
     $('known-panel').addEventListener('click', function (e) {
+      var chip = e.target.closest('[data-info-code]');
+      if (chip) {
+        var card = chip.closest('.kn-card'), rid = card.getAttribute('data-id'), key = chip.getAttribute('data-info-code');
+        (infoDraft[rid] = infoDraft[rid] || {})[key] = chip.getAttribute('data-info-value');
+        Array.prototype.forEach.call(card.querySelectorAll('[data-info-code="' + key + '"]'), function (b) {
+          b.setAttribute('aria-pressed', String(b === chip));
+        });
+        return;
+      }
+      var info = e.target.closest('[data-act="info-send"]');
+      if (info) return sendInfo(info);
       var resume = e.target.closest('[data-resume]');
       if (resume) return sendResume(resume);
       var verify = e.target.closest('[data-verify]');

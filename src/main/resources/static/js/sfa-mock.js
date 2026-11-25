@@ -133,10 +133,13 @@
     $('profile-name').textContent = cur ? cur.name : '';
     // ADR-029 결정 10: 머리글은 로그인 사용자의 역할·소속 지점
     $('profile-sub').textContent = cur ? (PROFILE_ROLE[cur.role] || cur.role) + ' · ' + cur.branchName : '';
+    // ADR-030 메뉴: 설계사는 "전산 문의하기", 지점 관리자는 같은 입구가 "대신 문의하기"
+    var label = $('quick-intake-label');
+    if (label) label.innerHTML = st.role === 'MANAGER' ? '대신<br>문의하기' : '전산<br>문의하기';
     return cur ? cur.id : null;
   }
 
-  var PROFILE_ROLE = { FC: 'FC', MANAGER: '관리자', SALES: '영업 담당', IT: 'IT 담당' };
+  var PROFILE_ROLE = { FC: 'FC', MANAGER: '관리자', SALES: '현업 담당', IT: 'IT 담당' };
   /* ADR-029 결정 3: 오류명·상태 하나·핵심 안내·보조 안내·시각·행동. 긴 설명은 접수 카드에서 */
   function alarmItem(n) {
     var s = n.summary;
@@ -163,6 +166,7 @@
       if (n.defectId) b.setAttribute('data-kn-defect', n.defectId);
       b.setAttribute('data-kn-notice', n.id);
       b.setAttribute('data-kn-audience', n.audience || 'REPORTER');
+      b.setAttribute('data-kn-kind', n.kind || 'STATUS');   // ADR-030: 문의 단위 알림은 그 문의 카드로
       if (n.reportId) b.setAttribute('data-kn-report', n.reportId);
       b.setAttribute('aria-haspopup', 'dialog');
       ul.appendChild(el('li', null, [b]));

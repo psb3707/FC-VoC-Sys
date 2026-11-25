@@ -15,8 +15,15 @@
 | `DefectStatusHistory` | id, defectId, from, to, reason, backReason?, plannedFixDate?, resolution?{…, verification?}, actorId, at, notifiable | Defect 1:N. 검증·되돌림 사유는 ADR-029 |
 | `FieldVerification` | id, seq, reportId, defectId, resolutionEventId, result(CONFIRMED_OK/STILL_FAIL/NOT_TESTED), at, actorId, requestId | 덧붙이기만. `WorkResumption`과 별도(ADR-029) |
 | `FieldInvestigation` | id, reportId, defectId, resolutionEventId, code(STARTED/NEED_INFO/NOT_REPRODUCED/RESIDUAL_SUSPECTED), at, actorId | 문제 지속 신고의 IT 후속 조사(ADR-029) |
+| `BusinessRoute` (ADR-030) | code, label, parentCode, parentLabel, task, screenIds[], inboxId, itArea, needs[], active | 업무분장(가상). 기존 업무 코드 7종 + 화면 ID로만 걸리는 `UNDERWRITING`. `fixtures/business-routes.js` |
+| `Inbox` (ADR-030) | id, name, kind(DEPARTMENT/TRIAGE/UNCLASSIFIED) | 담당자는 `AppUser.inboxIds`로 정한다 |
+| `InquiryRoute` (ADR-030) | reportId, seq, inboxId, parentCode, businessCode, basis[{kind(BUSINESS/SCREEN/HISTORY), code}], method(RULE/STAFF), reasonCode?, actorId?, at | 덧붙이기만. 마지막이 지금 문의함. 시드 신고는 저장하지 않고 같은 규칙으로 계산 |
+| `InquiryAssignment` (ADR-030) | reportId, assigneeId, at, requestId | 문의당 한 명. 재분류하면 비워진다 |
+| `InquiryView` (ADR-030) | reportId, userId, at | 상세를 처음 연 시각. 알림 읽음·인수와 별도 |
+| `InquiryAction` (ADR-030) | id, reportId, type(INFO_REQUEST/GUIDE/SELF_RESOLVED/IT_CONSULT/IT_REPLY/REROUTE), codes[], guideDefectId?, actorId, at, requestId | 덧붙이기만. 문의 대응 상태는 마지막 기록에서 계산(02번 4-3절). 자유 메모 없음 |
+| `InfoReply` (ADR-030) | id, reportId, requestActionId, answers{항목 코드: 값 코드}, actorId, at, requestId | 추가 정보 요청에 대한 문의자 본인의 선택형 답. 출처 `USER_ADDED` |
 | `FcNotice` | id, defectId, draftText, approvedText, status(DRAFT/APPROVED), llmCallId, approverId | 승인본만 FC에 노출 |
-| `NotificationLog` | id, defectId, historyId, recipientId, reportId?, audience(REPORTER/SUBMITTER), kind(STATUS/PROXY_RECEIPT), bodySnapshot, summary{title,status,headline,line,action}, channel=PREVIEW, at, readAt? | 실발송 없음. `audience`·`kind`는 02번 4-1절(ADR-025). `PROXY_RECEIPT`는 `historyId`가 없음 |
+| `NotificationLog` | id, defectId, historyId, recipientId, reportId?, audience(REPORTER/SUBMITTER/STAFF), kind(STATUS/PROXY_RECEIPT/NEW_INQUIRY/IT_CONSULT/INFO_REQUEST/INQUIRY_GUIDE), bodySnapshot, summary{title,status,headline,line,action}, channel=PREVIEW, at, readAt? | 실발송 없음. `audience`·`kind`는 02번 4-1절(ADR-025). `PROXY_RECEIPT`는 `historyId`가 없음 |
 | `WorkResumption` | reportId, result(RESUMED/STILL), at | Report 1:1(마지막 답). 신고자 본인만 기록. 대표 결함 상태와 무관(ADR-025) |
 | `VirtualContract` | id, customerNo, policyNo, proposalNo, statusCat, productGroup, lastChangeType, lastChangeAt, channel | 가상 데이터 |
 | `RefKeyMap` | refKey, reportScope, kind, originalValue | **서버 전용**. 신고별로 K-01부터 새로 시작. API로 노출 금지 |
@@ -60,6 +67,15 @@
 | POST | `/api/defects/{id}/notices/draft` | AI 안내문 초안 |
 | POST | `/api/notices/{id}/approve` | 담당자 승인 |
 | GET | `/api/notifications?userId=` | 알림 미리보기 내역 |
+| POST | `/api/inquiries/classify` | 규칙 분류 결과(문의함·업무·근거). 접수 저장 때 서버가 부른다 (REQ-LG-13) |
+| GET | `/api/inquiries/inbox?userId=&filter=new\|mine\|info\|it&q=` | 내 문의함 목록과 요약 수 (REQ-LG-14) |
+| GET | `/api/inquiries/{id}?userId=` | 문의 상세(분류 이력·담당·대응 기록·문의자 답). 범위 밖이면 `FORBIDDEN` (REQ-LG-15) |
+| POST | `/api/inquiries/{id}/view` | 상세 열람 기록 |
+| POST | `/api/inquiries/{id}/claim` | 인수. 이미 다른 담당자면 `ALREADY_ASSIGNED` (REQ-LG-14) |
+| POST | `/api/inquiries/{id}/actions` | 추가 정보 요청·대응 방법 안내·자체 해결·IT 협의 요청·협의 결과·재분류 (REQ-LG-16·17) |
+| GET | `/api/inquiries/consults?userId=` | IT [IT 협의 요청] 목록 (REQ-LG-17) |
+| GET | `/api/inquiries/{id}/itgs-draft?userId=` | ITGS 요청 내용 초안(저장 안 함) (REQ-LG-18) |
+| POST | `/api/reports/{id}/info-replies` | 추가 정보 요청에 문의자 본인이 답함 (REQ-KN-10) |
 | POST | `/api/experiment/participants` | 참가자 등록과 칸 배정 |
 | GET | `/api/experiment/participants/{code}/next` | 다음 시나리오 |
 | POST | `/api/experiment/trials/{id}/start` | 서버 측 시작 시각 기록 |
@@ -236,6 +252,24 @@
 - `postFieldInvestigation(reportId, actorId, resolutionEventId, code)` → 문제 지속 답이 있던 신고만, 영업·IT만.
 - `getDefect`는 `fieldVerification{resolutionEventId, reporterCount, reportCount, counts, failReports, fcs, reports}`, `getDefects`는 `fieldFailCount`(모두 FC가 신고자인 신고만 세고, `reporterCount`·`reportCount`도 같음), `getMyReports`·`getBranchReports`는 신고별 지금 회차의 `fieldVerification`을 내린다.
 - `getMyReports.statusHistory`는 `id,from,to,at,plannedFixDate?,verified,verifiedAt?`. 처리자·내부 사유·참조는 없다. 연결 시각은 `linkedAt`.
+
+### 문의함·인수·현업 대응 (ADR-030, REQ-LG-13~18·NT-04·KN-10)
+- **분류 결과.** `{inboxId, parentCode, businessCode, method:'RULE', basis:[{kind, code}]}`. 화면에는 "규칙으로 분류 · 근거: FC가 고른 업무"처럼 쓴다.
+- **문의함 항목.** `{id, title, businessLabel, parentLabel, impact, createdAt, handling:{code, label}, assignee, isNew, defectId}`.
+  - `handling.code`: `NEW` · `ASSIGNED` · `NEED_INFO` · `INFO_ARRIVED` · `GUIDED` · `SELF_RESOLVED` · `IT_CONSULT` · `IT_REPLIED` · `LINKED`
+  - 요약: `{new, mine, info, it}`
+- **인수 응답.** 성공은 `{assigned:true, assigneeId, at}`, 같은 사람의 다시 누름은 `duplicate:true`, 다른 사람이면 `{error:'ALREADY_ASSIGNED', assignee:{id,name}}`.
+- **대응 기록 요청.** `{type, codes[], guideDefectId?, requestId}`.
+  - 인수한 담당자만 쓸 수 있다(`IT_REPLY`는 IT만).
+  - 같은 `requestId`는 기존 기록을 돌려준다.
+  - 대응 방법은 승인·공개된 공통 오류의 임시 방법만 고를 수 있다.
+- **알림.** `NotificationLog`(`audience:'STAFF'`는 담당자용). 키 `eventId + recipientId + kind`로 한 번만 만든다.
+- **ITGS 초안.** `{title, sections:[{label, lines[]}], notice:'공식 양식 아님 · 저장하지 않아요'}`. 문의·분류·대응 기록·IT 협의 결과에서 만든다.
+- **권한.**
+  - 현업 담당자: 맡은 문의함 문의와 자기가 인수한 문의
+  - IT: 협의 요청된 문의(+ 공통 오류 상세의 연결 문의)
+  - 관리자·FC: 기존 범위
+  - 그 밖은 `FORBIDDEN`
 
 ### 실험 CSV
 09번 문서 참조.

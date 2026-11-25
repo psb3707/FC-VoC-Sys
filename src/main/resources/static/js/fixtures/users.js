@@ -18,6 +18,16 @@ window.FIXTURES.users = [
   { "id": "U-013", "name": "남다래(가상)", "role": "FC", "branchId": "B-01" },
   { "id": "U-010", "name": "박새벽(가상)", "role": "MANAGER", "branchId": "B-01" },
   /* unlinkedSeenAt: 결함 대장 [아직 안 묶인 신고]를 마지막으로 본 시각. 이 뒤에 들어온 신고가 "새로 들어옴"(ADR-017) */
-  { "id": "U-020", "name": "최누리(가상)", "role": "SALES", "branchId": "B-HQ", "unlinkedSeenAt": "2026-11-04T08:00:00+09:00" },
+  /* ADR-030: SALES = 현업 담당자. inboxIds = 맡은 문의함(fixtures/business-routes.js). 부서·문의함은 가상 매핑 */
+  { "id": "U-020", "name": "최누리(가상)", "role": "SALES", "branchId": "B-HQ", "unlinkedSeenAt": "2026-11-04T08:00:00+09:00",
+    "inboxIds": ["IB-COMMON", "IB-TRIAGE", "IB-UNCLASSIFIED"] },
+  { "id": "U-021", "name": "백나린(가상)", "role": "SALES", "branchId": "B-HQ", "unlinkedSeenAt": "2026-11-04T08:00:00+09:00",
+    "inboxIds": ["IB-CONSENT"] },
+  { "id": "U-022", "name": "임하람(가상)", "role": "SALES", "branchId": "B-HQ", "unlinkedSeenAt": "2026-11-04T08:00:00+09:00",
+    "inboxIds": ["IB-CONSENT"] },
+  { "id": "U-023", "name": "송이루(가상)", "role": "SALES", "branchId": "B-HQ", "unlinkedSeenAt": "2026-11-04T08:00:00+09:00",
+    "inboxIds": ["IB-SUBSCRIPTION"] },
+  { "id": "U-024", "name": "유다인(가상)", "role": "SALES", "branchId": "B-HQ", "unlinkedSeenAt": "2026-11-04T08:00:00+09:00",
+    "inboxIds": ["IB-CUSTOMER", "IB-DESIGN", "IB-UNDERWRITING", "IB-CONTRACT"] },
   { "id": "U-030", "name": "정한결(가상)", "role": "IT", "branchId": "B-HQ", "unlinkedSeenAt": "2026-11-04T09:00:00+09:00" }
 ];

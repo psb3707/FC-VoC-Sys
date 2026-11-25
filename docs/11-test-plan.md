@@ -19,6 +19,28 @@
 | 디자인 일관성 리뷰 | 06번 11절·ADR-014: 착수 전 0-3절 대응표 작성, 완료 후 리뷰어 서브에이전트(`.claude/agents/design-consistency-reviewer.md`)가 홈(S4~S6은 S2 패널)과 계산 스타일 실측 비교 | 대응표 PR 본문 기재, 리뷰 지적 사항 반영 또는 사유 기록 | 화면 PR마다 |
 | 화면 검토 | 06번 문서 M2 완료 기준 | 전부 체크 | M2 |
 
+### 1-1. 문의 업무 흐름 E2E (ADR-030, `scripts/inquiry_workflow_check.py`)
+지시서 17절의 E2E-01~16. P0 구현 범위는 아래 "이번 범위"이고, P1 항목은 기존 검사로 확인하거나 P1에서 더한다.
+
+| ID | 시나리오 | 성공 조건 | 이번 범위 |
+|---|---|---|---|
+| E2E-01 | FC 문의 접수 | 규칙 분류 → 그 부서 문의함에 보이고 담당자 알림 1건, 관련 없는 문의함·IT 0건 | 새 검사 |
+| E2E-02 | 업무 분류 실패 | 근거 없음 → 미분류 문의함, 업무 둘 → 공통 분류 문의함 | 새 검사 |
+| E2E-03 | 잘못 분류된 문의 | 재분류 후 문의·대화·이력 보존, 새 문의함 담당자에게 알림, 분류 이력 2건 | 새 검사 |
+| E2E-04 | 신규 문의 알림 | 알림 누름 → 그 문의 상세. 읽음 ≠ 확인 ≠ 인수 | 새 검사 |
+| E2E-05 | 담당자 인수 | 두 번째 담당자 인수 거부, 같은 요청 두 번은 1건 | 새 검사 |
+| E2E-06 | 질문 답변 불가 | "잘 모르겠어요" → 미확인으로 접수, 추가 정보 답에서도 미확인 | 새 검사 + `consent_keypad_e2e_check` |
+| E2E-07 | 현업 자체 해결 | IT 요청 없이 문의자에게 안내 1건, IT 알림 0건 | 새 검사 |
+| E2E-08 | IT 협의 요청 | IT가 현업 확인 내용·미확인 사항을 다시 입력 없이 봄, 협의 결과 기록 | 새 검사 |
+| E2E-09 | ITGS 요청 초안 | 문의·대응·협의 결과로 채워지고 저장소에 남지 않음, 공식 양식 아님 표시 | 새 검사 |
+| E2E-10 | 상태 변경 알림 대상 | 공통 오류 알림은 연결된 문의자·대리 접수자만 | `notify_two_track_check`, `field_verification_check` |
+| E2E-11 | 중복 알림 | 같은 사건·사람·종류 1건(문의 단위 알림 포함) | 새 검사 + 기존 |
+| E2E-12 | 정상 이용 확인 | FC 응답이 관리자 화면에 반영 | `field_verification_check` |
+| E2E-13 | 오류 지속 | 담당자 후속 확인 대상 표시 | `field_verification_check`(담당자 알림은 P1) |
+| E2E-14 | 대리 접수 | 문의자와 접수자 구분, 문의함 전달은 문의자 기준 | 새 검사 + `reporter_diagnostics_check` |
+| E2E-15 | 권한 | 다른 문의함 담당자·관련 없는 IT·다른 지점 관리자는 상세·대응 기록·초안을 못 봄 | 새 검사 |
+| E2E-16 | 기존 기능 | 전자서명·고객 동의·현장 확인 시나리오 | 기존 검사 7종 + `ui_check` |
+
 ## 2. Review Focus (스펙이 침묵하지만 깨지기 쉬운 입력)
 | # | 입력·조건 | 기대 동작 | 소유 테스트 |
 |---|---|---|---|
@@ -78,6 +100,7 @@
 | IN-15, IN-16, LG-10, KN-06(ADR-027), KN-07 | S2 AI 문의 빠른 도움·간편 알리기·확인 화면·완료, S4 신고 패널 세 덩어리·현장 조건 모아 보기·수정 예정, S3 카드·[지점 FC 문의] FC별 묶음 | intake/question(`stage`·`supportQuestion`), quick-intake, known-errors/{id}/me-too(참여 extra), reports/{id}/work-resumption(중복), reports/branch, reports/{id}/similar-defects | `scripts/consent_keypad_e2e_check.py`(E2E-01~05), 회귀 `scripts/sign_link_e2e_check.py`·`ui_check.py`·`notify_two_track_check.py`·`intake_followup_check.py`·`intake_second_phase_check.py` |
 | IN-17, IN-18, LG-11 | S2 확인 화면 자동 연결 정보·오류가 발생한 환경, 대리 접수 목록, S4 신고 패널 신고자 정보·로그 추적 단서 | quick-intake(신원 검증), me-too(신원 검증), getReporterContext, getIntakeDiagnostics | `scripts/reporter_diagnostics_check.py`(TC-01~07), 회귀 TC-08 |
 | NT-03, LG-12, KN-08, KN-09 | S1 알림 요약, S3 내 접수·현장 확인·[지점 FC 문의], S4 상태 바꾸기·현장 확인 현황 | notifications, defects/{id}/status, reports/{id}/field-verifications, investigations, reports/branch | `scripts/field_verification_check.py`(TC-01~07), TC-08은 기존 검사 전체 |
+| LG-13~18, NT-04, KN-10 | S4 [전산 문의함]·[IT 협의 요청]·문의 상세·대응 기록 대화상자·ITGS 초안, S3 내 문의 추가 정보 답, S1·S4 알림 | inquiries/*, reports/{id}/info-replies, notifications | `inquiry_workflow_check.py` E2E-01~09·11·14·15, `ui_check` |
 | AI-01~07 | - | - | LLM 계약, 등급 비의존 |
 | PV-01~06 | S2-4,6 | intake/preview | 마스킹 전 항목 |
 | OP-01/02 | - | admin/reset | 빈 상태 실행, 네트워크 차단 |

@@ -55,7 +55,9 @@ EXTRA_UI_WORDS = {"사용자", "안내가", "부서가", "오류와", "설계일
                   # S4 결함 대장(ledger.html, js/fixtures/defects.js) 문구
                   "원인의", "신고를", "보험료", "나와요", "고객이", "이력이",
                   # S2 두 화면 접수의 임시조치와 고객 안내 문구
-                  "여세요", "오류를", "이용해", "사이트", "선택해"}
+                  "여세요", "오류를", "이용해", "사이트", "선택해",
+                  # ADR-030 업무분장·문의함·처리 문구(js/fixtures/business-routes.js)
+                  "문의함", "어디서", "안내로", "안내한", "문의에", "진행해"}
 
 BROWSERS = [
     Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
@@ -88,13 +90,18 @@ KNOWN_PANEL_STATES = [K + "tab=known", K + "tab=known&item=D-2026-005", K + "tab
                       "role=MANAGER&panel=known&tab=team&item=D-2026-007", "role=FC&user=U-012&panel=known&tab=mine&item=R-073"]
 # ADR-025: 관리자 알림 팝업(대리 접수자 알림), 대신 접수된 FC 알림 팝업
 STATES += ["role=MANAGER&popup=alarm", "role=FC&user=U-011&popup=alarm"]
-# S4 결함 대장 (ledger.html, js/ledger.js 주소 키, 06번 11절): 목록·필터·빈 결과·안 묶인 신고·상세 패널·
-# 상태 바꾸기 대화상자 단계별(고르기·예정일·사유·되돌림·막힘·알림 미리보기·기록만·끝)·신고 묶기
-LD = "role=SALES&item=D-2026-001&dialog=status&"
-LEDGER_STATES = ["role=SALES", "role=IT&grade=IMMEDIATE", "role=SALES&status=RESOLVED",
-                 "role=IT&item=D-2026-007",   # ADR-027: 현장 조건 모아 보기
-                 "role=SALES&tab=unlinked", "role=SALES&tab=unlinked&for=D-2026-001",
-                 "role=SALES&item=D-2026-001", "role=SALES&item=D-2026-005", "role=SALES&item=D-2026-006",
+# S4 전산 문의 관리(옛 결함 대장) (ledger.html, js/ledger.js 주소 키, 06번 11절): 공통 오류 목록·필터·빈 결과·상세 패널·
+# 상태 바꾸기 대화상자 단계별(고르기·예정일·사유·되돌림·막힘·알림 미리보기·기록만·끝)·관련 오류 연결.
+# ADR-030: 현업 [전산 문의함](요약 칸·필터·빈 문의함)·IT [IT 협의 요청]·[오류·조치 이력]·문의 상세(인수 전·다른 문의함)·재분류 대화상자.
+# 문의 R-061 은 청약업무팀(U-023), R-014·R-062·R-066 은 공통 분류·미분류·영업지원팀(U-020) 문의함이다
+LD = "role=SALES&tab=defects&item=D-2026-001&dialog=status&"
+S23, S20 = "role=SALES&user=U-023&", "role=SALES&user=U-020&"
+LEDGER_STATES = ["role=SALES", "role=SALES&tab=defects", "role=IT&tab=defects&grade=IMMEDIATE", "role=SALES&tab=defects&status=RESOLVED",
+                 "role=IT&tab=defects&item=D-2026-007",   # ADR-027: 현장 조건 모아 보기
+                 S23 + "for=D-2026-001", "role=SALES&tab=history", "role=IT", "role=SALES&user=U-021",
+                 S20 + "filter=new", S20 + "filter=it", S20 + "item=R-066", S20 + "item=R-062&dialog=reroute",
+                 "role=SALES&user=U-021&item=R-061",   # 다른 문의함: 볼 수 없는 문의
+                 "role=SALES&tab=defects&item=D-2026-001", "role=SALES&tab=defects&item=D-2026-005", "role=SALES&tab=defects&item=D-2026-006",
                  LD + "dstep=pick", LD + "to=FIX_PLANNED&dstep=pick",
                  LD + "to=FIX_PLANNED&dstep=detail", LD + "to=FIX_PLANNED&dstep=detail&err=1",
                  LD + "to=FIX_PLANNED&dstep=preview&date=2026-11-25",
@@ -102,29 +109,29 @@ LEDGER_STATES = ["role=SALES", "role=IT&grade=IMMEDIATE", "role=SALES&status=RES
                  LD + "to=WONT_FIX&dstep=detail&reason=ETC&memo=" + "%EC%83%81%ED%92%88%20%EB%8B%A8%EC%A2%85",
                  LD + "to=WONT_FIX&dstep=preview&reason=NEW_SFA",
                  LD + "to=CAUSE_FOUND&dstep=detail&back=FIELD_RECHECK",
-                 "role=IT&item=D-2026-002&dialog=status&to=CAUSE_FOUND&dstep=preview&back=REDEPLOY",   # ADR-029 되돌림 사유
-                 "role=SALES&item=D-2026-006&dialog=status&to=REPRODUCED&dstep=preview",
+                 "role=IT&tab=defects&item=D-2026-002&dialog=status&to=CAUSE_FOUND&dstep=preview&back=REDEPLOY",   # ADR-029 되돌림 사유
+                 "role=SALES&tab=defects&item=D-2026-006&dialog=status&to=REPRODUCED&dstep=preview",
                  LD + "to=FIX_PLANNED&dstep=done&date=2026-11-25",
-                 "role=SALES&item=D-2026-006&dialog=status&to=REPRODUCED&dstep=done",
-                 "role=SALES&tab=unlinked&dialog=link&report=R-061&link=D-2026-001",
-                 "role=SALES&tab=unlinked&dialog=link&report=R-061&link=D-2026-001&dstep=done",
-                 # 새 신고 알림·AI 비슷한 결함 추천 (REQ-LG-06·07, ADR-017): 알림 팝업, 담당자별 새 신고,
-                 # 신고 패널 추천(높음·보통 / 보통 / 없음 / 지연 / 실패→규칙 후보), 추천에서 연 신고 묶기(정상·지연·실패·없음)
-                 "role=SALES&popup=alarm", "role=IT&popup=alarm", "role=IT&tab=unlinked",
-                 "role=SALES&tab=unlinked&item=R-061", "role=SALES&tab=unlinked&item=R-014",
-                 "role=SALES&tab=unlinked&item=R-062", "role=SALES&tab=unlinked&item=R-061&llm=slow",
-                 "role=SALES&tab=unlinked&item=R-061&llm=fail", "role=SALES&tab=unlinked&item=R-014&llm=fail",
-                 "role=SALES&tab=unlinked&item=R-061&dialog=link&report=R-061&link=D-2026-001",
-                 "role=SALES&tab=unlinked&item=R-061&dialog=link&report=R-061&llm=slow",
-                 "role=SALES&tab=unlinked&item=R-061&dialog=link&report=R-061&link=D-2026-001&llm=fail",
-                 "role=SALES&tab=unlinked&item=R-062&dialog=link&report=R-062",
-                 # 글자 찾기 (REQ-LG-08, q= URL 인코딩): 찾음(알림톡) / 묶인 신고 문장에서만(비밀번호) / 영문 대소문자(B) /
-                 # 없음(환급) / 필터와 함께(서명 + 수정 예정) / 필터와 함께 없음(알림톡 + 해결) / 안 묶인 신고 탭 찾음·없음 / 찾은 뒤 상세 패널
-                 "role=SALES&q=" + quote("알림톡"), "role=SALES&q=" + quote("비밀번호"), "role=SALES&q=B",
-                 "role=SALES&q=" + quote("환급"), "role=SALES&status=FIX_PLANNED&q=" + quote("서명"),
-                 "role=SALES&status=RESOLVED&q=" + quote("알림톡"),
-                 "role=SALES&tab=unlinked&q=" + quote("알림톡"), "role=SALES&tab=unlinked&q=" + quote("환급"),
-                 "role=SALES&q=" + quote("알림톡") + "&item=D-2026-001"]
+                 "role=SALES&tab=defects&item=D-2026-006&dialog=status&to=REPRODUCED&dstep=done",
+                 S23 + "dialog=link&report=R-061&link=D-2026-001",
+                 S23 + "dialog=link&report=R-061&link=D-2026-001&dstep=done",
+                 # 담당자 알림·AI 비슷한 결함 추천 (REQ-LG-06·07·14, ADR-017·030): 알림 팝업, 담당자별 새 문의,
+                 # 문의 패널 추천(높음·보통 / 보통 / 없음 / 지연 / 실패→규칙 후보), 추천에서 연 관련 오류 연결(정상·지연·실패·없음)
+                 S20 + "popup=alarm", S23 + "popup=alarm", "role=IT&popup=alarm",
+                 S23 + "item=R-061", S20 + "item=R-014",
+                 S20 + "item=R-062", S23 + "item=R-061&llm=slow",
+                 S23 + "item=R-061&llm=fail", S20 + "item=R-014&llm=fail",
+                 S23 + "item=R-061&dialog=link&report=R-061&link=D-2026-001",
+                 S23 + "item=R-061&dialog=link&report=R-061&llm=slow",
+                 S23 + "item=R-061&dialog=link&report=R-061&link=D-2026-001&llm=fail",
+                 S20 + "item=R-062&dialog=link&report=R-062",
+                 # 글자 찾기 (REQ-LG-08, q= URL 인코딩): 찾음(알림톡) / 연결된 문의 문장에서만(비밀번호) / 영문 대소문자(B) /
+                 # 없음(환급) / 필터와 함께(서명 + 수정 예정) / 필터와 함께 없음(알림톡 + 해결) / 문의함 찾음·없음 / 찾은 뒤 상세 패널
+                 "role=SALES&tab=defects&q=" + quote("알림톡"), "role=SALES&tab=defects&q=" + quote("비밀번호"), "role=SALES&tab=defects&q=B",
+                 "role=SALES&tab=defects&q=" + quote("환급"), "role=SALES&tab=defects&status=FIX_PLANNED&q=" + quote("서명"),
+                 "role=SALES&tab=defects&status=RESOLVED&q=" + quote("알림톡"),
+                 S23 + "q=" + quote("알림톡"), S20 + "q=" + quote("환급"),
+                 "role=SALES&tab=defects&q=" + quote("알림톡") + "&item=D-2026-001"]
 
 VIRTUAL_TIME_MS = 3000   # 화면마다 흘리는 가상 시간 (예전 --virtual-time-budget=3000)
 CMD_TIMEOUT = 90         # DevTools 명령·기다림 하나의 최대 초

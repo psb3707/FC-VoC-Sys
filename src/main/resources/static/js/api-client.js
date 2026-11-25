@@ -80,6 +80,19 @@
         item.reporter = userBrief(r.reporterId);
         item.submittedBy = userBrief(submitter);
         item.workResumption = resumptionOf(r.id, state);
+        // ADR-030: 공통 오류 연결 전의 문의 단위 경과(담당 부서 확인 중·추가 정보 요청·대응 방법 안내·처리 완료)
+        var stored = ledgerReports(state).find(function (x) { return x.id === r.id; }) || r;
+        var route = currentRoute(state, stored), h = handlingOf(state, stored);
+        item.handling = { code: h.code, label: FC_LABEL[h.code] || '' };
+        item.inboxName = (inboxOf(route.inboxId) || {}).name || '';
+        var acts = activeActions(state, r.id), last = acts[acts.length - 1];
+        if (last && last.type === 'INFO_REQUEST') {
+          var reply = repliesAfter(state, r.id, last).pop();
+          item.infoRequest = { actionId: last.id, at: last.at, answered: reply ? reply.answers : null,
+            items: infoItemList().filter(function (x) { return last.codes.indexOf(x.key) >= 0; }) };
+        }
+        if (last && last.type === 'GUIDE') item.inquiryGuide = actionView(last).guide;
+        if (last && last.type === 'SELF_RESOLVED') item.selfResolved = { code: last.codes[0], text: (BR.selfResolutionText || {})[last.codes[0]] || '', at: last.at };
         return item;
       });
       var when = function (r) {
@@ -275,9 +288,15 @@
             diagnostics: collectDiagnostics(req.diagnosticMode, validDate(req.diagnosticCapturedAt) ? req.diagnosticCapturedAt : nowKst())
           };
           if (report.aiDraft) report.aiDraftSummary = draftSummary(report);
-          state.reports.push(storedReport(report, req.requestId));
+          var saved = storedReport(report, req.requestId);
+          state.reports.push(saved);
           if (image) state.attachments[report.id] = image;
           proxyReceipt(state, report);
+          // ADR-030: 규칙 분류 → 문의함 전달 → 그 문의함 담당자에게 신규 문의 알림
+          var route = Object.assign({ seq: 1, at: saved.createdAt }, classify(saved));
+          state.routes[saved.id] = [route];
+          newInquiryNotices(state, saved, route);
+          report.routing = { inboxId: route.inboxId, inboxName: (inboxOf(route.inboxId) || {}).name || '', method: route.method };
           return copy(report);
         }, !!image).then(function (result) {
           if (result.id) quickReports.set(result.id, copy(result));
@@ -314,6 +333,8 @@
           attemptedWorkaround: facts.attemptAllowed && facts.workaroundState === 'TRIED' && d.workaround ? d.workaround : null };
         state.reports.push(report);
         proxyReceipt(state, report);
+        // ADR-030: 이미 공통 오류에 연결된 참여라 문의함에 분류만 남기고 신규 문의 알림은 만들지 않는다
+        state.routes[report.id] = [Object.assign({ seq: 1, at: report.createdAt }, classify(report))];
         return report;
       }).then(ok);
     },
@@ -583,6 +604,151 @@
         return entry;
       }).then(ok);
     },
+    /* ---- ADR-030 문의 분류·문의함·인수·현업 대응·IT 사전 협의 (docs/02-domain-rules.md 4-3·5-2절, 05번 문의함 절) ----
+       분류는 규칙이다(AI 분류 아님). 부서·문의함은 가상 매핑. 실제 그룹웨어·메신저 발송·ITGS 등록은 없다. */
+    getInquiryMeta: function () {
+      return ok({ inboxes: BR.inboxes || [], parents: BR.parents || [], infoItems: infoItemList(),
+        consultQuestions: BR.consultQuestions || [], consultReplies: BR.consultReplies || [],
+        selfResolutions: BR.selfResolutions || [], rerouteReasons: BR.rerouteReasons || [] });
+    },
+    classifyInquiry: function (req) { return ok(classify(req || {})); },
+    /* GET /api/inquiries/inbox?userId=&filter=&q= — 현업 담당자의 문의함(공통 오류에 아직 연결되지 않은 문의) */
+    getInbox: function (userId, opt) {
+      opt = opt || {};
+      var me = staffUser(userId, 'SALES'), state = store.read();
+      if (!me) return ok({ items: [], counts: { new: 0, mine: 0, info: 0, it: 0 }, inboxes: [] });
+      var all = ledgerReports(state).filter(function (r) { return !r.defectId && inMyInbox(me, r, state); })
+        .map(function (r) { return inboxItem(r, state, me); });
+      var counts = { new: 0, mine: 0, info: 0, it: 0 };
+      all.forEach(function (x) { FILTERS.forEach(function (f) { if (x.filters.indexOf(f) >= 0) counts[f]++; }); });
+      var word = norm(opt.q);
+      var items = all.filter(function (x) {
+        return (!opt.filter || x.filters.indexOf(opt.filter) >= 0) && (!word || has(x.id, word) || has(x.title, word));
+      }).sort(function (a, b) { return a.createdAt < b.createdAt ? 1 : -1; });
+      return ok({ items: items, counts: counts, total: all.length, fresh: all.filter(function (x) { return x.isNew; }).length,
+        inboxes: (me.inboxIds || []).map(inboxOf).filter(Boolean) });
+    },
+    /* GET /api/inquiries/consults?userId= — IT [IT 협의 요청] */
+    getItConsults: function (userId) {
+      if (!staffUser(userId, 'IT')) return ok([]);
+      var state = store.read();
+      return ok(ledgerReports(state).filter(function (r) { return lastAction(state, r.id, 'IT_CONSULT'); }).map(function (r) {
+        var c = lastAction(state, r.id, 'IT_CONSULT'), reply = lastAction(state, r.id, 'IT_REPLY'), route = currentRoute(state, r);
+        return { id: r.id, title: titleOf(r), businessLabel: parentLabel(route.parentCode, r.business), impact: impactOf(r, route),
+          requestedBy: userBrief(c.actorId), questions: labels(BR.consultQuestions, c.codes), at: c.at,
+          reply: reply && reply.at > c.at ? labels(BR.consultReplies, reply.codes)[0] : null, defectId: r.defectId || null,
+          isNew: !((state.views[r.id] || {})[userId]) };
+      }).sort(function (a, b) { return a.at < b.at ? 1 : -1; }));
+    },
+    /* GET /api/inquiries/{id}?userId= — 범위 밖이면 {forbidden:true} */
+    getInquiry: function (reportId, userId) {
+      var state = store.read(), r = ledgerReports(state).find(function (x) { return x.id === reportId; });
+      if (!r) return ok(null);
+      var viewer = (F.users || []).find(function (u) { return u.id === userId; });
+      if (!viewer || !canView(viewer, r, state)) return ok({ forbidden: true });
+      return ok(inquiryDetail(r, state, viewer));
+    },
+    markInquiryViewed: function (reportId, userId) {
+      return store.update(function (state) {
+        var r = ledgerReports(state).find(function (x) { return x.id === reportId; });
+        var viewer = (F.users || []).find(function (u) { return u.id === userId; });
+        if (!r || !viewer || ['SALES', 'IT'].indexOf(viewer.role) < 0 || !canView(viewer, r, state)) return null;
+        var seen = state.views[reportId] = state.views[reportId] || {};
+        if (!seen[userId]) seen[userId] = nowKst();
+        // 상세를 열었으면 이 문의의 담당자 알림은 읽음으로 본다(읽음만으로는 확인·인수가 되지 않는다)
+        allNotifications(state).forEach(function (n) {
+          if (n.recipientId === userId && n.reportId === reportId && n.audience === 'STAFF') state.read[n.id] = true;
+        });
+        return { viewedAt: seen[userId] };
+      }).then(ok);
+    },
+    /* POST /api/inquiries/{id}/claim — 한 문의의 담당자는 한 명(ADR-030 결정 4) */
+    claimInquiry: function (reportId, userId, requestId) {
+      return store.update(function (state) {
+        var r = ledgerReports(state).find(function (x) { return x.id === reportId; });
+        var me = staffUser(userId, 'SALES');
+        if (!r) return null;
+        if (!me || !inMyInbox(me, r, state)) return { error: 'FORBIDDEN' };
+        var cur = assigneeOf(state, reportId);
+        if (cur && cur.assigneeId === userId) return { assigned: true, duplicate: true, assigneeId: userId, at: cur.at };
+        if (cur) return { error: 'ALREADY_ASSIGNED', assignee: userBrief(cur.assigneeId) };
+        var entry = { assigneeId: userId, at: nowKst(), requestId: requestId || null };
+        (state.assign[reportId] = state.assign[reportId] || []).push(entry);
+        return { assigned: true, assigneeId: userId, at: entry.at };
+      }).then(ok);
+    },
+    /* 대응 기록의 받는 사람·알림 미리보기(저장 안 함) */
+    previewInquiryAction: function (reportId, userId, act) {
+      var state = store.read(), r = ledgerReports(state).find(function (x) { return x.id === reportId; });
+      if (!r) return ok(null);
+      var bad = actionError(state, r, userId, act);
+      if (bad) return ok({ error: bad });
+      return ok({ recipients: actionRecipients(state, r, act).map(function (x) { return x.user; }),
+        summary: actionSummary(state, r, act) });
+    },
+    /* POST /api/inquiries/{id}/actions — 덧붙이기만. 같은 requestId 는 기존 기록 */
+    postInquiryAction: function (reportId, userId, act) {
+      act = act || {};
+      return store.update(function (state) {
+        var r = ledgerReports(state).find(function (x) { return x.id === reportId; });
+        if (!r) return null;
+        var list = state.actions[reportId] = state.actions[reportId] || [];
+        var again = act.requestId && list.find(function (a) { return a.requestId === act.requestId; });
+        if (again) return { saved: true, duplicate: true, action: copy(again) };
+        var bad = actionError(state, r, userId, act);
+        if (bad) return { error: bad };
+        var at = nowKst();
+        var entry = { id: reportId + ':A' + (list.length + 1), type: act.type, codes: (act.codes || []).slice(0, 6),
+          guideDefectId: act.type === 'GUIDE' ? act.guideDefectId : null, inboxId: act.type === 'REROUTE' ? act.inboxId : null,
+          actorId: userId, at: at, requestId: act.requestId || null };
+        var recipients = actionRecipients(state, r, act);
+        var summary = actionSummary(state, r, act);
+        list.push(entry);
+        if (act.type === 'REROUTE') {
+          var routes = state.routes[reportId] = routesOf(state, r).slice();
+          var target = (BR.routes || []).find(function (x) { return x.inboxId === act.inboxId; });
+          routes.push({ seq: routes.length + 1, inboxId: act.inboxId, parentCode: target ? target.parentCode : null,
+            businessCode: r.business || null, basis: [], method: 'STAFF', reasonCode: entry.codes[0], actorId: userId, at: at });
+          (state.assign[reportId] = state.assign[reportId] || []).push({ assigneeId: null, at: at, requestId: null });
+          newInquiryNotices(state, r, routes[routes.length - 1]);
+        } else {
+          recipients.forEach(function (x) {
+            state.notices.push({ id: 'N-A-' + entry.id + '-' + x.user.id, kind: x.kind, audience: x.audience, reportId: reportId,
+              defectId: r.defectId || null, historyId: null, recipientId: x.user.id, at: at, channel: 'IN_APP',
+              bodySnapshot: summary.headline + ' ' + summary.line, summary: summary });
+          });
+        }
+        return { saved: true, action: copy(entry), recipients: recipients.map(function (x) { return x.user; }) };
+      }).then(ok);
+    },
+    /* POST /api/reports/{id}/info-replies — 문의자 본인만, 요청된 항목만, 허용 값만(출처 USER_ADDED) */
+    postInfoReply: function (reportId, userId, answers, requestId) {
+      return store.update(function (state) {
+        var r = ledgerReports(state).find(function (x) { return x.id === reportId && x.reporterId === userId; });
+        var req = r && pendingRequest(state, reportId);
+        if (!req) return null;
+        var list = state.infoReplies[reportId] = state.infoReplies[reportId] || [];
+        var again = requestId && list.find(function (x) { return x.requestId === requestId; });
+        if (again) return { saved: true, duplicate: true };
+        var clean = {};
+        Object.keys(answers || {}).forEach(function (key) {
+          var c = window.IntakeFacts.CONDITIONS[key];
+          if (req.codes.indexOf(key) >= 0 && c && c.values.some(function (v) { return v[0] === answers[key]; })) clean[key] = answers[key];
+        });
+        if (!Object.keys(clean).length) return null;
+        list.push({ id: reportId + ':R' + (list.length + 1), requestActionId: req.id, answers: clean, actorId: userId, at: nowKst(),
+          requestId: requestId || null });
+        return { saved: true };
+      }).then(ok);
+    },
+    /* GET /api/inquiries/{id}/itgs-draft — 저장하지 않는 요청 내용 초안. 공식 양식이 아니다 */
+    getItgsDraft: function (reportId, userId) {
+      var state = store.read(), r = ledgerReports(state).find(function (x) { return x.id === reportId; });
+      var viewer = (F.users || []).find(function (u) { return u.id === userId; });
+      if (!r) return ok(null);
+      if (!viewer || ['SALES', 'IT'].indexOf(viewer.role) < 0 || !canView(viewer, r, state)) return ok({ forbidden: true });
+      return ok(itgsDraft(r, state));
+    },
     getResolutionLabels: function () {
       return ok({ scope: RESOLUTION_SCOPE, action: RESOLUTION_ACTION, environment: VERIFY_ENVIRONMENT, backReason: BACK_REASON, investigation: INVESTIGATION });
     }
@@ -599,7 +765,7 @@
 
   /* ---- ADR-025 역할별 알림·업무 재개 ---- */
   function allNotifications(state) {
-    return (F.notifications || []).concat(sentNotifications(state), state.notices || []);
+    return (F.notifications || []).concat(sentNotifications(state), state.notices || [], seedInquiryNotices(state));
   }
   function isRead(n, state) { return !!(state.read[n.id] || n.readAt); }
   function userBrief(id) {
@@ -625,7 +791,7 @@
     var business = (((I.metaForm || {}).businesses) || []).find(function (b) { return b.code === code; });
     var label = business ? business.label : '전산';
     var body = report.kind === 'ME_TOO'
-      ? label + ' 오류에 같은 오류 참여가 기록됐어요 — ' + by.name + ' 관리자가 대신 알렸어요. 진행 상황은 내 접수내역에서 볼 수 있어요'
+      ? label + ' 오류에 같은 오류 참여가 기록됐어요 — ' + by.name + ' 관리자가 대신 알렸어요. 진행 상황은 내 문의에서 볼 수 있어요'
       : label + ' 문의가 접수됐어요 — ' + by.name + ' 관리자가 대신 접수했어요. 담당자 확인을 기다리고 있어요';
     state.notices.push({ id: 'N-P-' + report.id, defectId: report.kind === 'ME_TOO' ? report.defectId : null, historyId: null,
       reportId: report.id, recipientId: to.id, audience: 'REPORTER', kind: 'PROXY_RECEIPT', bodySnapshot: body,
@@ -821,7 +987,7 @@
     NOT_REPRODUCIBLE: '같은 문제가 다시 생기지 않아요', ETC: '담당자가 다른 이유를 확인했어요' };
   var RESOLUTION_SCOPE = { SFA: '영업지원시스템 전체', LINKED: '이 결함에 연결된 접수' };
   var RESOLUTION_ACTION = { RETRY: '기존 건을 다시 시도해 주세요.', RESEND: '기존 링크를 다시 보내 주세요.',
-    NONE: '기존 건에 추가 작업은 필요 없어요.', UNKNOWN: '재시도 여부는 내 접수내역의 추가 내용에서 담당 창구에 확인해 주세요.' };
+    NONE: '기존 건에 추가 작업은 필요 없어요.', UNKNOWN: '재시도 여부는 내 문의의 추가 내용에서 담당 창구에 확인해 주세요.' };
   function validDay(value) { return /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)); }
   function safeResolution(raw, d) {
     if (!raw || raw.approved !== true || !validDate(raw.appliedAt) ||
@@ -941,7 +1107,7 @@
       var by = userBrief(r.submittedById), joined = r.kind === 'ME_TOO';
       return { title: (business ? business.label : '전산') + (joined ? ' 오류' : ' 문의'), status: joined ? '참여 기록' : '접수 완료',
         headline: (by ? by.name + ' ' : '') + '관리자가 대신 ' + (joined ? '알렸어요' : '접수했어요'),
-        line: '진행 상황은 내 접수내역에서 알려 드려요', action: '접수 확인' };
+        line: '진행 상황은 내 문의에서 알려 드려요', action: '접수 확인' };
     }
     var h = (L.statusHistory || []).concat(state.history).find(function (x) { return x.id === n.historyId; });
     var d = (L.defects || []).find(function (x) { return x.id === n.defectId; });
@@ -1029,8 +1195,8 @@
     var reason = REASON_TEXT[req.wontFixReasonCode] || req.wontFixReasonText || '';
     function fill(template) {
       if (!d || !template) return '';
-      if (!d.workaround) template = template.replace(': {workaround}', '. 내 접수내역에서 확인해 주세요')
-        .replace('그때까지는 안내된 임시 방법을 써 주세요', '임시 방법은 아직 없어요. 급하면 내 접수내역에 긴급 사정을 남겨 주세요');   // ADR-027
+      if (!d.workaround) template = template.replace(': {workaround}', '. 내 문의에서 확인해 주세요')
+        .replace('그때까지는 안내된 임시 방법을 써 주세요', '임시 방법은 아직 없어요. 급하면 내 문의에 긴급 사정을 남겨 주세요');   // ADR-027
       return template.replace('{title}', d.title).replace('{date}', date).replace('{reason}', reason)
         .replace('{workaround}', d.workaround || '');
     }
@@ -1105,6 +1271,327 @@
       if (!both && matched.indexOf('SUGGESTED') < 0) return null;
       return { defectId: d.id, similarity: null, matched: matched, reasons: reasons, reason: reasons.join(' · ') };
     }).filter(Boolean).sort(function (a, b) { return b.matched.length - a.matched.length; });
+  }
+  /* ---- ADR-030 도우미 ---- */
+  var BR = F.businessRoutes || { parents: [], routes: [], inboxes: [] };
+  var FILTERS = ['new', 'mine', 'info', 'it'];
+  function unique(list) { return list.filter(function (x, i) { return list.indexOf(x) === i; }); }
+  function pairLabel(pairs, code) { var hit = (pairs || []).find(function (p) { return p[0] === code; }); return hit ? hit[1] : ''; }
+  function labels(pairs, codes) { return (codes || []).map(function (c) { return pairLabel(pairs, c); }).filter(Boolean); }
+  function routeOf(code) { return (BR.routes || []).find(function (x) { return x.active && x.code === code; }) || null; }
+  function inboxOf(id) { return (BR.inboxes || []).find(function (x) { return x.id === id; }) || null; }
+  function parentLabel(code, business) {
+    var p = (BR.parents || []).find(function (x) { return x.code === code; });
+    if (p) return p.label;
+    var r = routeOf(business);
+    p = r && (BR.parents || []).find(function (x) { return x.code === r.parentCode; });
+    return p ? p.label : '분류 전';
+  }
+  function staffUser(id, role) { return (F.users || []).find(function (u) { return u.id === id && u.role === role; }) || null; }
+  function infoItemList() {
+    return Object.keys(BR.infoItems || {}).map(function (key) {
+      var c = window.IntakeFacts.CONDITIONS[key];
+      return { key: key, label: c ? c.label : key, question: BR.infoItems[key].question, choices: c ? c.values : [] };
+    });
+  }
+  /* 규칙 분류(02번 5-2절): FC가 고르거나 확인한 업무 → 오류가 난 화면 ID → 기존 이력. 상위 업무가 둘 이상이면 공통 분류 */
+  function classify(r) {
+    var hits = [], basis = [];
+    var chosen = r.business && r.business !== 'ETC' ? routeOf(r.business) : null;
+    if (chosen && !chosen.screenOnly) { hits.push(chosen); basis.push({ kind: 'BUSINESS', code: chosen.code }); }
+    var screen = ((r.diagnostics || {}).incident || {}).screenCode;
+    var byScreen = screen && (BR.routes || []).find(function (x) { return x.active && (x.screenIds || []).indexOf(screen) >= 0; });
+    if (byScreen) { hits.push(byScreen); basis.push({ kind: 'SCREEN', code: screen }); }
+    var past = r.kind === 'ME_TOO' ? r.defectId : r.guideId || r.suggestedDefectId;
+    var scenario = past && (Q.defects || []).find(function (m) { return m.id === past; });
+    var byHistory = scenario && scenario.business !== 'ETC' ? routeOf(scenario.business) : null;
+    if (byHistory) { hits.push(byHistory); basis.push({ kind: 'HISTORY', code: past }); }
+    var parents = unique(hits.map(function (x) { return x.parentCode; }));
+    if (!parents.length) return { inboxId: 'IB-UNCLASSIFIED', parentCode: 'ETC', businessCode: r.business || 'ETC', basis: [], method: 'RULE' };
+    if (parents.length > 1) return { inboxId: 'IB-TRIAGE', parentCode: null, businessCode: r.business || null, basis: basis, method: 'RULE', candidates: parents };
+    return { inboxId: hits[0].inboxId, parentCode: hits[0].parentCode, businessCode: hits[0].code, basis: basis, method: 'RULE' };
+  }
+  function routesOf(state, r) {
+    var saved = state.routes[r.id];
+    return saved && saved.length ? saved : [Object.assign({ seq: 1, at: r.createdAt }, classify(r))];
+  }
+  function currentRoute(state, r) { var list = routesOf(state, r); return list[list.length - 1]; }
+  function assigneeOf(state, id) {
+    var list = state.assign[id] || [], last = list[list.length - 1];
+    return last && last.assigneeId ? last : null;
+  }
+  function membersOf(inboxId) {
+    return (F.users || []).filter(function (u) { return u.role === 'SALES' && (u.inboxIds || []).indexOf(inboxId) >= 0; });
+  }
+  function inMyInbox(me, r, state) {
+    var cur = assigneeOf(state, r.id);
+    return (me.inboxIds || []).indexOf(currentRoute(state, r).inboxId) >= 0 || (cur && cur.assigneeId === me.id);
+  }
+  /* 지난 재분류 뒤의 대응 기록 */
+  function activeActions(state, id) {
+    var list = state.actions[id] || [], from = 0;
+    list.forEach(function (a, i) { if (a.type === 'REROUTE') from = i + 1; });
+    return list.slice(from);
+  }
+  function lastAction(state, id, type) {
+    var list = (state.actions[id] || []).filter(function (a) { return a.type === type; });
+    return list[list.length - 1] || null;
+  }
+  function pendingRequest(state, id) {
+    var acts = activeActions(state, id), last = acts[acts.length - 1];
+    return last && last.type === 'INFO_REQUEST' ? last : null;
+  }
+  function repliesAfter(state, id, action) {
+    return (state.infoReplies[id] || []).filter(function (x) { return x.requestActionId === action.id; });
+  }
+  function canView(viewer, r, state) {
+    if (viewer.role === 'FC') return r.reporterId === viewer.id || r.submittedById === viewer.id;
+    if (viewer.role === 'MANAGER') {
+      var reporter = (F.users || []).find(function (u) { return u.id === r.reporterId; });
+      return r.submittedById === viewer.id || !!(reporter && reporter.role === 'FC' && reporter.branchId === viewer.branchId);
+    }
+    if (viewer.role === 'SALES') return inMyInbox(viewer, r, state);
+    if (viewer.role === 'IT') return !!r.defectId || (state.actions[r.id] || []).some(function (a) { return a.type === 'IT_CONSULT'; });
+    return false;
+  }
+  function titleOf(r) {
+    // 자유 입력 원문은 다른 화면에 저장되지 않는다(ADR-021). 기본 제목만 있으면 업무와 확인된 증상 코드로 제목을 만든다
+    if (r.maskedText && !(r.maskedText === r.title && / 오류 접수$/.test(r.title))) return r.maskedText;
+    if (r.title && / 오류 접수$/.test(r.title)) {
+      var C = window.IntakeFacts, cond = r.conditions || {}, route = routeOf(r.business) || {};
+      var parts = ['INPUT_STEP', 'KEYPAD_SYMPTOM'].filter(function (k) { return cond[k] && cond[k] !== 'UNKNOWN'; })
+        .map(function (k) { return C.conditionLabel(k, cond[k]); });
+      if (!parts.length && symptomLabel(r.symptom)) parts.push(symptomLabel(r.symptom).replace(/\(.*\)$/, ''));   // 괄호 속 예시 문구는 빼고 증상 이름만
+      if (parts.length) return (route.task || '전산') + ' — ' + parts.join(' · ');
+    }
+    var d = r.defectId && (L.defects || []).find(function (x) { return x.id === r.defectId; });
+    return d ? d.title : r.title || '전산 문의';
+  }
+  /* 업무 영향: FC가 알려 준 업무 진행 어려움·긴급 사정에서만 만든다 */
+  function impactOf(r, route) {
+    var task = (routeOf(r.business) || routeOf(route && route.businessCode) || {}).task || '업무';
+    var urgent = r.urgent || [];
+    if (r.supportNeeded === 'YES' || urgent.indexOf('BLOCKED') >= 0) return task + ' 진행 어려움';
+    if (urgent.indexOf('CONSULTING') >= 0) return '고객 상담 중';
+    if (urgent.indexOf('DEADLINE') >= 0) return '오늘 처리 마감';
+    if (r.supportNeeded === 'NO') return '기다릴 수 있음';
+    return '업무 영향 미확인';
+  }
+  var STAFF_LABEL = { NEW: '신규', ASSIGNED: '확인 중', NEED_INFO: '추가 정보 요청', INFO_ARRIVED: '추가 정보 도착', GUIDED: '대응 방법 안내',
+    SELF_RESOLVED: '자체 해결', IT_CONSULT: 'IT 협의 중', IT_REPLIED: 'IT 회신', LINKED: '공통 오류 연결' };
+  var FC_LABEL = { NEW: '담당자 확인 전', ASSIGNED: '담당 부서 확인 중', NEED_INFO: '추가 정보 요청', INFO_ARRIVED: '담당 부서 확인 중',
+    GUIDED: '대응 방법 안내', SELF_RESOLVED: '처리 완료', IT_CONSULT: '담당 부서 확인 중', IT_REPLIED: '담당 부서 확인 중', LINKED: '' };
+  function handlingOf(state, r) {
+    if (r.defectId) return { code: 'LINKED' };
+    var acts = activeActions(state, r.id), last = acts[acts.length - 1];
+    if (!last) return { code: assigneeOf(state, r.id) ? 'ASSIGNED' : 'NEW' };
+    if (last.type === 'INFO_REQUEST') return { code: repliesAfter(state, r.id, last).length ? 'INFO_ARRIVED' : 'NEED_INFO', at: last.at };
+    if (last.type === 'GUIDE') return { code: 'GUIDED', at: last.at };
+    if (last.type === 'SELF_RESOLVED') return { code: 'SELF_RESOLVED', at: last.at };
+    if (last.type === 'IT_CONSULT') return { code: 'IT_CONSULT', at: last.at };
+    if (last.type === 'IT_REPLY') return { code: 'IT_REPLIED', at: last.at, reply: labels(BR.consultReplies, last.codes)[0] };
+    return { code: assigneeOf(state, r.id) ? 'ASSIGNED' : 'NEW' };
+  }
+  function staffHandling(state, r) {
+    var h = handlingOf(state, r);
+    return Object.assign(h, { label: STAFF_LABEL[h.code] + (h.reply ? ' · ' + h.reply : '') });
+  }
+  function inboxItem(r, state, me) {
+    var route = currentRoute(state, r), h = staffHandling(state, r), cur = assigneeOf(state, r.id);
+    var filters = [];
+    if (h.code === 'NEW') filters.push('new');
+    if (cur && cur.assigneeId === me.id && h.code !== 'SELF_RESOLVED') filters.push('mine');
+    if (h.code === 'NEED_INFO' || h.code === 'INFO_ARRIVED') filters.push('info');
+    if (h.code === 'IT_CONSULT') filters.push('it');
+    var seen = me.unlinkedSeenAt;
+    return { id: r.id, kind: r.kind, title: titleOf(r), businessLabel: parentLabel(route.parentCode, r.business),
+      inboxId: route.inboxId, inboxName: (inboxOf(route.inboxId) || {}).name || '', impact: impactOf(r, route),
+      createdAt: r.createdAt, handling: h, assignee: cur ? userBrief(cur.assigneeId) : null, filters: filters,
+      isNew: h.code === 'NEW' && !((state.views[r.id] || {})[me.id]) && (!seen || Date.parse(r.createdAt) > Date.parse(seen)) };
+  }
+  /* 문의 사실: 값마다 출처. 문의자의 추가 정보 답(USER_ADDED)은 앞선 값을 지우지 않고 덧붙는다 */
+  function factsOf(r, state) {
+    var facts = [], sources = r.factSources || {};
+    var C = window.IntakeFacts.CONDITIONS;
+    if (r.incident && r.incident.device) facts.push({ key: 'DEVICE', label: '오류가 난 기기', value: r.incident.device,
+      valueLabel: window.IntakeFacts.deviceLabel(r.incident.device), source: sources.device || 'USER_REPORTED' });
+    Object.keys(r.conditions || {}).forEach(function (key) {
+      if (!C[key]) return;
+      facts.push({ key: key, label: C[key].label, value: r.conditions[key], valueLabel: window.IntakeFacts.conditionLabel(key, r.conditions[key]),
+        source: sources.conditions || 'USER_REPORTED' });
+    });
+    var incident = (r.diagnostics || {}).incident || {};
+    if (incident.screen) facts.push({ key: 'SCREEN', label: '오류가 난 화면', value: incident.screenCode, valueLabel: incident.screen, source: 'DEMO_CONTEXT' });
+    if (incident.errorCode) facts.push({ key: 'ERROR_CODE', label: '오류 코드', value: incident.errorCode, valueLabel: incident.errorCode, source: 'DEMO_CONTEXT' });
+    (state.infoReplies[r.id] || []).forEach(function (reply) {
+      Object.keys(reply.answers).forEach(function (key) {
+        facts.push({ key: key, label: C[key].label, value: reply.answers[key], valueLabel: window.IntakeFacts.conditionLabel(key, reply.answers[key]),
+          source: 'USER_ADDED', at: reply.at });
+      });
+    });
+    return facts;
+  }
+  function unknownsOf(r, route, facts) {
+    var needs = (routeOf(r.business) || routeOf(route.businessCode) || routeOf('ETC') || {}).needs || [];
+    return needs.filter(function (key) {
+      var known = facts.filter(function (f) { return f.key === key; });
+      return !known.length || known[known.length - 1].value === 'UNKNOWN';
+    }).map(function (key) { return { key: key, label: window.IntakeFacts.CONDITIONS[key].label }; });
+  }
+  function symptomLabel(code) {
+    var all = ((I.metaForm || {}).symptoms || []).concat((quick.options || {}).symptoms || []);
+    var hit = all.find(function (x) { return x.code === code; });
+    return hit ? hit.label : '';
+  }
+  function coreOf(r, route, facts) {
+    function last(key) { var list = facts.filter(function (f) { return f.key === key && f.value !== 'UNKNOWN'; }); return list[list.length - 1]; }
+    var step = last('INPUT_STEP'), keypad = last('KEYPAD_SYMPTOM'), child = routeOf(r.business);
+    return { title: titleOf(r),
+      business: parentLabel(route.parentCode, r.business) + (child && child.code !== 'ETC' ? ' · ' + child.label : ''),
+      step: step ? { text: step.valueLabel, source: step.source } : null,
+      symptom: { text: [symptomLabel(r.symptom), keypad ? keypad.valueLabel : ''].filter(Boolean).join(' · ') || '미확인',
+        source: keypad ? keypad.source : r.symptom ? 'USER_REPORTED' : 'UNKNOWN' },
+      impact: impactOf(r, route) };
+  }
+  function actionView(a) {
+    var codes = a.type === 'INFO_REQUEST' ? a.codes.map(function (k) { return (window.IntakeFacts.CONDITIONS[k] || {}).label || k; })
+      : labels(a.type === 'IT_CONSULT' ? BR.consultQuestions : a.type === 'IT_REPLY' ? BR.consultReplies :
+        a.type === 'SELF_RESOLVED' ? BR.selfResolutions : a.type === 'REROUTE' ? BR.rerouteReasons : [], a.codes);
+    var d = a.guideDefectId && (L.defects || []).find(function (x) { return x.id === a.guideDefectId; });
+    return { id: a.id, type: a.type, labels: codes, guide: d ? { defectId: d.id, title: d.title, text: d.workaround } : null,
+      inboxName: a.inboxId ? (inboxOf(a.inboxId) || {}).name : null, actor: userBrief(a.actorId), at: a.at };
+  }
+  function inquiryDetail(r, state, viewer) {
+    var routes = routesOf(state, r), route = routes[routes.length - 1], facts = factsOf(r, state), cur = assigneeOf(state, r.id);
+    var x = withReporter(r);
+    var staff = viewer.role === 'SALES' || viewer.role === 'IT';
+    var consulted = (state.actions[r.id] || []).some(function (a) { return a.type === 'IT_CONSULT'; });
+    return {
+      id: r.id, report: { id: r.id, maskedText: r.maskedText || null, title: titleOf(r), business: r.business, symptom: r.symptom,
+        kind: r.kind, createdAt: r.createdAt, defectId: r.defectId || null },
+      reporter: x.reporter, submittedBy: userBrief(r.submittedById || r.reporterId),
+      routing: Object.assign({}, route, { inboxName: (inboxOf(route.inboxId) || {}).name || '', parentLabel: parentLabel(route.parentCode, r.business) }),
+      routes: routes.map(function (x) { return Object.assign({}, x, { inboxName: (inboxOf(x.inboxId) || {}).name || '' }); }),
+      assignment: cur ? { assignee: userBrief(cur.assigneeId), at: cur.at } : null,
+      viewedBy: Object.keys(state.views[r.id] || {}),
+      handling: staff ? staffHandling(state, r) : Object.assign(handlingOf(state, r), {}),
+      actions: (state.actions[r.id] || []).map(actionView),
+      facts: facts, unknowns: unknownsOf(r, route, facts), core: coreOf(r, route, facts),
+      can: { claim: viewer.role === 'SALES' && !cur && (viewer.inboxIds || []).indexOf(route.inboxId) >= 0 && !r.defectId,
+        act: viewer.role === 'SALES' && !!cur && cur.assigneeId === viewer.id,
+        // 재분류: 인수한 담당자, 또는 아직 담당이 없을 때 그 문의함 담당자
+        reply: viewer.role === 'IT' && consulted, reroute: viewer.role === 'SALES' && !r.defectId &&
+          (cur ? cur.assigneeId === viewer.id : (viewer.inboxIds || []).indexOf(route.inboxId) >= 0) }
+    };
+  }
+  function actionError(state, r, userId, act) {
+    var type = act && act.type, me = (F.users || []).find(function (u) { return u.id === userId; });
+    if (!me) return 'FORBIDDEN';
+    var cur = assigneeOf(state, r.id), codes = (act.codes || []);
+    function within(pairs) { return codes.length && codes.every(function (c) { return (pairs || []).some(function (p) { return p[0] === c; }); }); }
+    if (type === 'IT_REPLY') {
+      if (me.role !== 'IT' || !lastAction(state, r.id, 'IT_CONSULT')) return 'FORBIDDEN';
+      return codes.length === 1 && within(BR.consultReplies) ? null : 'VALIDATION';
+    }
+    if (me.role !== 'SALES' || r.defectId) return 'FORBIDDEN';
+    if (type === 'REROUTE') {
+      var mine = cur ? cur.assigneeId === userId : (me.inboxIds || []).indexOf(currentRoute(state, r).inboxId) >= 0;
+      if (!mine) return 'FORBIDDEN';
+      return inboxOf(act.inboxId) && act.inboxId !== currentRoute(state, r).inboxId && codes.length === 1 && within(BR.rerouteReasons) ? null : 'VALIDATION';
+    }
+    if (!cur || cur.assigneeId !== userId) return 'NOT_ASSIGNEE';
+    if (type === 'INFO_REQUEST') return codes.length && codes.every(function (c) { return (BR.infoItems || {})[c]; }) ? null : 'VALIDATION';
+    if (type === 'IT_CONSULT') return within(BR.consultQuestions) ? null : 'VALIDATION';
+    if (type === 'SELF_RESOLVED') return codes.length === 1 && within(BR.selfResolutions) ? null : 'VALIDATION';
+    if (type === 'GUIDE') {
+      var d = ledgerDefects(state).find(function (x) { return x.id === act.guideDefectId; });
+      return d && d.published && d.workaround && d.status !== 'RESOLVED' && d.status !== 'WONT_FIX' ? null : 'NOT_APPROVED';
+    }
+    return 'VALIDATION';
+  }
+  /* 받는 사람(02번 4-3절): 문의자(+ 다른 대리 접수자) 또는 IT. 재분류는 새 문의함 담당자 */
+  function actionRecipients(state, r, act) {
+    var kind = { INFO_REQUEST: 'INFO_REQUEST', GUIDE: 'INQUIRY_GUIDE', SELF_RESOLVED: 'INQUIRY_GUIDE', IT_CONSULT: 'IT_CONSULT' }[act.type];
+    if (act.type === 'REROUTE') return membersOf(act.inboxId).map(function (u) { return { user: userBrief(u.id), kind: 'NEW_INQUIRY', audience: 'STAFF' }; });
+    if (kind === 'IT_CONSULT') return (F.users || []).filter(function (u) { return u.role === 'IT'; })
+      .map(function (u) { return { user: userBrief(u.id), kind: kind, audience: 'STAFF' }; });
+    if (!kind) return [];
+    var out = [{ user: userBrief(r.reporterId), kind: kind, audience: 'REPORTER' }];
+    if (r.submittedById && r.submittedById !== r.reporterId) out.push({ user: userBrief(r.submittedById), kind: kind, audience: 'SUBMITTER' });
+    return out.filter(function (x) { return x.user; });
+  }
+  function actionSummary(state, r, act) {
+    var route = currentRoute(state, r), business = parentLabel(route.parentCode, r.business);
+    if (act.type === 'INFO_REQUEST') return { title: business + ' 문의', status: '추가 정보 요청',
+      headline: '담당 부서에서 추가 정보를 요청했어요', line: (act.codes || []).map(function (k) { return (window.IntakeFacts.CONDITIONS[k] || {}).label; }).filter(Boolean).join(' · '),
+      action: '답하기' };
+    if (act.type === 'GUIDE') {
+      var d = (L.defects || []).find(function (x) { return x.id === act.guideDefectId; });
+      return { title: business + ' 문의', status: '대응 방법 안내', headline: '담당 부서에서 대응 방법을 안내했어요', line: d ? d.workaround : '', action: '안내 확인' };
+    }
+    if (act.type === 'SELF_RESOLVED') return { title: business + ' 문의', status: '처리 완료',
+      headline: (BR.selfResolutionText || {})[(act.codes || [])[0]] || '담당 부서에서 처리했어요', line: '', action: '처리 결과 확인' };
+    if (act.type === 'IT_CONSULT') return { title: business + ' 문의', status: 'IT 협의 요청',
+      headline: labels(BR.consultQuestions, act.codes).join(' · ') + ' 협의를 요청했어요', line: '업무 영향: ' + impactOf(r, route), action: '협의 내용 확인' };
+    if (act.type === 'REROUTE') return newInquirySummary(r, Object.assign({}, route, { inboxId: act.inboxId }));
+    return { title: business + ' 문의', status: '', headline: '', line: '', action: '' };
+  }
+  function newInquirySummary(r, route) {
+    var target = (BR.routes || []).find(function (x) { return x.inboxId === route.inboxId; });
+    return { title: parentLabel(target ? target.parentCode : route.parentCode, r.business) + ' 문의', status: '신규 문의',
+      headline: titleOf(r), line: '업무 영향: ' + impactOf(r, route), action: '문의 확인' };
+  }
+  function newInquiryNotices(state, r, route) {
+    membersOf(route.inboxId).forEach(function (u) {
+      var id = 'N-I-' + r.id + '-' + route.seq + '-' + u.id;
+      if (state.notices.some(function (n) { return n.id === id; })) return;
+      var summary = newInquirySummary(r, route);
+      state.notices.push({ id: id, kind: 'NEW_INQUIRY', audience: 'STAFF', reportId: r.id, defectId: null, historyId: null,
+        recipientId: u.id, at: route.at, channel: 'IN_APP', bodySnapshot: summary.headline, summary: summary });
+    });
+  }
+  /* 시드 문의: 담당자가 마지막으로 본 뒤 들어온 미연결 문의는 그 문의함 담당자에게 신규 문의 알림이 있었던 것으로 본다 */
+  function seedInquiryNotices(state) {
+    return (L.reports || []).filter(function (r) { return !r.defectId && !state.links[r.id] && !(state.routes[r.id] || []).length; })
+      .flatMap(function (r) {
+        var route = Object.assign({ seq: 1, at: r.createdAt }, classify(r));
+        return membersOf(route.inboxId).filter(function (u) { return u.unlinkedSeenAt && Date.parse(r.createdAt) > Date.parse(u.unlinkedSeenAt); })
+          .map(function (u) {
+            var summary = newInquirySummary(r, route);
+            return { id: 'N-I-' + r.id + '-1-' + u.id, kind: 'NEW_INQUIRY', audience: 'STAFF', reportId: r.id, defectId: null, historyId: null,
+              recipientId: u.id, at: r.createdAt, channel: 'IN_APP', bodySnapshot: summary.headline, summary: summary };
+          });
+      });
+  }
+  function itgsDraft(r, state) {
+    var route = currentRoute(state, r), facts = factsOf(r, state), core = coreOf(r, route, facts);
+    var acts = (state.actions[r.id] || []).map(actionView);
+    var consult = acts.filter(function (a) { return a.type === 'IT_CONSULT'; }).pop();
+    var reply = acts.filter(function (a) { return a.type === 'IT_REPLY'; }).pop();
+    var x = withReporter(r);
+    var count = ledgerReports(state).filter(function (y) { return r.defectId && y.defectId === r.defectId; }).length || 1;
+    var handled = acts.filter(function (a) { return ['INFO_REQUEST', 'GUIDE', 'SELF_RESOLVED'].indexOf(a.type) >= 0; }).map(function (a) {
+      return { INFO_REQUEST: '추가 정보 요청: ', GUIDE: '대응 방법 안내: ', SELF_RESOLVED: '자체 처리: ' }[a.type] +
+        (a.guide ? a.guide.text : a.labels.join(', '));
+    });
+    if (facts.some(function (f) { return f.source === 'USER_ADDED'; })) handled.push('문의자에게 추가 정보를 받음');
+    return {
+      title: '[' + core.business.split(' · ')[0] + '] ' + core.title,
+      notice: '공식 양식 아님 · 저장하지 않아요. 내용을 확인해 ITGS에 직접 옮겨 주세요.',
+      sections: [
+        { label: '요청 제목', lines: ['[' + core.business.split(' · ')[0] + '] ' + core.title] },
+        { label: '업무 배경', lines: [core.business + ' 업무 중 발생한 전산 문의(문의번호 ' + r.id + ')',
+          '접수 ' + r.createdAt.slice(0, 16).replace('T', ' ') + (x.reporter ? ' · ' + x.reporter.branchName : '') + (count > 1 ? ' · 같은 오류 문의 ' + count + '건' : '')] },
+        { label: '오류 증상과 발생 조건', lines: ['실제 증상: ' + core.symptom.text].concat(facts.map(function (f) {
+          return f.label + ': ' + f.valueLabel + ' (' + window.IntakeFacts.sourceLabel(f.source) + ')'; })) },
+        { label: '업무 영향', lines: [core.impact] },
+        { label: '현업 대응', lines: handled.length ? handled : ['현업 자체 대응 기록 없음'] },
+        { label: 'IT 협의 내용', lines: [consult ? '요청: ' + consult.labels.join(', ') : '협의 요청 없음', reply ? '결과: ' + reply.labels.join(', ') : '협의 결과 기록 전'] },
+        { label: '요청 조치', lines: [reply && reply.labels[0] && reply.labels[0].indexOf('수정·배포') >= 0 ? '수정·배포 검토와 일정 확정 요청' : 'IT 검토 요청'] },
+        { label: '확인되지 않은 사항', lines: unknownsOf(r, route, facts).map(function (u) { return u.label; }).concat([]).length ?
+          unknownsOf(r, route, facts).map(function (u) { return u.label; }) : ['없음'] }
+      ]
+    };
   }
   function linkedReports(defectId, state) {
     return ledgerReports(state || store.read()).filter(function (r) { return r.defectId === defectId; }).map(withReporter)
