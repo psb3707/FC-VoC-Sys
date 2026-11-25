@@ -117,6 +117,8 @@
   }
   /* 조사 "와/과": 결함 ID 끝 숫자를 읽은 소리로 정한다(영·일·삼·육·칠·팔 → 과, 이·사·오·구 → 와) */
   function wa(id) { return '2459'.indexOf(String(id).slice(-1)) >= 0 ? '와' : '과'; }
+  /* 조사 "을/를": 끝 글자 받침 */
+  function eulReul(word) { var c = word.charCodeAt(word.length - 1) - 0xac00; return c >= 0 && c < 11172 && c % 28 ? '을' : '를'; }
   /* 조사 "이/가": 끝 글자 받침으로, 숫자는 읽는 소리(영·일·삼·육·칠·팔 → 이)로. 영문 등은 "이(가)" */
   function iga(word) {
     var ch = word.charAt(word.length - 1), c = ch.charCodeAt(0) - 0xac00;
@@ -1320,7 +1322,7 @@
     if (step === 'done') {
       foot.appendChild(btn('pn-btn', '닫기', 'close-dialog'));
       return { steps: steps, at: steps.length, view: [el('div', { cls: 'pn-end' }, [el('span', { cls: 'pn-ico is-ok' }, [icon('i-check')]),
-        el('h3', { tabindex: '-1' }, [ACTION_TITLE[st.dialog] + '을 기록했어요']),
+        el('h3', { tabindex: '-1' }, [ACTION_TITLE[st.dialog] + eulReul(ACTION_TITLE[st.dialog]) + ' 기록했어요']),
         el('p', { cls: 'pn-lead' }, [actPreview && actPreview.recipients.length ? actPreview.recipients.length + '명에게 앱 안 알림을 만들었어요.' : '알림 없이 기록했어요.'])])] };
     }
     if (step === 'pick') {
@@ -1356,7 +1358,8 @@
   function paintDialog(st) {
     var kind = st.dialog === 'status' && detail && detail.id === st.item ? 'status'
       : st.dialog === 'link' && linkReport(st) ? 'link'
-      : ACTIONS[st.dialog] && inquiry && !inquiry.forbidden && actionAllowed(st.dialog) ? 'action'
+      // 기록 뒤 끝 화면은 권한이 바뀌어도(재분류로 문의함이 바뀜) 보여 준다
+      : ACTIONS[st.dialog] && inquiry && ((st.dstep === 'done' && actPreview) || (!inquiry.forbidden && actionAllowed(st.dialog))) ? 'action'
       : st.dialog === 'itgs' && inquiry && !inquiry.forbidden && (inquiry.can.act || inquiry.can.reply) ? 'itgs' : '';
     $('ledger-dialog').hidden = !kind;
     $('ld-dlg-scrim').hidden = !kind;
@@ -1503,7 +1506,7 @@
   function closeDialog() {
     var st = read();
     // 신고를 묶고 끝 화면에서 닫으면 그 신고 패널도 닫는다(프론트 단계는 저장하지 않아 목록은 그대로)
-    var linked = st.dialog === 'link' && st.dstep === 'done';
+    var linked = (st.dialog === 'link' || st.dialog === 'reroute') && st.dstep === 'done';   // 재분류 뒤에는 이 문의를 더 볼 수 없다
     if (linked) unlinkedFor = null;
     statusResult = null; actPreview = null; actError = ''; actDraft.key = '';
     go(closeDialogPatch(linked && isReportId(st.item) ? { item: '' } : null));

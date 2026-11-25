@@ -104,3 +104,4 @@
 .kn-info-item { margin: 16px 0 0; }
 .kn-info-q { margin: 0; font-weight: 700; }
 [data-info-request] > .pn-btn-2 { margin-top: 16px; }
+.kn-card > [data-info-request], .kn-card > .pn-note { margin-top: 16px; }

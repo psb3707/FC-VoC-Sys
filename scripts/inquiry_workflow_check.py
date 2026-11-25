@@ -247,6 +247,20 @@ def check_screens(chrome):
       await wait(() => $('#ledger-dialog').innerText.includes('기록했어요'));
       return true;
     """)
+    # 재분류: 기록 뒤에는 앞 문의함 담당자가 이 문의를 볼 수 없지만 끝 화면은 보이고, 닫으면 패널도 닫힌다
+    open_real(chrome, "ledger.html", "?selftest=1#role=SALES&user=U-020&item=R-062")
+    run(chrome, FLOW + """
+      await click('[data-handle] [data-act=reroute]');
+      await click('[data-inbox=IB-SUBSCRIPTION]'); await click('[data-code=WRONG_BUSINESS]');
+      await act('action-next');
+      assert((await wait('[data-notice-preview]')).innerText.includes('송이루(가상)'), '새 문의함 담당자에게 알림');
+      await act('action-save');
+      await wait(() => $('#ledger-dialog').innerText.includes('다른 문의함으로 보내기를 기록했어요'));
+      await selftest('재분류 끝');
+      await act('close-dialog');
+      await wait(() => $('#ledger-panel').hidden && !location.hash.includes('item='));
+      return true;
+    """)
     open_real(chrome, "index.html", "?selftest=1#role=FC&user=U-013&popup=alarm")
     run(chrome, FLOW + """
       const item = await wait('.alarm-item[data-kn-kind=INFO_REQUEST]');

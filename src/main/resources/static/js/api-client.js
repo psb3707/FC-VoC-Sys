@@ -1350,7 +1350,15 @@
     return false;
   }
   function titleOf(r) {
-    if (r.maskedText) return r.maskedText;
+    // 자유 입력 원문은 다른 화면에 저장되지 않는다(ADR-021). 기본 제목만 있으면 업무와 확인된 증상 코드로 제목을 만든다
+    if (r.maskedText && !(r.maskedText === r.title && / 오류 접수$/.test(r.title))) return r.maskedText;
+    if (r.title && / 오류 접수$/.test(r.title)) {
+      var C = window.IntakeFacts, cond = r.conditions || {}, route = routeOf(r.business) || {};
+      var parts = ['INPUT_STEP', 'KEYPAD_SYMPTOM'].filter(function (k) { return cond[k] && cond[k] !== 'UNKNOWN'; })
+        .map(function (k) { return C.conditionLabel(k, cond[k]); });
+      if (!parts.length && symptomLabel(r.symptom)) parts.push(symptomLabel(r.symptom).replace(/\(.*\)$/, ''));   // 괄호 속 예시 문구는 빼고 증상 이름만
+      if (parts.length) return (route.task || '전산') + ' — ' + parts.join(' · ');
+    }
     var d = r.defectId && (L.defects || []).find(function (x) { return x.id === r.defectId; });
     return d ? d.title : r.title || '전산 문의';
   }
