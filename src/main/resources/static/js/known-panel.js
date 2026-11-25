@@ -250,9 +250,7 @@
         }), [el('button', { type: 'button', cls: 'pn-btn-2', 'data-act': 'info-send', 'data-report': r.id }, ['답 보내기']),
           el('p', { cls: 'kn-resume-status', role: 'status', tabindex: '-1', 'data-info-status': '' }, [''])]));
     }
-    if (r.inquiryGuide) {
-      return el('div', { cls: 'pn-note' }, [icon('i-info'), el('div', null, [el('b', null, ['담당 부서가 안내한 방법']), r.inquiryGuide.text])]);
-    }
+    if (r.inquiryGuide) return null;   // 안내한 방법은 두 갈래의 "지금 가능한 대응"에 보인다
     if (r.selfResolved) {
       return el('div', { cls: 'pn-note' }, [icon('i-check'), el('div', null, [el('b', null, ['담당 부서에서 처리했어요']), r.selfResolved.text])]);
     }
@@ -315,7 +313,8 @@
           ? '담당자가 확인했어요' : T.handled(d, r.kind)]), !d && r.inboxName ? ' · ' + r.inboxName : '']),
         inquiryView(r, me),
         // ADR-029: A 상태(위) → B 대응·확인 → C 기록된 단계 → D 상세 이력(접힘)
-        T.view(d, { inReport: true, resolution: r.resolution, after: resumeView(r, me) || verifyView(r, me), progress: progress(r) }),
+        T.view(d, { inReport: true, resolution: r.resolution, after: resumeView(r, me) || verifyView(r, me), progress: progress(r),
+          handling: r.handling, guideText: r.inquiryGuide ? r.inquiryGuide.text : '' }),
         el('details', { cls: 'pn-details pq-details kn-detail' }, [
           el('summary', null, ['상세 이력']), el('div', { cls: 'pq-details-body' }, [
         historyOf(r, me),

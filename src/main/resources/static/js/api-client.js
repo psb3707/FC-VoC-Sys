@@ -625,7 +625,8 @@
       var items = all.filter(function (x) {
         return (!opt.filter || x.filters.indexOf(opt.filter) >= 0) && (!word || has(x.id, word) || has(x.title, word));
       }).sort(function (a, b) { return a.createdAt < b.createdAt ? 1 : -1; });
-      return ok({ items: items, counts: counts, inboxes: (me.inboxIds || []).map(inboxOf).filter(Boolean) });
+      return ok({ items: items, counts: counts, total: all.length, fresh: all.filter(function (x) { return x.isNew; }).length,
+        inboxes: (me.inboxIds || []).map(inboxOf).filter(Boolean) });
     },
     /* GET /api/inquiries/consults?userId= — IT [IT 협의 요청] */
     getItConsults: function (userId) {
@@ -654,6 +655,10 @@
         if (!r || !viewer || ['SALES', 'IT'].indexOf(viewer.role) < 0 || !canView(viewer, r, state)) return null;
         var seen = state.views[reportId] = state.views[reportId] || {};
         if (!seen[userId]) seen[userId] = nowKst();
+        // 상세를 열었으면 이 문의의 담당자 알림은 읽음으로 본다(읽음만으로는 확인·인수가 되지 않는다)
+        allNotifications(state).forEach(function (n) {
+          if (n.recipientId === userId && n.reportId === reportId && n.audience === 'STAFF') state.read[n.id] = true;
+        });
         return { viewedAt: seen[userId] };
       }).then(ok);
     },

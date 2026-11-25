@@ -105,3 +105,8 @@
 .kn-info-q { margin: 0; font-weight: 700; }
 [data-info-request] > .pn-btn-2 { margin-top: 16px; }
 .kn-card > [data-info-request], .kn-card > .pn-note { margin-top: 16px; }
+[data-info-request] > .nt-q { font-weight: 700; }
+.kn-card > [data-info-request] { padding-bottom: 16px; border-bottom: 1px solid var(--pn-line-soft); }
+@media (max-width: 480px) {
+  [data-info-request] .pn-chips li, [data-info-request] .pn-chip { width: 100%; }
+}

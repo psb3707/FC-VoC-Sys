@@ -108,14 +108,24 @@
   /* opts.resolution: 해결 안내, opts.after: 대응 아래에 붙일 요소(업무 재개·현장 확인), opts.progress: 진행상황 아래 기록된 단계 */
   function view(d, opts) {
     opts = opts || {};
-    var plan = fix(d, opts.resolution);
+    var plan = fix(d, opts.resolution), act = now(d, opts.resolution, opts.inReport, opts.team);
+    // ADR-030: 공통 오류 연결 전이라도 담당 부서가 인수했으면 "확인 전" 문구를 쓰지 않는다
+    var h = !d && opts.handling;
+    if (h && h.code !== 'NEW') {
+      act = opts.guideText ? { answer: opts.guideText, sub: '담당 부서가 이 문의에 안내한 방법이에요.' }
+        : h.code === 'SELF_RESOLVED' ? { answer: '담당 부서에서 처리를 마쳤어요.', sub: '같은 문제가 다시 생기면 이 문의에 알려 주세요.' }
+        : h.code === 'NEED_INFO' ? { answer: '위 질문에 답해 주시면 담당 부서가 이어서 확인해요.', sub: null }
+        : { answer: '담당 부서가 확인하고 있어요.', sub: '지금 해볼 방법이 정해지면 알려 드려요.' };
+      plan = h.code === 'SELF_RESOLVED' ? { answer: '이 문의는 담당 부서에서 처리됐어요.', sub: null }
+        : { answer: '아직 공통 오류로 확인되지 않아 수정 일정이 없어요.', sub: '공통 오류로 확인되면 수정 일정을 알려 드려요.' };
+    }
     // 단계 목록을 붙이면 같은 단계를 글로 되풀이하지 않는다
     if (opts.progress && d && ['RESOLVED', 'WONT_FIX', 'FIX_PLANNED'].indexOf(d.status) < 0) plan.sub = '일정이 정해지면 알려 드려요.';
     if (opts.progress && d && d.status === 'RESOLVED' && d.verification) {   // 완료와 그 시각은 단계 목록과 상세 이력에
       plan = { answer: (opts.resolution && opts.resolution.change) || '수정한 내용이 적용됐어요.', sub: null };
     }
     return el('div', 'nt-tracks', [
-      track('지금 가능한 대응', now(d, opts.resolution, opts.inReport, opts.team), opts.after),
+      track('지금 가능한 대응', act, opts.after),
       track('오류 수정 진행상황', plan, opts.progress)]);
   }
 

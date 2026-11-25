@@ -219,11 +219,7 @@
   }
   function paintTop(st) {
     var me = viewer(st);
-    var boxes = me && meta ? (me.inboxIds || []).map(function (id) {
-      var b = meta.inboxes.filter(function (x) { return x.id === id; })[0];
-      return b ? b.name : '';
-    }).filter(Boolean) : [];
-    $('ld-viewer').textContent = (me ? me.name + ' · ' : '') + ROLE_NAME[st.role] + (boxes.length ? ' · ' + boxes.join(', ') : '');
+    $('ld-viewer').textContent = (me ? me.name + ' · ' : '') + ROLE_NAME[st.role];   // 맡은 문의함은 목록 위 줄에 보인다
     $('ld-lead').textContent = st.role === 'IT'
       ? '현업이 협의를 요청한 문의와 공통 오류를 봐요. 현업이 확인한 정보에서 검토를 시작해요.'
       : '맡은 문의함으로 들어온 전산 문의를 확인하고 대응해요. 문의는 규칙으로 분류돼요.';
@@ -326,13 +322,13 @@
     return [filters, body, el('p', { cls: 'ld-total', 'aria-live': 'polite' }, ['총 ', el('b', null, [list.length + '건'])])];
   }
   function tabCount(id) {
-    if (id === 'inbox') return inboxData ? inboxData.items.length : 0;
+    if (id === 'inbox') return inboxData ? inboxData.total : 0;
     if (id === 'consult') return consults.length;
     if (id === 'history') return defects.filter(function (d) { return CLOSED.indexOf(d.status) >= 0; }).length;
     return defects.length;
   }
   function tabNew(id) {
-    if (id === 'inbox') return inboxData ? inboxData.items.filter(function (x) { return x.isNew; }).length : 0;
+    if (id === 'inbox') return inboxData ? inboxData.fresh : 0;
     if (id === 'consult') return consults.filter(function (x) { return x.isNew; }).length;
     return 0;
   }
@@ -391,7 +387,7 @@
           el('td', { cls: 'is-nowrap' }, [r.businessLabel]),
           el('td', null, [r.impact]),
           el('td', { cls: 'is-nowrap' }, [fmtWhen(r.createdAt)]),
-          el('td', null, [el('span', { cls: 'ld-tag' + (r.handling.code === 'NEW' ? ' is-new' : r.handling.code === 'SELF_RESOLVED' ? ' is-ok' : '') }, [r.handling.label])]),
+          el('td', null, [el('span', { cls: 'ld-tag' + (r.handling.code === 'NEW' ? ' is-warn' : r.handling.code === 'SELF_RESOLVED' ? ' is-ok' : '') }, [r.handling.label])]),
           el('td', { cls: 'is-nowrap' }, [target ? btn('pn-btn-2', '연결', 'link', { 'data-report': r.id, 'aria-haspopup': 'dialog', 'aria-label': r.id + ' 연결' })
             : r.assignee ? r.assignee.name : '없음'])]);
       });
@@ -418,7 +414,7 @@
             el('td', { cls: 'is-nowrap' }, [c.requestedBy ? c.requestedBy.name : '']),
             el('td', null, [c.questions.join(' · ')]),
             el('td', { cls: 'is-nowrap' }, [fmtWhen(c.at)]),
-            el('td', null, [c.reply ? el('span', { cls: 'ld-tag' }, [c.reply]) : el('span', { cls: 'ld-tag is-new' }, ['기록 전'])])]);
+            el('td', null, [c.reply ? el('span', { cls: 'ld-tag' }, [c.reply]) : el('span', { cls: 'ld-tag is-warn' }, ['기록 전'])])]);
         }))])]);
     }
     return [el('div', { cls: 'pn-note' }, [icon('i-info'), el('div', null, [el('b', null, ['전화 협의는 그대로예요']),
@@ -554,7 +550,7 @@
       '규칙으로 분류 · 근거: ' + (r.basis.length ? r.basis.map(function (b) { return BASIS[b.kind]; }).join(', ') : '없음(미분류)');
     var other = cur && me && cur.assignee.id !== me.id;
     var card = el('div', { cls: 'pn-card' }, [el('div', { cls: 'kn-card-head' }, [el('p', { cls: 'pn-card-title' }, ['분류·담당']),
-      el('span', { cls: 'ld-tag' + (q.handling.code === 'NEW' ? ' is-new' : '') }, [q.handling.label])]),
+      el('span', { cls: 'ld-tag' + (q.handling.code === 'NEW' ? ' is-warn' : '') }, [q.handling.label])]),
       rows([['문의함', r.inboxName], ['분류', basis],
         ['담당', cur ? cur.assignee.name + ' · ' + fmtWhen(cur.at) + ' 인수' : '아직 없음']]),
       other ? el('p', { cls: 'ld-meta', role: 'status' }, [cur.assignee.name + '이 담당하고 있어요. 담당을 바꾸려면 담당자가 다른 문의함으로 보내요.']) : null,
@@ -1408,6 +1404,9 @@
         foot.appendChild(btn('pn-btn', '연결하기', 'link-confirm'));
       }
     }
+    // 머리 아이콘: 상태 바꾸기 ⇄, 관련 오류 연결 링크, 담당자 대응 체크, ITGS 초안 안내
+    $('ledger-dialog').querySelector('.pn-head use').setAttribute('href', '#' + ({ status: 'i-swap', link: 'i-link', action: 'i-check', itgs: 'i-info' }[kind]));
+    $('ld-dlg-steps').hidden = kind === 'itgs';   // 한 단계뿐인 초안 보기에는 진행 막대를 두지 않는다
     // 단계 표시줄: 글자("N단계 중 M단계 · 이름")로 뜻을 전하고 막대는 장식
     var total = steps.length;
     $('ld-dlg-steps-text').innerHTML = '';

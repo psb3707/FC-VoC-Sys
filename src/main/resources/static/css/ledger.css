@@ -261,3 +261,18 @@ body.ld-page:has(.pn:not([hidden])) { overflow-y: hidden; }
   .ld-boxes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ld-acts { grid-template-columns: 1fr; }
 }
+/* 디자인 리뷰 반영(ADR-014): 카드 안 요소 사이 12px, 소제목 위 24px, 안내 상자와 카드 사이 16px */
+.ld-acts + .ld-meta, .ld-preview + .ld-meta { margin-top: 12px; }
+#ld-dlg-body .pn-choices + .pn-card-title { margin-top: 24px; }
+.ld-view > .pn-note + .ld-card { margin-top: 16px; }
+.ld-box[aria-pressed="true"] span { font-weight: 700; }
+[data-itgs] .ld-itgs-sec .pn-card-title { font-size: var(--pn-text); }
+@media (max-width: 767.98px) {
+  .ld-top { flex-wrap: wrap; padding-block: 12px; }
+  .ld-brand, .ld-viewer { flex: 1 1 100%; }
+}
+/* 480px 이하: 핵심 요약·분류 카드도 이름과 값을 위아래로(ADR-028·029 카드와 같은 규칙) */
+@media (max-width: 480px) {
+  [data-core] .pn-rows div, [data-route] .pn-rows div, [data-added] .pn-rows div { display: block; }
+  [data-core] .pn-rows dd, [data-route] .pn-rows dd, [data-added] .pn-rows dd { margin-top: 2px; }
+}

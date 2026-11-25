@@ -94,6 +94,12 @@ def check_handling(chrome):
       await ApiClient.markInquiryViewed(r.id, 'U-021');
       d = await ApiClient.getInquiry(r.id, 'U-021');
       assert(d.viewedBy.includes('U-021') && !d.assignment, '확인은 인수가 아님');
+      // 상세를 열면 그 문의의 담당자 알림은 읽음이 된다(종 배지와 목록이 따로 움직이지 않게)
+      await ApiClient.markInquiryViewed(r.id, 'U-022');
+      assert((await notes('U-022', 'NEW_INQUIRY')).filter(x => x.reportId === r.id).every(x => x.read), '열람한 문의 알림 읽음');
+      assert(!(await ApiClient.getInquiry(r.id, 'U-022')).assignment, '열람·읽음은 인수가 아님');
+      const all20 = await inbox('U-020'), only = await inbox('U-020', { filter: 'it' });
+      assert(only.total === all20.total && only.items.length <= all20.items.length, '탭 숫자는 거르기와 관계없는 전체');
       let card = (await ApiClient.getMyReports('U-013')).find(x => x.id === r.id);
       assert(card.handling.code === 'NEW', 'FC는 담당자 확인 전');
 
@@ -179,7 +185,8 @@ def check_screens(chrome):
     open_real(chrome, "ledger.html", "?selftest=1#role=SALES&user=U-021")
     run(chrome, FLOW + """
       assert(document.title === '전산 문의 관리' && $('.ld-brand').textContent === '전산 문의 관리', '화면 이름');
-      assert($('#ld-viewer').textContent.includes('현업 담당') && $('#ld-viewer').textContent.includes('고객동의업무팀(가상)'), '보는 사람 ' + $('#ld-viewer').textContent);
+      assert($('#ld-viewer').textContent === '백나린(가상) · 현업 담당', '보는 사람(이름·역할만) ' + $('#ld-viewer').textContent);
+      assert($('.ld-sort').textContent.includes('맡은 문의함: 고객동의업무팀(가상)'), '맡은 문의함은 목록 위 줄');
       assert($('[data-tab=inbox][aria-selected=true]'), '현업 첫 탭은 전산 문의함');
       const row = await wait('tr[data-id="R-Q1"]');
       assert(row.innerText.includes('고객 동의 진행 어려움') && row.innerText.includes('상품소개동의') && row.innerText.includes('신규'), '목록 줄 ' + row.innerText);
@@ -271,6 +278,8 @@ def check_screens(chrome):
       card.querySelector('[data-info-code=REPEAT][data-info-value=UNKNOWN]').click();
       card.querySelector('[data-act=info-send]').click();
       await wait(() => $('#kn-body .kn-card.is-target').innerText.includes('보낸 답'));
+      const text = $('#kn-body .kn-card.is-target').innerText;
+      assert(!text.includes('담당자 확인 전') && text.includes('담당 부서가 확인하고 있어요'), '인수 뒤 FC 카드 문구가 서로 맞음 ' + text);
       return true;
     """)
 
