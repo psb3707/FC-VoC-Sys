@@ -103,7 +103,7 @@ def check(chrome):
     """)
 
     # ⑤ IT: 같은 번호 찾기 → 발생 조건 → 규칙 후보(연결 전 유지) → 담당자가 묶기
-    open_page(chrome, "ledger.html", "?selftest=1#role=IT&tab=unlinked")
+    open_page(chrome, "ledger.html", "?selftest=1#role=SALES&user=U-023&tab=unlinked")  # ADR-030: 청약업무팀(가상) 현업
     evaluate(chrome, ASK + """
       const id = '""" + report_id + """';
       await fill('#ld-q', id);
@@ -124,7 +124,7 @@ def check(chrome):
       await selftest('대장 신고 패널');
       await click('[data-ai-link="D-2026-001"]');
       await act('link-confirm');
-      await wait(() => $('#ledger-dialog') && $('#ledger-dialog').innerText.includes('신고를 묶었어요'));
+      await wait(() => $('#ledger-dialog') && $('#ledger-dialog').innerText.includes('문의를 연결했어요'));
       assert(IntakeDemoStore.read().links[id] === 'D-2026-001', '담당자가 묶어야 연결');
       const d = await ApiClient.getDefect('D-2026-001');
       assert(d.reports.some(r => r.id === id), '결함의 신고 목록에 같은 번호');
@@ -216,7 +216,7 @@ def check(chrome):
     """)
 
     # 회귀: 기존 고정 추천·규칙 대체·후보 없음, 사용법 문의
-    open_page(chrome, "ledger.html", "?selftest=1#role=SALES&tab=unlinked&item=R-061")
+    open_page(chrome, "ledger.html", "?selftest=1#role=SALES&user=U-023&tab=unlinked&item=R-061")
     evaluate(chrome, ASK + """
       const fixed = await ApiClient.postSimilarDefects('R-061');
       assert(fixed.llmOutcome === 'OK' && fixed.candidates[0].similarity === 'HIGH', '고정 응답 유지');

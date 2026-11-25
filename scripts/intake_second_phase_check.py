@@ -88,7 +88,7 @@ def check(chrome):
       assert(await ApiClient.getReportAttachment(id, 'U-001') === null, 'FC 첨부 조회 제한');
       return { id, preview };
     """)
-    open_page(chrome, "ledger.html", "#role=IT&tab=unlinked&item=" + first["id"])
+    open_page(chrome, "ledger.html", "#role=SALES&user=U-023&tab=unlinked&item=" + first["id"])
     evaluate(chrome, """
       await click('.pq-attachment summary');
       const image = await wait('.pq-attachment img');

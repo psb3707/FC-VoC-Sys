@@ -57,7 +57,7 @@ def consult(chrome, user, support, answers, quick=False):
 
 
 def link(chrome, report_id):
-    open_real(chrome, "ledger.html", f"?selftest=1#role=IT&tab=unlinked&q={report_id}&item={report_id}")
+    open_real(chrome, "ledger.html", f"?selftest=1#role=SALES&user=U-021&tab=unlinked&q={report_id}&item={report_id}")  # ADR-030: 고객동의업무팀(가상) 현업이 연결
     run(chrome, """
       await click('[data-ai-link="D-2026-007"]');
       await act('link-confirm');
@@ -262,7 +262,7 @@ def check_main(chrome):
       await wait(() => (IntakeDemoStore.read().followups['""" + r3 + """'] || []).some(e => e.action === 'ADD'));
       assert(!JSON.stringify(IntakeDemoStore.read()).includes('같은 증상이라는 추가 설명'), '추가 설명 원문은 저장소에 없음');
     """)
-    open_real(chrome, "ledger.html", "?selftest=1#role=IT&item=D-2026-007")
+    open_real(chrome, "ledger.html", "?selftest=1#role=IT&tab=defects&item=D-2026-007")   # ADR-030: IT 첫 탭은 협의 요청, 목록 표시는 [공통 오류]
     run(chrome, """
       const card = await wait('[data-field-verification]');
       assert(card.innerText.includes('FC 5명 · 신고 6건') && dd(card, '정상 확인').startsWith('1명') && dd(card, '문제 지속').startsWith('1명') &&

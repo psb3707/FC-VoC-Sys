@@ -35,9 +35,16 @@ const leaks = (text) => ['Mozilla', 'HeadlessChrome', 'AppleWebKit', 'file://', 
 
 
 def ledger_panel(chrome, report_id, expect):
-    open_page(chrome, "ledger.html", "?selftest=1#role=IT&tab=unlinked")
+    open_page(chrome, "ledger.html", "?selftest=1#role=SALES")
     evaluate(chrome, DIAG + """
       const id = '""" + report_id + """';
+      // ADR-030: 그 문의가 전달된 문의함의 현업 담당자로 연다(분류는 규칙)
+      const staff = (await ApiClient.getUsers()).filter(u => u.role === 'SALES');
+      let owner = null;
+      for (const u of staff) { const q = await ApiClient.getInquiry(id, u.id); if (q && !q.forbidden) { owner = u.id; break; } }
+      assert(owner, '문의함 담당자 ' + id);
+      location.hash = '#role=SALES&user=' + owner;
+      await wait(() => $('#ld-q') && $('#ld-viewer').textContent.includes(staff.find(u => u.id === owner).name));
       await fill('#ld-q', id);
       $('#ld-search').requestSubmit();
       await click('[data-open="' + id + '"]');
@@ -51,7 +58,7 @@ def ledger_panel(chrome, report_id, expect):
         trace.includes('실제 로그를 조회하거나 분석한 결과가 아니에요'), '로그 추적 단서: 연계 전, 가짜 로그 없음');
       (expect.trace || []).forEach(t => assert(trace.includes(t), '로그 추적 단서: ' + t + ' / ' + trace));
       const heads = [...document.querySelectorAll('#ld-body h4')].map(h => h.textContent);
-      assert(heads[0] === '① 신고자와 발생 환경', '신고자 정보가 맨 위');
+      assert(heads[0] === '① 문의자와 발생 환경', '문의자 정보가 ① 맨 위');
       await selftest('대장 신고자·진단 정보');
     """)
 

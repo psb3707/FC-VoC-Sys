@@ -75,14 +75,15 @@ def check(chrome):
     ledger_session = chrome.send("Target.attachToTarget", {"targetId": target, "flatten": True})["sessionId"]
     chrome.session = ledger_session
     chrome.send("Page.enable", {}, chrome.session)
-    open_page(chrome, "ledger.html", "#role=IT&tab=unlinked&notify=fail&item=" + report_id)
+    open_page(chrome, "ledger.html", "#role=SALES&user=U-023&tab=unlinked&notify=fail&item=" + report_id)
     evaluate(chrome, """
       await click('#ld-body details summary');
       assert($('#ld-body').innerText.includes('고객 휴대폰'), '연결 전 대장의 진단 보기');
+      await act('claim');   // ADR-030: 문의함 담당자가 인수한 뒤 관련 오류 연결
       await act('link-pick');
       await click('[data-link="D-2026-001"]');
       await act('link-confirm');
-      await wait(() => $('#ld-dlg-body').innerText.includes('신고를 묶었어요'));
+      await wait(() => $('#ld-dlg-body').innerText.includes('문의를 연결했어요'));
       await act('close-dialog');
       location.hash = '#role=IT&item=D-2026-001&notify=fail';
       await wait(() => $('#ld-body').innerText.includes('서명 알림톡이 초대장'));
