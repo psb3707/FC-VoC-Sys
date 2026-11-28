@@ -60,3 +60,21 @@
 .pq-facts .pn-field + .pn-rows { margin-top: 16px; }   /* ADR-026: 선택 상자와 정의 목록 줄 사이 */
 /* ADR-028 자동으로 연결된 정보·오류가 발생한 환경: 안내 1줄은 표 아래 16px(출처 글색은 panel.css .pn-rows .pn-src) */
 .pq-identity .pn-rows + .pn-lead, .pq-incident .pn-rows + .pn-lead { margin-top: 16px; }
+
+/* ADR-031 업무 확인 줄·분류 질문(요약 카드 맨 위), 완료 화면 전달 문장, 업무 지원 연락처 카드(0-3절) */
+.pq-route { margin: 0 0 16px; padding-bottom: 16px; border-bottom: 1px solid var(--pn-line-soft); }
+.pq-route > p { margin: 0; }
+.pq-route > p b { margin-right: 8px; }
+.pq-route > .pn-btn-2 { margin-top: 12px; min-width: 0; }
+.pq-route-title { font-weight: 700; }
+.pq-route-choices { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.pq-route-choices .pn-chip { min-width: 0; }
+.pq-route .pn-help { margin-top: 12px; }
+.pq-sent { margin: 8px 0 0; text-align: center; }
+.pq-contact > div > p { margin: 4px 0 0; }
+.pq-contact > div > .pn-help { margin-top: 8px; }
+.pq-contact:focus-visible { outline: 3px solid var(--pn-accent); outline-offset: 2px; }
+@media (max-width: 480px) {
+  .pq-route-choices { flex-direction: column; }
+  .pq-route-choices .pn-chip { width: 100%; }
+}

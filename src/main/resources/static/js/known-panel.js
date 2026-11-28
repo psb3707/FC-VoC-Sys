@@ -298,6 +298,11 @@
     return parts.join(' · ');
   }
 
+  function whoOf(sp) {
+    var who = sp.assignee ? sp.assignee.name + ' · ' + (sp.assignee.contact ? '업무용 내선 ' + sp.assignee.contact.ext + '(가상)' : '등록된 연락처 없음')
+      : '담당자 확인 대기 중 · ' + sp.inboxName;
+    return who + (sp.itConsulting ? ' · IT와 확인 중' : '');
+  }
   function mineView(st) {
     var me = currentUser(st);
     var list = cache.mine;
@@ -311,7 +316,10 @@
         // ADR-030: 인수 뒤에만 "담당자가 확인했어요". 전달된 문의함(가상)을 함께 보인다
         el('p', { cls: 'kn-handled' }, ['내 문의 처리 · ', el('b', null, [!d && r.handling && r.handling.code !== 'NEW'
           ? '담당자가 확인했어요' : T.handled(d, r.kind)]), !d && r.inboxName ? ' · ' + r.inboxName : '']),
+        // ADR-031: 담당자 표시 줄(인수 전 대기·인수 뒤 이름과 업무용 내선, 모두 가상). IT 연락처는 넣지 않는다
+        !d && r.support ? rows([['담당', whoOf(r.support)]]) : null,
         inquiryView(r, me),
+        !d && r.support && (!r.handling || r.handling.code !== 'SELF_RESOLVED') ? window.SupportContact(null, Object.assign({}, r.support, { assignee: null }), 'kn-contact-' + r.id) : null,
         // ADR-029: A 상태(위) → B 대응·확인 → C 기록된 단계 → D 상세 이력(접힘)
         T.view(d, { inReport: true, resolution: r.resolution, after: resumeView(r, me) || verifyView(r, me), progress: progress(r),
           handling: r.handling, guideText: r.inquiryGuide ? r.inquiryGuide.text : '' }),

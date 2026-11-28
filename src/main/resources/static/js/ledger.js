@@ -56,7 +56,6 @@
   var ACTIONS = { info: 'INFO_REQUEST', guide: 'GUIDE', resolve: 'SELF_RESOLVED', consult: 'IT_CONSULT', reply: 'IT_REPLY', reroute: 'REROUTE' };
   var ACTION_TITLE = { info: '추가 정보 요청', guide: '대응 방법 안내', resolve: '자체 해결', consult: 'IT 협의 요청', reply: '협의 결과 남기기',
     reroute: '다른 문의함으로 보내기' };
-  var BASIS = { BUSINESS: 'FC가 고른 업무', SCREEN: '오류가 난 화면', HISTORY: '기존 이력' };
   var SIMILAR = { HIGH: '비슷함 높음', MEDIUM: '비슷함 보통' };   // 07번 ⑤ similarity (LOW 는 서버가 버림)
 
   var Q_MAX = 40;   // 찾는 낱말 최대 길이 (05번 글자 찾기 q)
@@ -403,7 +402,7 @@
     var body;
     if (!consults.length) body = el('div', { cls: 'ld-card ld-empty' }, [el('p', null, ['협의 요청이 없어요'])]);
     else {
-      var head = el('tr', null, ['문의', '관련 업무', '요청한 현업', '확인할 내용', '요청 시각', '협의 결과'].map(function (h) { return el('th', { scope: 'col' }, [h]); }));
+      var head = el('tr', null, ['문의', '관련 업무', '요청한 현업', '확인할 내용', '요청 시각', '맡은 IT', '협의 결과'].map(function (h) { return el('th', { scope: 'col' }, [h]); }));
       body = el('div', { cls: 'ld-card' }, [el('table', { cls: 'ld-table', 'aria-label': 'IT 협의 요청, 최신 순' }, [el('thead', null, [head]),
         el('tbody', null, consults.map(function (c) {
           return el('tr', { 'data-id': c.id, cls: st.item === c.id ? 'is-open' : null }, [
@@ -414,10 +413,14 @@
             el('td', { cls: 'is-nowrap' }, [c.requestedBy ? c.requestedBy.name : '']),
             el('td', null, [c.questions.join(' · ')]),
             el('td', { cls: 'is-nowrap' }, [fmtWhen(c.at)]),
+            el('td', { cls: 'is-nowrap' }, [c.claimedBy ? c.claimedBy.name : el('span', { cls: 'ld-tag is-warn' }, ['맡기 전'])]),
             el('td', null, [c.reply ? el('span', { cls: 'ld-tag' }, [c.reply]) : el('span', { cls: 'ld-tag is-warn' }, ['기록 전'])])]);
         }))])]);
     }
-    return [el('div', { cls: 'pn-note' }, [icon('i-info'), el('div', null, [el('b', null, ['전화 협의는 그대로예요']),
+    var me = viewer(st), groups = ((meta && meta.itGroups) || []).filter(function (g) { return me && (me.itGroupIds || []).indexOf(g.id) >= 0; });
+    // ADR-031 결정 5: 내 IT 담당 그룹의 협의만 보인다
+    var scope = el('p', { cls: 'ld-sort' }, [icon('i-info'), '맡은 IT 그룹: ' + (groups.map(function (g) { return g.name; }).join(', ') || '없음')]);
+    return [scope, el('div', { cls: 'pn-note' }, [icon('i-info'), el('div', null, [el('b', null, ['전화 협의는 그대로예요']),
       '협의 결과를 남기면 현업 담당자의 문의 상세에 이어져요. 공식 개발 요청은 ITGS에서 해요.'])]), body,
       el('p', { cls: 'ld-total', 'aria-live': 'polite' }, ['총 ', el('b', null, [consults.length + '건'])])];
   }
@@ -545,14 +548,26 @@
     return box;
   }
   function routeCard(q, me) {
-    var r = q.routing, cur = q.assignment;
-    var basis = r.method === 'STAFF' ? '담당자가 다른 문의함으로 보냄' :
-      '규칙으로 분류 · 근거: ' + (r.basis.length ? r.basis.map(function (b) { return BASIS[b.kind]; }).join(', ') : '없음(미분류)');
+    var r = q.routing, cur = q.assignment, v = q.view || {}, it = q.it;
+    // ADR-031: 업무 코드·세부 업무·확정 여부·근거·추가 확인·전달 경로. 문장 원문은 보이지 않는다(맞은 규칙 낱말만)
+    var how = r.method === 'STAFF' ? '담당자가 다른 문의함으로 보냄'
+      : '규칙으로 분류 · ' + (v.confirmed ? '확정' : '확정 못 함(담당자 확인 필요)');
+    var path = v.fallback === 'BACKUP' ? (v.groupName || '담당 그룹') + ' 담당자 부재 → 대체 그룹 ' + v.inboxName
+      : v.fallback === 'MAPPING_MISSING' ? '업무분장에 담당 그룹이 없어 공통 분류 문의함' : '';
     var other = cur && me && cur.assignee.id !== me.id;
+    function ext(c) { return c ? ' · 업무용 내선 ' + c.ext + '(가상)' : ''; }
     var card = el('div', { cls: 'pn-card' }, [el('div', { cls: 'kn-card-head' }, [el('p', { cls: 'pn-card-title' }, ['분류·담당']),
       el('span', { cls: 'ld-tag' + (q.handling.code === 'NEW' ? ' is-warn' : '') }, [q.handling.label])]),
-      rows([['문의함', r.inboxName], ['분류', basis],
-        ['담당', cur ? cur.assignee.name + ' · ' + fmtWhen(cur.at) + ' 인수' : '아직 없음']]),
+      rows([['관련 업무', v.parentLabel ? v.parentLabel + (v.businessLabel ? ' · ' + v.businessLabel + ' (' + v.businessCode + ')' : '') : '업무 미확인'],
+        ['분류', how],
+        r.method === 'STAFF' ? null : ['근거', v.basis && v.basis.length ? v.basis.map(function (b) { return b.label + ' · ' + b.text; }).join(' / ') : '없음'],
+        v.needs && v.needs.indexOf('BUSINESS') >= 0 ? ['추가 확인', '관련 업무(문의자 확인 또는 담당자 재분류)'] : null,
+        path ? ['전달 경로', path] : null,
+        ['문의함', r.inboxName],
+        ['담당', cur ? cur.assignee.name + ' · ' + fmtWhen(cur.at) + ' 인수' : '아직 없음'],
+        // ADR-031 결정 6: IT 연락 정보는 현업·IT 화면에만. 협의를 요청하지 않았으면 IT가 처리 중이라고 쓰지 않는다
+        it ? ['IT 담당 그룹', it.groupName + ext(it.groupContact)] : null,
+        it ? ['IT 협의 담당', it.claimant ? it.claimant.name + ext(it.claimantContact) : it.consulted ? '아직 맡은 사람 없음' : '협의 요청 전'] : null]),
       other ? el('p', { cls: 'ld-meta', role: 'status' }, [cur.assignee.name + '이 담당하고 있어요. 담당을 바꾸려면 담당자가 다른 문의함으로 보내요.']) : null,
       claimNote ? el('p', { cls: 'pn-err', role: 'alert' }, [claimNote]) : null,
       q.routes.length > 1 ? el('details', { cls: 'pn-details' }, [el('summary', null, ['분류 이력 ' + q.routes.length + '건']),
@@ -579,7 +594,7 @@
     return card;
   }
   var ACTION_NAME = { INFO_REQUEST: '추가 정보 요청', GUIDE: '대응 방법 안내', SELF_RESOLVED: '자체 해결', IT_CONSULT: 'IT 협의 요청',
-    IT_REPLY: 'IT 협의 결과', REROUTE: '다른 문의함으로 보냄' };
+    IT_CLAIM: 'IT 협의 맡음', IT_REPLY: 'IT 협의 결과', REROUTE: '다른 문의함으로 보냄', PHONE: '전화 대응' };
   function actionsCard(q) {
     if (!q.actions.length) return null;
     var card = el('div', { cls: 'pn-card' }, [el('p', { cls: 'pn-card-title' }, ['대응 기록']),
@@ -641,6 +656,7 @@
       r.id ? originalDetails(r) : null
     ].forEach(function (n) { if (n) body.appendChild(n); });
     if (q.can.claim) foot.appendChild(btn('pn-btn', '담당하기', 'claim'));
+    else if (q.can.itClaim) foot.appendChild(btn('pn-btn', '협의 맡기', 'it-claim'));   // ADR-031 결정 5: IT 협의 인수
     else if (q.can.act || q.can.reply) foot.appendChild(btn('pn-btn', [icon('i-link'), '관련 오류 연결'], 'link-pick', { 'aria-haspopup': 'dialog' }));
     else foot.appendChild(btn('pn-btn', '목록으로', 'panel-close'));   // 다른 담당자의 문의: 볼 수만 있다
     return true;
@@ -1237,14 +1253,14 @@
   function syncAct(st) {
     var key = st.dialog + '|' + st.item;
     if (actDraft.key !== key) {
-      actDraft = { key: key, codes: [], guideDefectId: '', inboxId: '',
+      actDraft = { key: key, codes: [], guideDefectId: '', inboxId: '', itGroupId: inquiry && inquiry.it ? inquiry.it.groupId : '',
         requestId: window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : Date.now() + '-' + Math.random() };
       actPreview = null; actError = '';
     }
   }
   function actRequest(st) {
     return { type: ACTIONS[st.dialog], codes: actDraft.codes.slice(), guideDefectId: actDraft.guideDefectId, inboxId: actDraft.inboxId,
-      requestId: actDraft.requestId };
+      itGroupId: st.dialog === 'consult' ? actDraft.itGroupId : '', requestId: actDraft.requestId };
   }
   function chipList(label, pairs, multi) {
     return el('ul', { cls: 'pn-chips', role: 'group', 'aria-label': label }, pairs.map(function (p) {
@@ -1276,6 +1292,12 @@
       view.push(el('h3', { tabindex: '-1' }, ['IT에 무엇을 확인할까요?']),
         el('p', { cls: 'pn-lead' }, ['IT 담당자에게 이 문의의 핵심 요약·확인된 정보·미확인 사항이 그대로 전달돼요. 다시 적지 않아도 돼요.']),
         chipList('확인할 내용', meta.consultQuestions, true),
+        // ADR-031 결정 5: 업무분장의 IT 담당 그룹이 기본값. 기술 검토 결과에 따라 바꿀 수 있다
+        el('p', { cls: 'pn-card-title' }, ['IT 담당 그룹']),
+        el('ul', { cls: 'pn-chips', role: 'group', 'aria-label': 'IT 담당 그룹' }, (q.itGroups || []).map(function (g) {
+          return el('li', null, [btn('pn-chip', g.name + (q.it && g.id === q.it.groupId ? ' · 업무분장' : ''), 'act-itgroup',
+            { 'data-itgroup': g.id, 'aria-pressed': String(actDraft.itGroupId === g.id) })]);
+        })),
         el('div', { cls: 'pn-card' }, [rows([['업무 영향', q.core.impact],
           ['확인된 정보', q.facts.length ? q.facts.length + '개' : '없음'],
           ['미확인 사항', q.unknowns.map(function (u) { return u.label; }).join(', ') || '없음']])]));
@@ -1587,6 +1609,22 @@
       A.claimInquiry(st.item, who2 ? who2.id : '', 'CL-' + st.item + '-' + (who2 ? who2.id : '')).then(function (res) {
         claimNote = res && res.error === 'ALREADY_ASSIGNED' ? res.assignee.name + '이 이미 담당하고 있어요. 기록은 바뀌지 않았어요.'
           : res && res.error ? '이 문의는 담당할 수 없어요.' : '';
+        unlinkedFor = null;
+        return render();
+      }).then(function () { var h = $('ld-foot').querySelector('.pn-btn') || $('ld-body').querySelector('h3'); if (h) h.focus(); });
+    }
+    else if (act === 'act-itgroup') {
+      actDraft.itGroupId = b.getAttribute('data-itgroup');
+      paintDialog(st);
+      var g = document.querySelector('[data-itgroup="' + actDraft.itGroupId + '"]');
+      if (g) g.focus();
+    }
+    else if (act === 'it-claim') {
+      var who5 = viewer(st);
+      b.disabled = true;
+      A.postInquiryAction(st.item, who5 ? who5.id : '', { type: 'IT_CLAIM', codes: [], requestId: 'ITC-' + st.item + '-' + (who5 ? who5.id : '') }).then(function (res) {
+        claimNote = res && res.error === 'ALREADY_ASSIGNED' ? res.assignee.name + '이 이미 이 협의를 맡고 있어요. 기록은 바뀌지 않았어요.'
+          : res && res.error ? '이 협의는 맡을 수 없어요.' : '';
         unlinkedFor = null;
         return render();
       }).then(function () { var h = $('ld-foot').querySelector('.pn-btn') || $('ld-body').querySelector('h3'); if (h) h.focus(); });
