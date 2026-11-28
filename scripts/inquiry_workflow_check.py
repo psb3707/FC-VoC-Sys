@@ -376,6 +376,9 @@ def check_context(chrome):
       const ds = await ApiClient.getInquiry(sub, 'U-023');
       assert(claim.saved && ds.it.claimant.id === 'U-031' && ds.it.claimantContact.ext === '2111' && ds.assignment.assignee.id === 'U-023', 'E16 IT 인수와 현업 담당 따로');
       assert(ds.handling.code === 'IT_CONSULT', 'E16 IT 인수는 대응 상태를 바꾸지 않음');
+      // E24: IT 협의 중에 전화 대응을 기록해도 대응 상태(IT 협의 중)는 그대로
+      await ApiClient.postInquiryAction(sub, 'U-023', { type: 'PHONE', codes: ['FC_CALLED', 'SAME_AS_INTAKE'], requestId: 'PH-C' });
+      assert((await ApiClient.getInquiry(sub, 'U-023')).handling.code === 'IT_CONSULT', 'E24 전화 기록은 대응 상태를 바꾸지 않음');
       // 공통 IT 협의함: 구성원 두 명 중 한 명만 맡는다(중복 인수 방지)
       const login = await ask('U-006', '로그인이 안 돼요');
       await ApiClient.claimInquiry(login.id, 'U-020', 'C-6');
@@ -465,14 +468,14 @@ def check_context_screens(chrome):
     run(chrome, FLOW + """
       const route = await wait('[data-route]');
       const t = route.innerText;
-      assert(t.includes('선심사 · 선심사 (PRE_UW)') && t.includes('FC 확인 응답') && t.includes('설계·심사 IT(가상) · 업무용 내선 2120(가상)') && t.includes('아직 맡은 사람 없음'), '현업 분류 근거·IT 연락 ' + t);
+      assert(t.includes('선심사 (PRE_UW)') && !t.includes('선심사 · 선심사') && t.includes('FC 확인 응답') && t.includes('설계·심사 IT(가상) · 업무용 내선 2120(가상)') && t.includes('아직 맡은 사람 없음'), '현업 분류 근거·IT 연락 ' + t);
       await selftest('현업 분류 근거');
       return true;
     """)
     open_real(chrome, "ledger.html", "?selftest=1#role=IT&user=U-032")
     run(chrome, FLOW + """
       const row = await wait('tr[data-id="R-Q1"]');
-      assert(row.innerText.includes('맡기 전') && $('#ld-body, body').innerText.includes('맡은 IT 그룹: 설계·심사 IT(가상)'), 'IT 목록 ' + row.innerText);
+      assert(row.innerText.includes('아직 없음') && $('#ld-body, body').innerText.includes('맡은 IT 그룹: 설계·심사 IT(가상)'), 'IT 목록 ' + row.innerText);
       row.querySelector('[data-open]').click();
       await click('[data-act=it-claim]');
       await wait(() => $('[data-route]').innerText.includes('마루한(가상) · 업무용 내선 2121(가상)'));
