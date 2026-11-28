@@ -110,3 +110,7 @@
 @media (max-width: 480px) {
   [data-info-request] .pn-chips li, [data-info-request] .pn-chip { width: 100%; }
 }
+
+/* ADR-031 담당자 표시 줄: 위 처리 줄과 간격, 좁은 화면에서는 이름·값을 위아래로 */
+.kn .kn-handled + .pn-rows { margin-top: 8px; }
+@media (max-width: 480px) { .kn-card > .pn-rows div { display: block; } }

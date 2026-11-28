@@ -449,7 +449,7 @@
       var text = routing.confirmed && routing.parentLabel ? routing.parentLabel + ' 업무 관련 문의로 확인했어요'
         : '관련 업무를 정하지 못했어요. 공통 문의함에서 담당자가 업무를 확인해요';
       return el('div', { cls: 'pq-route', id: 'quick-route' }, [
-        el('p', null, [el('b', null, ['관련 업무']), ' ', text, el('span', { cls: 'pn-src' }, [' · 규칙으로 분류'])]),
+        rows([['관련 업무', [text, el('span', { cls: 'pn-src' }, [' · 규칙으로 분류'])]]]),
         btn('pn-btn-2', '업무 바꾸기', 'quick-business-change')]);
     }
     /* ---- ADR-028 자동으로 연결된 정보 / 오류가 발생한 환경 ---- */

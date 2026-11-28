@@ -63,14 +63,13 @@
 
 /* ADR-031 업무 확인 줄·분류 질문(요약 카드 맨 위), 완료 화면 전달 문장, 업무 지원 연락처 카드(0-3절) */
 .pq-route { margin: 0 0 16px; padding-bottom: 16px; border-bottom: 1px solid var(--pn-line-soft); }
-.pq-route > p { margin: 0; }
-.pq-route > p b { margin-right: 8px; }
-.pq-route > .pn-btn-2 { margin-top: 12px; min-width: 0; }
+#intake-panel .pq-route > .pn-rows { padding: 0; margin: 0; }
+.pq-route > .pn-btn-2 { margin-top: 8px; min-width: 0; }
 .pq-route-title { font-weight: 700; }
 .pq-route-choices { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
 .pq-route-choices .pn-chip { min-width: 0; }
 .pq-route .pn-help { margin-top: 12px; }
-.pq-sent { margin: 8px 0 0; text-align: center; }
+#intake-panel .pq-sent { margin: 8px 0 0; text-align: center; }
 .pq-contact > div > p { margin: 4px 0 0; }
 .pq-contact > div > .pn-help { margin-top: 8px; }
 .pq-contact:focus-visible { outline: 3px solid var(--pn-accent); outline-offset: 2px; }
@@ -81,3 +80,12 @@
 .pq-phone { margin-top: 16px; }
 .pq-phone > .pn-chip { min-width: 0; }
 .pq-open .pn-rows { padding: 0; margin-top: 8px; }
+/* 디자인 리뷰 반영: 완료 화면 행동 줄 3개 — 주 버튼은 한 줄 전체, 보조 둘은 그 위에 나란히 */
+#intake-panel .pn-foot:has([data-act="quick-done-close"]) { flex-wrap: wrap; }
+#intake-panel .pn-foot:has([data-act="quick-done-close"]) .pn-btn { flex: 1 0 100%; }
+#intake-panel .pn-foot:has([data-act="quick-done-close"]) .pn-btn-2 { flex: 1 1 0; min-width: 0; }
+.pq-contact { scroll-margin-bottom: 24px; }
+#intake-panel .pq-open .pn-help { margin: 8px 0 0; }
+@media (max-width: 480px) {
+  .pq-open .pn-rows dt { flex-basis: 72px; }
+}

@@ -276,3 +276,7 @@ body.ld-page:has(.pn:not([hidden])) { overflow-y: hidden; }
   [data-core] .pn-rows div, [data-route] .pn-rows div, [data-added] .pn-rows div { display: block; }
   [data-core] .pn-rows dd, [data-route] .pn-rows dd, [data-added] .pn-rows dd { margin-top: 2px; }
 }
+
+/* ADR-031 전화 대응 기록 대화상자: 칩 줄과 다음 소제목·안내 사이 */
+#ledger-dialog .pn-chips + .pn-card-title { margin-top: 24px; }
+#ledger-dialog .pn-chips + .ld-meta { margin-top: 12px; }

@@ -420,7 +420,7 @@
             el('td', { cls: 'is-nowrap' }, [c.requestedBy ? c.requestedBy.name : '']),
             el('td', null, [c.questions.join(' · ')]),
             el('td', { cls: 'is-nowrap' }, [fmtWhen(c.at)]),
-            el('td', { cls: 'is-nowrap' }, [c.claimedBy ? c.claimedBy.name : el('span', { cls: 'ld-tag is-warn' }, ['맡기 전'])]),
+            el('td', { cls: 'is-nowrap' }, [c.claimedBy ? c.claimedBy.name : '아직 없음']),
             el('td', null, [c.reply ? el('span', { cls: 'ld-tag' }, [c.reply]) : el('span', { cls: 'ld-tag is-warn' }, ['기록 전'])])]);
         }))])]);
     }
@@ -565,7 +565,8 @@
     function ext(c) { return c ? ' · 업무용 내선 ' + c.ext + '(가상)' : ''; }
     var card = el('div', { cls: 'pn-card' }, [el('div', { cls: 'kn-card-head' }, [el('p', { cls: 'pn-card-title' }, ['분류·담당']),
       el('span', { cls: 'ld-tag' + (q.handling.code === 'NEW' ? ' is-warn' : '') }, [q.handling.label])]),
-      rows([['관련 업무', v.parentLabel ? v.parentLabel + (v.businessLabel ? ' · ' + v.businessLabel + ' (' + v.businessCode + ')' : '') : '업무 미확인'],
+      rows([['관련 업무', v.parentLabel ? v.parentLabel + (v.businessLabel && v.businessLabel !== v.parentLabel ? ' · ' + v.businessLabel : '') +
+          (v.businessCode ? ' (' + v.businessCode + ')' : '') : '업무 미확인'],
         ['분류', how],
         r.method === 'STAFF' ? null : ['근거', v.basis && v.basis.length ? v.basis.map(function (b) { return b.label + ' · ' + b.text; }).join(' / ') : '없음'],
         v.needs && v.needs.indexOf('BUSINESS') >= 0 ? ['추가 확인', '관련 업무(문의자 확인 또는 담당자 재분류)'] : null,
