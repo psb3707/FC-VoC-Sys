@@ -83,7 +83,7 @@ def check(chrome):
       assert(IntakeDemoStore.read().reports.length === count && $('#quick-device').value === 'CUSTOMER_PHONE', '실패해도 입력 유지, 번호 없음');
       await act('quick-submit');
       await wait('#quick-receipt-id');
-      const id = $('#quick-receipt-id').textContent.replace('접수번호 ', '').trim();
+      const id = $('#quick-receipt-id').textContent.replace(/^(접수|문의)번호 /, '').trim();
       assert(/^R-Q\\d+$/.test(id), '접수번호 R-Q…');
       await selftest('완료 화면');
       assert($('#pn-body').innerText.includes('진행했어요 · 접수에 기록했어요'), '완료 화면의 업무 재개 기록');

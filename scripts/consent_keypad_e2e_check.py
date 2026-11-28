@@ -73,7 +73,7 @@ def check(chrome):
       await selftest('고객 동의 확인 화면');
       await act('quick-submit');
       await wait('#quick-receipt-id');
-      const id = $('#quick-receipt-id').textContent.replace('접수번호 ', '').trim();
+      const id = $('#quick-receipt-id').textContent.replace(/^(접수|문의)번호 /, '').trim();
       assert(/^R-Q\\d+$/.test(id), '접수번호');
       assert($('#pn-body').innerText.includes('업무 진행 어려움'), '완료 화면 업무 상황');
       await selftest('고객 동의 완료 화면');
@@ -263,7 +263,7 @@ def check(chrome):
       await act('quick-review');
       await act('quick-submit');
       await wait('#quick-receipt-id');
-      const id = $('#quick-receipt-id').textContent.replace('접수번호 ', '').trim();
+      const id = $('#quick-receipt-id').textContent.replace(/^(접수|문의)번호 /, '').trim();
       assert(await ApiClient.postLinkReport('D-2026-007', id), 'IT가 연결');
       return id;
     """)
@@ -328,7 +328,7 @@ def check(chrome):
       await act('assistant-handoff');
       await act('quick-submit');
       await wait('#quick-receipt-id');
-      const id = $('#quick-receipt-id').textContent.replace('접수번호 ', '').trim();
+      const id = $('#quick-receipt-id').textContent.replace(/^(접수|문의)번호 /, '').trim();
       assert($('#quick-resume-failed') && $('#pn-body').innerText.includes('아직 기록하지 못했어요'), '접수 성공과 회신 실패를 따로 표시');
       assert(!IntakeDemoStore.read().resumption[id], '실패한 회신은 다시 부르지 않음(반복 호출 없음)');
       await selftest('업무 재개 기록 실패');
