@@ -78,3 +78,6 @@
   .pq-route-choices { flex-direction: column; }
   .pq-route-choices .pn-chip { width: 100%; }
 }
+.pq-phone { margin-top: 16px; }
+.pq-phone > .pn-chip { min-width: 0; }
+.pq-open .pn-rows { padding: 0; margin-top: 8px; }

@@ -277,6 +277,7 @@
             id: 'R-Q' + state.nextReport++, kind: 'FULL', reporterId: req.reporterId, submittedById: req.submittedById,
             createdAt: nowKst(), defectId: null, defect: null, title: req.oneLine, maskedText: req.oneLine,
             detail: req.detail, business: business, businessSource: req.business ? 'FC' : 'RULE', classifyHints: routed.hints,
+            viaPhone: req.viaPhone === true && !own,   // ADR-031 결정 8: 전화로 먼저 문의받아 관리자가 대신 접수
             symptom: req.symptom, extraSymptoms: req.extraSymptoms,
             finalType: req.finalType, urgent: req.urgent, customerScope: req.customerScope,
             incident: req.incident, contact: req.contact, contactTime: req.contactTime, evidence: req.evidence,
@@ -657,6 +658,30 @@
           isNew: !((state.views[r.id] || {})[userId]) };
       }).sort(function (a, b) { return a.at < b.at ? 1 : -1; }));
     },
+    /* GET /api/inquiries/find?id=&userId= — 전화로 들은 문의번호(ADR-031 결정 8). 범위 밖이면 전달된 문의함 이름만 */
+    findInquiry: function (reportId, userId) {
+      var state = store.read(), id = String(reportId || '').trim().toUpperCase();
+      var r = ledgerReports(state).find(function (x) { return x.id === id; });
+      var viewer = (F.users || []).find(function (u) { return u.id === userId; });
+      if (!r || !viewer || ['SALES', 'IT'].indexOf(viewer.role) < 0) return ok(null);
+      if (canView(viewer, r, state)) return ok({ id: r.id, inScope: true });
+      return ok({ id: r.id, inScope: false, inboxName: (inboxOf(currentRoute(state, r).inboxId) || {}).name || '' });
+    },
+    /* 대리 접수 전 그 FC의 진행 중 문의(ADR-031 결정 8): 같은 문제면 새로 만들지 않고 그 문의번호를 쓰게 한다 */
+    getOpenInquiries: function (reporterId, viewerId) {
+      var state = store.read(), viewer = (F.users || []).find(function (u) { return u.id === viewerId; });
+      if (!viewer) return ok([]);
+      return ok(ledgerReports(state).filter(function (r) {
+        if (r.reporterId !== reporterId || !canView(viewer, r, state)) return false;
+        var d = r.defectId && ledgerDefects(state).find(function (x) { return x.id === r.defectId; });
+        if (d) return CLOSED_STATUS.indexOf(d.status) < 0;
+        return handlingOf(state, r).code !== 'SELF_RESOLVED';
+      }).map(function (r) {
+        var route = currentRoute(state, r);
+        return { id: r.id, title: titleOf(r), parentLabel: parentLabel(route.parentCode, r.business), inboxName: (inboxOf(route.inboxId) || {}).name || '',
+          createdAt: r.createdAt };
+      }).sort(function (a, b) { return a.createdAt < b.createdAt ? 1 : -1; }).slice(0, 3));
+    },
     /* GET /api/inquiries/{id}?userId= — 범위 밖이면 {forbidden:true} */
     getInquiry: function (reportId, userId) {
       var state = store.read(), r = ledgerReports(state).find(function (x) { return x.id === reportId; });
@@ -861,7 +886,7 @@
     return {
       id: report.id, requestId: requestId, kind: report.kind, reporterId: report.reporterId, submittedById: report.submittedById,
       createdAt: report.createdAt, defectId: null, title: (category ? category.label : '전산') + ' 오류 접수',
-      business: category ? category.code : 'ETC', businessSource: report.businessSource === 'RULE' ? 'RULE' : 'FC',
+      business: category ? category.code : 'ETC', businessSource: report.businessSource === 'RULE' ? 'RULE' : 'FC', viaPhone: report.viaPhone === true,
       classifyHints: cleanHints(report.classifyHints), symptom: symptoms.includes(report.symptom) ? report.symptom : '',
       extraSymptoms: (report.extraSymptoms || []).filter(function (code) { return symptoms.includes(code); }),
       finalType: ['DEFECT', 'USAGE', 'IMPROVEMENT', 'UNCLASSIFIED'].includes(report.finalType) ? report.finalType : 'UNCLASSIFIED',
@@ -1620,7 +1645,8 @@
     SELF_RESOLVED: '자체 해결', IT_CONSULT: 'IT 협의 중', IT_REPLIED: 'IT 회신', LINKED: '공통 오류 연결' };
   var FC_LABEL = { NEW: '담당자 확인 전', ASSIGNED: '담당 부서 확인 중', NEED_INFO: '추가 정보 요청', INFO_ARRIVED: '담당 부서 확인 중',
     GUIDED: '대응 방법 안내', SELF_RESOLVED: '처리 완료', IT_CONSULT: '담당 부서 확인 중', IT_REPLIED: '담당 부서 확인 중', LINKED: '' };
-  var QUIET = ['IT_CLAIM', 'PHONE'];   // 대응 상태를 바꾸지 않는 기록(ADR-031)
+  var QUIET = ['IT_CLAIM', 'PHONE'];
+  var CLOSED_STATUS = ['RESOLVED', 'WONT_FIX'];   // 대응 상태를 바꾸지 않는 기록(ADR-031)
   function handlingOf(state, r) {
     if (r.defectId) return { code: 'LINKED' };
     var acts = activeActions(state, r.id).filter(function (a) { return QUIET.indexOf(a.type) < 0; }), last = acts[acts.length - 1];
@@ -1709,7 +1735,7 @@
     var staff = viewer.role === 'SALES' || viewer.role === 'IT';
     var consulted = (state.actions[r.id] || []).some(function (a) { return a.type === 'IT_CONSULT'; });
     return {
-      id: r.id, report: { id: r.id, maskedText: r.maskedText || null, title: titleOf(r), business: r.business, symptom: r.symptom,
+      id: r.id, report: { id: r.id, maskedText: r.maskedText || null, title: titleOf(r), business: r.business, symptom: r.symptom, viaPhone: !!r.viaPhone,
         kind: r.kind, createdAt: r.createdAt, defectId: r.defectId || null },
       reporter: x.reporter, submittedBy: userBrief(r.submittedById || r.reporterId),
       routing: Object.assign({}, route, { inboxName: (inboxOf(route.inboxId) || {}).name || '', parentLabel: parentLabel(route.parentCode, r.business) }),

@@ -9,7 +9,7 @@
     var symptoms = meta.symptoms.concat(options.symptoms);
     var drafts = new Map(), attachment = window.createIntakeAttachment(ui);
     var draftRules = window.IntakeDraftRules;
-    var actor, form, receipt, diagnostics, confirming, offer, error, invalid, busy, wide, ai, draftSession, restored, identity, routing;
+    var actor, form, receipt, diagnostics, confirming, offer, error, invalid, busy, wide, ai, draftSession, restored, identity, routing, openList;
     var steps = ['problem', 'review'];
     var expanded;
     var types = [['UNCLASSIFIED', '담당자가 확인해 주세요'], ['DEFECT', '전산 오류'],
@@ -28,8 +28,8 @@
         finalType: 'UNCLASSIFIED', onBehalf: '', condition: '', source: '', attemptedWorkaround: '', attachment: '', draftFields: null, draftSource: '',
         // ADR-026: AI 문의 상담에서 넘어온 코드와 출처. ADR-027: 조건은 시나리오별 키, 임시조치 상태·추가 지원 필요
         origin: '', conditions: {}, workaroundState: '', workOutcome: '', supportNeeded: '', suggestedDefectId: '', factSources: {},
-        consultNote: '', businessAnswer: '', businessQuestionId: '' };   // ADR-031: 분류 질문의 답(세부 업무 코드 또는 UNKNOWN)
-      receipt = diagnostics = identity = routing = null;
+        consultNote: '', businessAnswer: '', businessQuestionId: '', viaPhone: false };   // ADR-031: 분류 질문의 답(세부 업무 코드 또는 UNKNOWN)
+      receipt = diagnostics = identity = routing = openList = null;
       confirming = busy = wide = restored = false;
       error = invalid = '';
       ai = draftSession = null;
@@ -57,20 +57,24 @@
       var getIdentity = st.step === 'review' && (!identity || identity.key !== whoKey);
       // ADR-031: 확인 화면의 업무 분류 미리보기(규칙). 입력이 바뀌면 다시 받는다
       var routeKey = routingKey(st), getRouting = st.step === 'review' && (!routing || routing.key !== routeKey);
-      if (!getDiagnostics && !getPreview && !getIdentity && !getRouting) return ui.paint(st);
+      // ADR-031 결정 8: 대리 접수면 그 FC의 진행 중 문의를 먼저 보인다(같은 문제면 새로 만들지 않게)
+      var getOpen = st.step === 'review' && proxied() && (!openList || openList.key !== form.onBehalf);
+      if (!getDiagnostics && !getPreview && !getIdentity && !getRouting && !getOpen) return ui.paint(st);
       var snapshot = form, activeDraft = draftSession, hash = location.hash;
       return Promise.all([
         getDiagnostics ? A.getIntakeDiagnostics(mode).catch(function () { return { failed: true }; }) : null,
         getPreview ? A.previewIntakeDraft(draftInput()).catch(function () { return { failed: true }; }) : null,
         getIdentity ? (ui.user(st) ? A.getReporterContext(actor, form.onBehalf || actor, actor) : Promise.resolve(null))
           .catch(function () { return null; }) : null,
-        getRouting ? A.classifyInquiry(request(st)).catch(function () { return null; }) : null
+        getRouting ? A.classifyInquiry(request(st)).catch(function () { return null; }) : null,
+        getOpen ? A.getOpenInquiries(form.onBehalf, actor).catch(function () { return []; }) : null
       ]).then(function (result) {
         if (snapshot !== form || location.hash !== hash) return;
         if (result[0]) diagnostics = Object.assign({}, result[0], { mode: mode });
         if (result[1] && draftSession === activeDraft) activeDraft.preview = result[1];
         if (getIdentity) identity = Object.assign({}, result[2] || { error: 'LOGIN' }, { key: whoKey });   // 못 찾으면 신원을 만들지 않음
         if (getRouting) routing = Object.assign({ failed: !result[3] }, result[3] || {}, { key: routeKey });
+        if (getOpen) openList = { key: form.onBehalf, items: result[4] || [] };
         ui.paint(st);
       });
     }
@@ -538,7 +542,14 @@
         rows([['불편을 겪는 사람', fc + ' (FC)'], ['접수하는 사람', me + ' (대신 접수)'],
           ['안내받는 사람', fc + ' 님과 나 · 처리 경과를 함께 받아요']]));
       box.setAttribute('data-proxy-notice', '');
-      return box;
+      // ADR-031 결정 8: 전화로 먼저 문의받았는지, 그 FC의 진행 중 문의(같은 문제면 새로 접수하지 않고 그 문의번호를 담당 부서에 알림)
+      var open = openList && openList.key === form.onBehalf ? openList.items : [];
+      var phone = el('div', { cls: 'pq-phone', 'data-proxy-phone': '' }, [
+        btn('pn-chip', '전화로 먼저 문의받았어요', 'quick-via-phone', { 'aria-pressed': String(!!form.viaPhone) }),
+        open.length ? note('pq-open', 'i-info', fc + ' 님의 진행 중 문의가 있어요',
+          el('div', null, [rows(open.map(function (x) { return [x.id, x.parentLabel + ' · ' + x.inboxName]; })),
+            el('p', { cls: 'pn-help' }, ['같은 문제면 새로 접수하지 말고 그 문의번호를 담당 부서에 알려 주세요.'])])) : null]);
+      return el('div', null, [box, phone]);
     }
     function aiSection() {
       if (!ai) return el('div', { cls: 'pn-card pq-actions' }, [
@@ -675,6 +686,7 @@
         guideId: match ? match.id : form.suggestedDefectId || null,
         attemptedWorkaround: form.attemptedWorkaround, diagnosticMode: st.diagnostics,
         businessAnswer: form.businessAnswer || null, businessQuestionId: form.businessQuestionId || null,
+        viaPhone: proxied() && !!form.viaPhone,
         diagnosticCapturedAt: diagnostics && diagnostics.capturedAt, aiDraft: form.draftFields,
         origin: form.origin || 'FORM', conditions: form.conditions, workaroundState: form.workaroundState || null,
         workOutcome: proxied() ? null : form.workOutcome || null, supportNeeded: proxied() ? null : form.supportNeeded || null,
@@ -820,6 +832,7 @@
         return setTimeout(function () { var f = document.getElementById('quick-business'); if (f) f.focus(); }, 60);
       }
       if (action === 'done-close') return close(st);
+      if (action === 'via-phone') { form.viaPhone = !form.viaPhone; return ui.paint(st); }
       if (action === 'contact') {
         var card = document.getElementById('quick-contact');
         if (card) { card.scrollIntoView({ block: 'nearest' }); card.focus(); }
