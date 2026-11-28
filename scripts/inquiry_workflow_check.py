@@ -4,6 +4,7 @@
 실제 화면과 ApiClient 를 쓴다. 분류는 규칙이며 AI 분류가 아니다. 부서·문의함은 가상 매핑이다.
 그룹웨어·메신저 발송, ITGS 등록은 없다(초안은 저장하지 않는다).
 """
+import os
 import tempfile
 
 from field_verification_check import open_real, run
@@ -481,11 +482,70 @@ def check_context_screens(chrome):
     """)
 
 
+
+def check_phone(chrome):
+    """ADR-031 E23·E24·전화 먼저(P1): 문의번호 조회, 전화 대응 기록, 관리자 대리 접수의 전화 여부·진행 중 문의"""
+    open_real(chrome, "index.html", "?selftest=1#role=MANAGER&panel=intake&step=problem")
+    rid = run(chrome, FLOW + CTX + """
+      const first = await ask('U-011', '보험료 계산 버튼을 눌렀는데 계속 돌아가요');
+      await fill('#pn-proxy-select', 'U-011');
+      await wait('#quick-oneLine');
+      $('#quick-oneLine').value = '고객 동의 링크에서 뒷자리 키패드가 안 떠요'; $('#quick-oneLine').dispatchEvent(new Event('input', { bubbles: true }));
+      await act('quick-review');
+      const box = await wait(() => $('[data-proxy-phone] .pq-open') && $('[data-proxy-phone]'));
+      assert(box.innerText.includes(first.id) && box.innerText.includes('같은 문제면 새로 접수하지 말고'), '진행 중 문의 안내 ' + box.innerText);
+      await act('quick-via-phone');
+      assert($('[data-act=quick-via-phone]').getAttribute('aria-pressed') === 'true', '전화 먼저 표시');
+      await selftest('대리 접수 전화 먼저');
+      await act('quick-submit');
+      await wait('#quick-receipt-id');
+      const saved = IntakeDemoStore.read().reports.at(-1);
+      assert(saved.viaPhone === true && saved.reporterId === 'U-011' && saved.submittedById === 'U-010', '전화 먼저·실제 FC·대리 접수자 구분');
+      return saved.id;
+    """)
+    # E23: 다른 문의함 담당자는 번호로 찾아도 문의함 이름만, 그 문의함 담당자는 목록에서 바로 연다
+    open_real(chrome, "ledger.html", f"?selftest=1#role=SALES&user=U-024&q={rid}")
+    run(chrome, FLOW + """
+      const n = await wait('.ld-found');
+      assert(n.innerText.includes('""" + rid + """ 문의는 고객동의업무팀(가상) 문의함에 있어요') && !$('[data-core]'), 'E23 범위 밖은 문의함 이름만');
+      assert((await ApiClient.getInquiry('""" + rid + """', 'U-024')).forbidden, 'E23 상세는 안 보임');
+      await selftest('번호 조회 결과');
+      return true;
+    """)
+    open_real(chrome, "ledger.html", f"?selftest=1#role=SALES&user=U-021&q={rid}")
+    run(chrome, FLOW + """
+      const row = await wait('tr[data-id=\"""" + rid + """\"]');
+      row.querySelector('[data-open]').click();
+      const route = await wait('[data-route]');
+      assert(route.innerText.includes('전화로 먼저 문의 → 관리자가 대신 접수'), 'E23 접수 경로');
+      await click('[data-act=claim]');
+      // E24: 전화 대응 기록 — 같은 문의에 코드로 덧붙고 대응 상태·문의 수는 그대로
+      const before = IntakeDemoStore.read().reports.length;
+      await click('[data-handle] [data-act=phone]');
+      await act('action-next');
+      await wait(() => $('#ledger-dialog').innerText.includes('어떤 전화였는지 골라 주세요'));
+      await click('[data-phonekind=FC_CALLED]');
+      await click('[data-act=act-code][data-code=MORE_INFO]');
+      await selftest('전화 대응 기록');
+      await act('action-next');
+      await wait(() => $('#ledger-dialog').innerText.includes('알림 없이 기록만 해요'));
+      await act('action-save');
+      await wait(() => $('#ledger-dialog').innerText.includes('기록했어요'));
+      const d = await ApiClient.getInquiry('""" + rid + """', 'U-021');
+      const last = d.actions.at(-1);
+      assert(last.type === 'PHONE' && last.labels.join() === 'FC가 전화로 문의함,추가 정보를 들음' && d.handling.code === 'ASSIGNED', 'E24 기록 ' + JSON.stringify(last));
+      assert(IntakeDemoStore.read().reports.length === before && !JSON.stringify(IntakeDemoStore.read().actions).includes('통화 내용'), 'E24 새 문의 없음');
+      return true;
+    """)
+
+
 if __name__ == "__main__":
     browser = find_browser()
     if not browser:
         raise SystemExit("Chrome/Edge를 찾지 못했습니다.")
-    for part in (check_routing, check_handling, check_screens, check_context, check_context_screens):
+    parts = (check_routing, check_handling, check_screens, check_context, check_context_screens, check_phone)
+    only = [x for x in os.environ.get("IW_PARTS", "").split(",") if x]   # 예: IW_PARTS=check_context (변형 검사용)
+    for part in [p for p in parts if not only or p.__name__ in only]:
         with tempfile.TemporaryDirectory(prefix="inquiry-workflow-") as profile:
             chrome = Chrome(browser, profile)
             try:
@@ -495,4 +555,4 @@ if __name__ == "__main__":
                 chrome.close()
     print("PASS: E2E-01 부서 문의함 전달, E2E-02 미분류·공통 분류, E2E-03 재분류, E2E-04 알림→상세(읽음≠확인≠인수), "
           "E2E-05 인수 한 명, E2E-06 미확인 답, E2E-07 현업 자체 해결, E2E-08 IT 협의, E2E-09 ITGS 초안, E2E-11 중복 알림, "
-          "E2E-14 대리 접수, E2E-15 권한, 화면 / ADR-031 E01~E22·E25 (E23·E24 전화 연계는 P1 검사)")
+          "E2E-14 대리 접수, E2E-15 권한, 화면 / ADR-031 E01~E25(E26은 기존 검사), 전화 먼저 대리 접수")
