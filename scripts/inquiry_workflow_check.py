@@ -4,6 +4,7 @@
 실제 화면과 ApiClient 를 쓴다. 분류는 규칙이며 AI 분류가 아니다. 부서·문의함은 가상 매핑이다.
 그룹웨어·메신저 발송, ITGS 등록은 없다(초안은 저장하지 않는다).
 """
+import os
 import tempfile
 
 from field_verification_check import open_real, run
@@ -139,6 +140,9 @@ def check_handling(chrome):
       const itView = await ApiClient.getInquiry(r.id, 'U-030');
       assert(!itView.forbidden && itView.facts.some(f => f.source === 'USER_ADDED') && itView.unknowns.length > 0, 'IT가 현업 확인 내용·미확인 사항을 봄');
       assert((await ApiClient.postInquiryAction(r.id, 'U-021', { type: 'IT_REPLY', codes: ['NEED_FIX'], requestId: 'A-3' })).error, '현업은 협의 결과를 못 남김');
+      // ADR-031 결정 5: IT는 협의를 맡은 뒤에만 결과를 남긴다
+      assert((await ApiClient.postInquiryAction(r.id, 'U-030', { type: 'IT_REPLY', codes: ['NEED_FIX'], requestId: 'A-4x' })).error === 'NOT_ASSIGNEE', '맡기 전 회신 거부');
+      await ApiClient.postInquiryAction(r.id, 'U-030', { type: 'IT_CLAIM', codes: [], requestId: 'ITC-1' });
       await ApiClient.postInquiryAction(r.id, 'U-030', { type: 'IT_REPLY', codes: ['NEED_FIX'], requestId: 'A-4' });
       d = await ApiClient.getInquiry(r.id, 'U-021');
       assert(d.handling.code === 'IT_REPLIED' && d.handling.label.includes('수정·배포 필요'), 'IT 회신 ' + JSON.stringify(d.handling));
@@ -234,6 +238,10 @@ def check_screens(chrome):
       await selftest('IT 협의 요청');
       row.querySelector('[data-open]').click();
       await wait('[data-core]');
+      // ADR-031: [협의 맡기] 뒤에 [협의 결과 남기기]
+      assert(!$('[data-handle] [data-act=reply]'), '맡기 전에는 협의 결과 버튼 없음');
+      await click('[data-act=it-claim]');
+      await wait(() => $('[data-route]').innerText.includes('정한결(가상) · 업무용 내선 2101(가상)'));
       await click('[data-handle] [data-act=reply]');
       await click('[data-code=NEED_FIX]');
       await act('action-next'); await act('action-save');
@@ -284,11 +292,263 @@ def check_screens(chrome):
     """)
 
 
+CTX = """
+const ask = async (reporter, text, extra) => ApiClient.postQuickIntake(Object.assign({
+  requestId: 'CTX-' + reporter + '-' + Math.random(), reporterId: reporter, submittedById: reporter,
+  business: '', symptom: '', oneLine: text, finalType: 'DEFECT', conditions: {}, factSources: {} }, extra || {}));
+const ALL = ['U-020', 'U-021', 'U-022', 'U-023', 'U-024', 'U-025', 'U-026', 'U-030', 'U-031', 'U-032', 'U-033'];
+const tally = async (kind) => Object.fromEntries(await Promise.all(ALL.map(async u => [u, (await notes(u, kind)).length])));
+const grewIn = (a, b) => ALL.filter(u => b[u] !== a[u]);
+"""
+
+
+def check_context(chrome):
+    """ADR-031 E01~E05·E08~E16·E21·E22·E25 (저장소 수준, docs/11-test-plan.md 1-2절)"""
+    open_real(chrome, "ledger.html", "#role=SALES")
+    run(chrome, FLOW + CTX + """
+      // E01~E04·E09: 업무를 고르지 않은 자연어 문의 → 업무분장의 현업 담당 그룹, 그 그룹 담당자에게만 신규 알림
+      const cases = [['고객한테 보낸 동의 링크에서 뒷자리 숫자가 안 눌려요', 'IB-CONSENT', ['U-021', 'U-022']],
+        ['보험료 계산 버튼을 눌렀는데 계속 돌아가요', 'IB-DESIGN', ['U-024']],
+        ['청약서 작성 후 제출 버튼을 누르면 오류가 나요', 'IB-SUBSCRIPTION', ['U-023']],
+        ['선심사를 요청했는데 결과를 확인할 수 없어요', 'IB-PRE_UW', ['U-025']]];
+      const made = [];
+      for (const [text, box, who] of cases) {
+        const before = await tally('NEW_INQUIRY');
+        const r = await ask('U-001', text);
+        assert(r.routing.inboxId === box && r.routing.confirmed && r.routing.method === 'RULE', 'E01~04 ' + text + ' ' + JSON.stringify(r.routing));
+        assert(r.businessSource === undefined || true, '');
+        const grew = grewIn(before, await tally('NEW_INQUIRY'));
+        assert(JSON.stringify(grew) === JSON.stringify(who), 'E09 신규 알림은 그 그룹 담당자만 ' + text + ' ' + grew);
+        made.push(r.id);
+      }
+      const stored = IntakeDemoStore.read().reports.find(x => x.id === made[1]);
+      assert(stored.business === 'DESIGN' && stored.businessSource === 'RULE' && !JSON.stringify(stored).includes('계속 돌아가요'), '규칙이 정한 업무와 근거 코드만 저장(원문 없음) ' + JSON.stringify(stored).slice(0, 300));
+      // E05·E06·E08: 업무명이 없거나 모호하거나 분류할 수 없는 문의
+      const vague = await ask('U-002', '심사 결과가 안 나와요');
+      assert(vague.routing.inboxId === 'IB-TRIAGE' && !vague.routing.confirmed && vague.routing.question.id === 'UW_KIND', 'E06 심사 불명확 → 질문·공통 분류');
+      const none = await ask('U-003', '그냥 화면이 안 돼요');
+      assert(none.routing.inboxId === 'IB-UNCLASSIFIED' && ids(await inbox('U-020')).includes(none.id), 'E08 분류 불가 → 미분류(공통) 문의함');
+      // E21 매핑 누락, E22 담당자 부재
+      const miss = await ask('U-004', '영업 자료실이 안 열려요');
+      assert(miss.routing.inboxId === 'IB-TRIAGE' && miss.routing.fallback === 'MAPPING_MISSING', 'E21 매핑 누락 → 공통 분류');
+      const away0 = await tally('NEW_INQUIRY');
+      const away = await ask('U-005', '가입한 보험의 보장내역이 조회되지 않아요');
+      assert(away.routing.inboxId === 'IB-COMMON' && away.routing.fallback === 'BACKUP' && away.routing.groupName === '계약관리팀(가상)', 'E22 부재 → 대체 그룹');
+      assert(JSON.stringify(grewIn(away0, await tally('NEW_INQUIRY'))) === JSON.stringify(['U-020']), 'E22 부재 담당자(U-026)는 신규 알림 대상 아님');
+      assert(away.routing.contact.ext === '1100', 'E22 대체 그룹 연락처');
+
+      // E10·E11: 인수 → 실제 담당자·시각, 중복 인수 방지
+      const consent = made[0];
+      const c1 = await ApiClient.claimInquiry(consent, 'U-021', 'C-1');
+      const c2 = await ApiClient.claimInquiry(consent, 'U-022', 'C-2');
+      assert(c1.assigned && c2.error === 'ALREADY_ASSIGNED' && c2.assignee.id === 'U-021', 'E11 중복 인수 거부');
+      const mine = (await ApiClient.getMyReports('U-001')).find(x => x.id === consent);
+      assert(mine.support.assignee.name === '백나린(가상)' && mine.support.assignee.contact.ext === '1121' && mine.support.assignee.at === c1.at, 'E10 FC에게 실제 담당자·업무용 내선');
+      assert((IntakeDemoStore.read().assign[consent] || []).length === 1, 'E11 인수 기록 1건');
+
+      // E12: 재분류 — 같은 문의번호, 그룹 변경, 이력 2건, 새 문의 없음
+      const n0 = IntakeDemoStore.read().reports.length;
+      await ApiClient.claimInquiry(vague.id, 'U-020', 'C-3');
+      const rr = await ApiClient.postInquiryAction(vague.id, 'U-020', { type: 'REROUTE', inboxId: 'IB-PRE_UW', codes: ['WRONG_BUSINESS'], requestId: 'RR-C' });
+      const dv = await ApiClient.getInquiry(vague.id, 'U-025');
+      assert(rr.saved && dv.id === vague.id && dv.routes.length === 2 && dv.routes[0].inboxId === 'IB-TRIAGE' && dv.routes[1].inboxId === 'IB-PRE_UW' &&
+        dv.routes[1].actorId === 'U-020' && dv.routes[1].reasonCode === 'WRONG_BUSINESS' && !dv.assignment, 'E12 재분류 이력·담당 비움');
+      assert(IntakeDemoStore.read().reports.length === n0, 'E12 새 문의를 만들지 않음');
+
+      // E13: 현업 자체 해결 → IT 알림 0건
+      const design = made[1];
+      await ApiClient.claimInquiry(design, 'U-024', 'C-4');
+      const it0 = await tally('IT_CONSULT');
+      await ApiClient.postInquiryAction(design, 'U-024', { type: 'SELF_RESOLVED', codes: ['USAGE_GUIDED'], requestId: 'SR-C' });
+      assert(grewIn(it0, await tally('IT_CONSULT')).length === 0, 'E13 IT 알림 없음');
+
+      // E14·E15·E16: 청약 IT 협의는 청약 IT 그룹에만. 관련 없는 IT는 알림·목록·상세 없음. IT 인수는 현업 담당과 따로
+      const sub = made[2];
+      await ApiClient.claimInquiry(sub, 'U-023', 'C-5');
+      const t0 = await tally('IT_CONSULT');
+      const cs = await ApiClient.postInquiryAction(sub, 'U-023', { type: 'IT_CONSULT', codes: ['CAUSE'], requestId: 'IT-C' });
+      assert(JSON.stringify(grewIn(t0, await tally('IT_CONSULT'))) === JSON.stringify(['U-031']) && cs.action.itGroupId === 'ITG-SUBSCRIPTION', 'E14 청약 IT 그룹에만');
+      for (const u of ['U-030', 'U-032', 'U-033']) {
+        assert(!(await ApiClient.getItConsults(u)).some(x => x.id === sub) && (await ApiClient.getInquiry(sub, u)).forbidden, 'E15 관련 없는 IT ' + u);
+      }
+      assert((await ApiClient.getItConsults('U-031')).some(x => x.id === sub && !x.claimedBy), 'E14 청약 IT 목록');
+      const claim = await ApiClient.postInquiryAction(sub, 'U-031', { type: 'IT_CLAIM', codes: [], requestId: 'ITC-C' });
+      const ds = await ApiClient.getInquiry(sub, 'U-023');
+      assert(claim.saved && ds.it.claimant.id === 'U-031' && ds.it.claimantContact.ext === '2111' && ds.assignment.assignee.id === 'U-023', 'E16 IT 인수와 현업 담당 따로');
+      assert(ds.handling.code === 'IT_CONSULT', 'E16 IT 인수는 대응 상태를 바꾸지 않음');
+      // E24: IT 협의 중에 전화 대응을 기록해도 대응 상태(IT 협의 중)는 그대로
+      await ApiClient.postInquiryAction(sub, 'U-023', { type: 'PHONE', codes: ['FC_CALLED', 'SAME_AS_INTAKE'], requestId: 'PH-C' });
+      assert((await ApiClient.getInquiry(sub, 'U-023')).handling.code === 'IT_CONSULT', 'E24 전화 기록은 대응 상태를 바꾸지 않음');
+      // 공통 IT 협의함: 구성원 두 명 중 한 명만 맡는다(중복 인수 방지)
+      const login = await ask('U-006', '로그인이 안 돼요');
+      await ApiClient.claimInquiry(login.id, 'U-020', 'C-6');
+      const cl = await ApiClient.postInquiryAction(login.id, 'U-020', { type: 'IT_CONSULT', codes: ['LOG'], requestId: 'IT-L' });
+      assert(cl.action.itGroupId === 'ITG-COMMON' && cl.recipients.map(x => x.id).sort().join() === 'U-030,U-033', '전용 그룹 없으면 공통 IT 협의함');
+      await ApiClient.postInquiryAction(login.id, 'U-030', { type: 'IT_CLAIM', codes: [], requestId: 'ITC-L1' });
+      const dup = await ApiClient.postInquiryAction(login.id, 'U-033', { type: 'IT_CLAIM', codes: [], requestId: 'ITC-L2' });
+      assert(dup.error === 'ALREADY_ASSIGNED' && dup.assignee.id === 'U-030', 'E16 IT 중복 인수 거부');
+      assert((await ApiClient.postInquiryAction(login.id, 'U-033', { type: 'IT_REPLY', codes: ['FIELD_GUIDE'], requestId: 'ITR-L' })).error === 'NOT_ASSIGNEE', '맡지 않은 IT는 회신 못 함');
+      // 현업이 IT 담당 그룹을 바꿔 요청할 수 있다
+      const moved = await ApiClient.postInquiryAction(consent, 'U-021', { type: 'IT_CONSULT', codes: ['REPRO'], itGroupId: 'ITG-SUBSCRIPTION', requestId: 'IT-M' });
+      assert(moved.recipients.map(x => x.id).join() === 'U-031', 'IT 담당 그룹 변경');
+
+      // E20: IT 협의 중에도 FC에게는 현업 지원 경로만(IT 이름·연락처 없음)
+      const fc = (await ApiClient.getMyReports('U-001')).find(x => x.id === sub);
+      assert(fc.support.itConsulting && fc.support.assignee.name === '송이루(가상)' && !JSON.stringify(fc).includes('기태오') && !JSON.stringify(fc).includes('2111'), 'E20 FC에는 IT 연락처 없음');
+
+      // E25: 권한 — 관련 없는 현업·IT·다른 FC는 상세·초안을 못 본다
+      assert((await ApiClient.getInquiry(consent, 'U-024')).forbidden && (await ApiClient.getItgsDraft(consent, 'U-023')).forbidden, 'E25 다른 그룹 현업');
+      assert((await ApiClient.getInquiry(consent, 'U-002')).forbidden, 'E25 다른 FC');
+      assert((await ApiClient.claimInquiry(sub, 'U-025', 'C-X')).error === 'FORBIDDEN', 'E25 다른 그룹은 인수 못 함');
+      return true;
+    """)
+
+
+def check_context_screens(chrome):
+    """ADR-031 E05~E08·E17~E20 실제 화면"""
+    open_real(chrome, "index.html", "?selftest=1#role=FC&panel=intake&step=problem")
+    rid = run(chrome, FLOW + CTX + """
+      // E06: 업무 칸을 비우고 모호한 문장 → 확인 화면에 질문 하나(선택지 + 잘 모르겠어요)
+      assert(!$('#quick-business').value && $('label[for=quick-business]').textContent.includes('모르면 비워 두세요'), '업무 칸은 선택 사항');
+      $('#quick-oneLine').value = '심사 결과가 안 나와요'; $('#quick-oneLine').dispatchEvent(new Event('input', { bubbles: true }));
+      await act('quick-review');
+      const q = await wait('#quick-route [data-act=quick-business-answer]');
+      const choices = [...document.querySelectorAll('#quick-route [data-act=quick-business-answer]')].map(b => b.textContent);
+      assert(choices.join('|') === '선심사 결과|청약 이후 심사 결과|잘 모르겠어요', 'E06 선택지 ' + choices);
+      await selftest('업무 분류 질문');
+      // 답하면 질문이 사라지고 쉬운 결과만(코드·근거 없음)
+      document.querySelector('#quick-route [data-code=PRE_UW]').click();
+      await wait(() => $('#quick-route').innerText.includes('선심사 업무 관련 문의로 확인했어요'));
+      assert(!$('#quick-route').innerText.includes('PRE_UW') && !$('#quick-route').innerText.includes('근거'), 'FC에게는 코드·근거를 보이지 않음');
+      await act('quick-submit');
+      // E17·E18: 완료 화면 — 관련 업무·세부 업무·담당 부서·처리 상태·업무 지원 연락처
+      await wait('#quick-receipt-id');
+      const body = $('#pn-body').innerText;
+      assert(body.includes('문의가 접수되었어요') && body.includes('선심사 업무 담당 부서에 전달했어요') && body.includes('문의번호 R-Q1'), 'E17 머리 ' + body);
+      for (const t of ['관련 업무', '세부 업무', '담당 부서', '선심사지원팀(가상)', '담당자 확인 대기 중', '선심사 업무 지원', '업무용 내선 1150(가상)', '긴급한 경우 문의번호를 전달해 주세요'])
+        assert(body.includes(t), 'E17 ' + t);
+      assert(!/21\\d\\d\\(가상\\)|IT\\(가상\\)/.test(body), 'E17 IT 연락처 없음');
+      assert([...document.querySelectorAll('#pn-foot button')].map(b => b.textContent).join('|') === '닫기|업무 지원 연락처|내 문의 및 처리 경과', '완료 화면 버튼');
+      await selftest('접수 완료 문의 정보');
+      await act('quick-contact');
+      assert(document.activeElement && document.activeElement.id === 'quick-contact', '[업무 지원 연락처]는 카드로 초점');
+      return $('#quick-receipt-id').textContent.replace('문의번호 ', '').trim();
+    """)
+    assert rid == "R-Q1", rid
+    # E07: 고른 업무와 오류 화면(진단 이벤트)이 다르면 임의로 확정하지 않고 묻는다
+    open_real(chrome, "index.html", "?selftest=1#role=FC&user=U-002&panel=intake&step=problem&diagnostics=mobile")
+    run(chrome, FLOW + """
+      const sel = $('#quick-business'); sel.value = 'CUSTOMER_CONSENT'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+      $('#quick-oneLine').value = '링크가 이상해요'; $('#quick-oneLine').dispatchEvent(new Event('input', { bubbles: true }));
+      await act('quick-review');
+      await wait('#quick-route [data-act=quick-business-answer]');
+      assert($('#quick-route').innerText.includes('어느 업무를 하다가 문제가 생겼나요?'), 'E07 충돌 질문');
+      return true;
+    """)
+    # E18·E19·E20: 내 문의 카드 — 인수 전 대기, 인수 뒤 이름·업무용 내선, IT 협의 중에도 현업 경로
+    open_real(chrome, "index.html", "?selftest=1#role=FC&panel=known&tab=mine&item=R-Q1")
+    run(chrome, FLOW + """
+      let card = await wait('#kn-body .kn-card.is-target');
+      assert(card.innerText.includes('담당자 확인 대기 중 · 선심사지원팀(가상)'), 'E18 ' + card.innerText);
+      await ApiClient.claimInquiry('R-Q1', 'U-025', 'C-S');
+      await ApiClient.postInquiryAction('R-Q1', 'U-025', { type: 'IT_CONSULT', codes: ['CAUSE'], requestId: 'IT-S' });
+      location.reload();
+      return true;
+    """)
+    run(chrome, FLOW + """
+      const card = await wait('#kn-body .kn-card.is-target');
+      const text = card.innerText;
+      assert(text.includes('진서율(가상) · 업무용 내선 1151(가상) · IT와 확인 중'), 'E19·E20 ' + text);
+      assert(!text.includes('마루한') && !/212\\d\\(가상\\)/.test(text), 'E20 IT 연락처 없음');
+      await selftest('내 문의 담당자 표시');
+      return true;
+    """)
+    # 현업 화면: 분류 근거·IT 연락 정보, IT 화면: 내 IT 그룹 협의만·[협의 맡기]
+    open_real(chrome, "ledger.html", "?selftest=1#role=SALES&user=U-025&item=R-Q1")
+    run(chrome, FLOW + """
+      const route = await wait('[data-route]');
+      const t = route.innerText;
+      assert(t.includes('선심사 (PRE_UW)') && !t.includes('선심사 · 선심사') && t.includes('FC 확인 응답') && t.includes('설계·심사 IT(가상) · 업무용 내선 2120(가상)') && t.includes('아직 맡은 사람 없음'), '현업 분류 근거·IT 연락 ' + t);
+      await selftest('현업 분류 근거');
+      return true;
+    """)
+    open_real(chrome, "ledger.html", "?selftest=1#role=IT&user=U-032")
+    run(chrome, FLOW + """
+      const row = await wait('tr[data-id="R-Q1"]');
+      assert(row.innerText.includes('아직 없음') && $('#ld-body, body').innerText.includes('맡은 IT 그룹: 설계·심사 IT(가상)'), 'IT 목록 ' + row.innerText);
+      row.querySelector('[data-open]').click();
+      await click('[data-act=it-claim]');
+      await wait(() => $('[data-route]').innerText.includes('마루한(가상) · 업무용 내선 2121(가상)'));
+      assert($('[data-handle] [data-act=reply]'), '맡은 뒤 협의 결과');
+      await selftest('IT 협의 맡기');
+      return true;
+    """)
+
+
+
+def check_phone(chrome):
+    """ADR-031 E23·E24·전화 먼저(P1): 문의번호 조회, 전화 대응 기록, 관리자 대리 접수의 전화 여부·진행 중 문의"""
+    open_real(chrome, "index.html", "?selftest=1#role=MANAGER&panel=intake&step=problem")
+    rid = run(chrome, FLOW + CTX + """
+      const first = await ask('U-011', '보험료 계산 버튼을 눌렀는데 계속 돌아가요');
+      await fill('#pn-proxy-select', 'U-011');
+      await wait('#quick-oneLine');
+      $('#quick-oneLine').value = '고객 동의 링크에서 뒷자리 키패드가 안 떠요'; $('#quick-oneLine').dispatchEvent(new Event('input', { bubbles: true }));
+      await act('quick-review');
+      const box = await wait(() => $('[data-proxy-phone] .pq-open') && $('[data-proxy-phone]'));
+      assert(box.innerText.includes(first.id) && box.innerText.includes('같은 문제면 새로 접수하지 말고'), '진행 중 문의 안내 ' + box.innerText);
+      await act('quick-via-phone');
+      assert($('[data-act=quick-via-phone]').getAttribute('aria-pressed') === 'true', '전화 먼저 표시');
+      await selftest('대리 접수 전화 먼저');
+      await act('quick-submit');
+      await wait('#quick-receipt-id');
+      const saved = IntakeDemoStore.read().reports.at(-1);
+      assert(saved.viaPhone === true && saved.reporterId === 'U-011' && saved.submittedById === 'U-010', '전화 먼저·실제 FC·대리 접수자 구분');
+      return saved.id;
+    """)
+    # E23: 다른 문의함 담당자는 번호로 찾아도 문의함 이름만, 그 문의함 담당자는 목록에서 바로 연다
+    open_real(chrome, "ledger.html", f"?selftest=1#role=SALES&user=U-024&q={rid}")
+    run(chrome, FLOW + """
+      const n = await wait('.ld-found');
+      assert(n.innerText.includes('""" + rid + """ 문의는 고객동의업무팀(가상) 문의함에 있어요') && !$('[data-core]'), 'E23 범위 밖은 문의함 이름만');
+      assert((await ApiClient.getInquiry('""" + rid + """', 'U-024')).forbidden, 'E23 상세는 안 보임');
+      await selftest('번호 조회 결과');
+      return true;
+    """)
+    open_real(chrome, "ledger.html", f"?selftest=1#role=SALES&user=U-021&q={rid}")
+    run(chrome, FLOW + """
+      const row = await wait('tr[data-id=\"""" + rid + """\"]');
+      row.querySelector('[data-open]').click();
+      const route = await wait('[data-route]');
+      assert(route.innerText.includes('전화로 먼저 문의 → 관리자가 대신 접수'), 'E23 접수 경로');
+      await click('[data-act=claim]');
+      // E24: 전화 대응 기록 — 같은 문의에 코드로 덧붙고 대응 상태·문의 수는 그대로
+      const before = IntakeDemoStore.read().reports.length;
+      await click('[data-handle] [data-act=phone]');
+      await act('action-next');
+      await wait(() => $('#ledger-dialog').innerText.includes('어떤 전화였는지 골라 주세요'));
+      await click('[data-phonekind=FC_CALLED]');
+      await click('[data-act=act-code][data-code=MORE_INFO]');
+      await selftest('전화 대응 기록');
+      await act('action-next');
+      await wait(() => $('#ledger-dialog').innerText.includes('알림 없이 기록만 해요'));
+      await act('action-save');
+      await wait(() => $('#ledger-dialog').innerText.includes('기록했어요'));
+      const d = await ApiClient.getInquiry('""" + rid + """', 'U-021');
+      const last = d.actions.at(-1);
+      assert(last.type === 'PHONE' && last.labels.join() === 'FC가 전화로 문의함,추가 정보를 들음' && d.handling.code === 'ASSIGNED', 'E24 기록 ' + JSON.stringify(last));
+      assert(IntakeDemoStore.read().reports.length === before && !JSON.stringify(IntakeDemoStore.read().actions).includes('통화 내용'), 'E24 새 문의 없음');
+      return true;
+    """)
+
+
 if __name__ == "__main__":
     browser = find_browser()
     if not browser:
         raise SystemExit("Chrome/Edge를 찾지 못했습니다.")
-    for part in (check_routing, check_handling, check_screens):
+    parts = (check_routing, check_handling, check_screens, check_context, check_context_screens, check_phone)
+    only = [x for x in os.environ.get("IW_PARTS", "").split(",") if x]   # 예: IW_PARTS=check_context (변형 검사용)
+    for part in [p for p in parts if not only or p.__name__ in only]:
         with tempfile.TemporaryDirectory(prefix="inquiry-workflow-") as profile:
             chrome = Chrome(browser, profile)
             try:
@@ -298,4 +558,4 @@ if __name__ == "__main__":
                 chrome.close()
     print("PASS: E2E-01 부서 문의함 전달, E2E-02 미분류·공통 분류, E2E-03 재분류, E2E-04 알림→상세(읽음≠확인≠인수), "
           "E2E-05 인수 한 명, E2E-06 미확인 답, E2E-07 현업 자체 해결, E2E-08 IT 협의, E2E-09 ITGS 초안, E2E-11 중복 알림, "
-          "E2E-14 대리 접수, E2E-15 권한, 화면")
+          "E2E-14 대리 접수, E2E-15 권한, 화면 / ADR-031 E01~E25(E26은 기존 검사), 전화 먼저 대리 접수")

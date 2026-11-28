@@ -138,9 +138,9 @@ def check(chrome):
       await act('quick-draft-generate');
       await wait(() => $('#pn-body').innerText.includes('AI 질문을 불러오지 못했어요'));
       await act('quick-draft-review');
-      await fill('#quick-business', 'SUBSCRIPTION');
-      assert($('#quick-oneLine').value.includes('초대장이 떠요'), 'AI 실패 시 설명 보존');
-      await act('quick-review');
+      // ADR-031: 업무는 선택 사항이라 설명이 있으면 바로 확인 화면으로 간다
+      await wait(() => location.hash.includes('step=review') && $('#quick-route'));
+      assert($('#pn-body').innerText.includes('초대장이 떠요'), 'AI 실패 시 설명 보존');
       await attach();
       await act('quick-submit');
       await wait('#quick-error');

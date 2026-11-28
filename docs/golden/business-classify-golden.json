@@ -1,0 +1,565 @@
+{
+ "status": "검토 전 예시",
+ "notice": "모두 가상이다. 실무자가 검토하지 않은 정답이며, 규칙을 만든 사람이 함께 작성한 개발용 세트라 일반화 성능의 근거가 아니다. 규칙 기반 분류 결과이며 LLM 자연어 이해 성능이 아니다.",
+ "adr": "ADR-031",
+ "fields": {
+  "text": "FC의 첫 문의(가상)",
+  "business": "FC가 고른 업무(선택)",
+  "diagnosticMode": "오류가 난 화면 진단 이벤트(가상, mobile=SIGN_LINK)",
+  "businessAnswer": "분류 질문에 대한 FC 답",
+  "expect.question": "물어야 할 질문 ID(없으면 null)",
+  "expect.inbox": "기대 현업 담당 그룹",
+  "expect.itGroup": "IT 협의를 하면 기대되는 IT 담당 그룹",
+  "expect.fallback": "BACKUP(담당자 부재) / MAPPING_MISSING(매핑 누락)"
+ },
+ "cases": [
+  {
+   "id": "G01",
+   "type": "업무명 명확",
+   "text": "선심사를 요청했는데 결과를 확인할 수 없어요.",
+   "expect": {
+    "confirmed": true,
+    "parent": "PRE_UW",
+    "business": "PRE_UW",
+    "question": null,
+    "inbox": "IB-PRE_UW",
+    "itGroup": "ITG-DESIGN",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G02",
+   "type": "업무명 명확",
+   "text": "청약서 작성 후 제출 버튼을 누르면 오류가 나요.",
+   "expect": {
+    "confirmed": true,
+    "parent": "SUBSCRIPTION",
+    "business": "APPLICATION",
+    "question": null,
+    "inbox": "IB-SUBSCRIPTION",
+    "itGroup": "ITG-SUBSCRIPTION",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G03",
+   "type": "업무명 명확",
+   "text": "가입설계 화면에서 특약을 추가하면 멈춰요",
+   "expect": {
+    "confirmed": true,
+    "parent": "DESIGN",
+    "business": "DESIGN",
+    "question": null,
+    "inbox": "IB-DESIGN",
+    "itGroup": "ITG-DESIGN",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G04",
+   "type": "업무명 명확",
+   "text": "로그인이 안 돼요.",
+   "expect": {
+    "confirmed": true,
+    "parent": "COMMON",
+    "business": "LOGIN",
+    "question": null,
+    "inbox": "IB-COMMON",
+    "itGroup": "ITG-COMMON",
+    "fallback": null
+   },
+   "note": "로그인(INFRA)은 전용 IT 그룹이 없어 공통 IT 협의함"
+  },
+  {
+   "id": "G05",
+   "type": "업무명 명확",
+   "text": "고객조회에서 고객 이름을 눌러도 상세가 안 열려요",
+   "expect": {
+    "confirmed": true,
+    "parent": "CUSTOMER_MGMT",
+    "business": "CUSTOMER_LOOKUP",
+    "question": null,
+    "inbox": "IB-CUSTOMER",
+    "itGroup": "ITG-CUSTOMER",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G06",
+   "type": "업무명 명확 + 담당자 부재",
+   "text": "계약조회 목록이 다른 계약 순서로 정렬돼요",
+   "expect": {
+    "confirmed": true,
+    "parent": "CONTRACT",
+    "business": "CONTRACT_LOOKUP",
+    "question": null,
+    "inbox": "IB-COMMON",
+    "itGroup": "ITG-CUSTOMER",
+    "fallback": "BACKUP"
+   },
+   "note": "계약관리팀(가상) 구성원이 인수 불가 → 대체 그룹 영업지원팀(가상)"
+  },
+  {
+   "id": "G07",
+   "type": "업무명 생략",
+   "text": "보험료 계산 버튼을 눌렀는데 계속 돌아가요.",
+   "expect": {
+    "confirmed": true,
+    "parent": "DESIGN",
+    "business": "DESIGN",
+    "question": null,
+    "inbox": "IB-DESIGN",
+    "itGroup": "ITG-DESIGN",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G08",
+   "type": "업무명 생략",
+   "text": "고객한테 보낸 동의 링크에서 뒷자리 숫자가 안 눌려요.",
+   "expect": {
+    "confirmed": true,
+    "parent": "CONSENT",
+    "business": "CUSTOMER_CONSENT",
+    "question": null,
+    "inbox": "IB-CONSENT",
+    "itGroup": "ITG-CONSENT",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G09",
+   "type": "업무명 생략 + 담당자 부재",
+   "text": "가입한 보험의 보장내역이 조회되지 않아요.",
+   "expect": {
+    "confirmed": true,
+    "parent": "CONTRACT",
+    "business": "CONTRACT_LOOKUP",
+    "question": null,
+    "inbox": "IB-COMMON",
+    "itGroup": "ITG-CUSTOMER",
+    "fallback": "BACKUP"
+   }
+  },
+  {
+   "id": "G10",
+   "type": "업무명 생략",
+   "text": "고객 휴대폰에서 본인확인 키패드가 안 떠요",
+   "expect": {
+    "confirmed": true,
+    "parent": "CONSENT",
+    "business": "CUSTOMER_CONSENT",
+    "question": null,
+    "inbox": "IB-CONSENT",
+    "itGroup": "ITG-CONSENT",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G11",
+   "type": "업무명 생략",
+   "text": "서명 알림톡을 열면 초대장 화면이 떠요",
+   "expect": {
+    "confirmed": true,
+    "parent": "SUBSCRIPTION",
+    "business": "E_SIGN",
+    "question": null,
+    "inbox": "IB-SUBSCRIPTION",
+    "itGroup": "ITG-SUBSCRIPTION",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G12",
+   "type": "동의어·구어체",
+   "text": "플랜 짜는데 보험료가 한참 안 나와요",
+   "expect": {
+    "confirmed": true,
+    "parent": "DESIGN",
+    "business": "DESIGN",
+    "question": null,
+    "inbox": "IB-DESIGN",
+    "itGroup": "ITG-DESIGN",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G13",
+   "type": "동의어·구어체",
+   "text": "비번 바꾸는 데가 어디예요?",
+   "expect": {
+    "confirmed": true,
+    "parent": "COMMON",
+    "business": "LOGIN",
+    "question": null,
+    "inbox": "IB-COMMON",
+    "itGroup": "ITG-COMMON",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G14",
+   "type": "동의어·구어체",
+   "text": "고객 목록이 아무 반응이 없어요",
+   "expect": {
+    "confirmed": true,
+    "parent": "CUSTOMER_MGMT",
+    "business": "CUSTOMER_LOOKUP",
+    "question": null,
+    "inbox": "IB-CUSTOMER",
+    "itGroup": "ITG-CUSTOMER",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G15",
+   "type": "동의어·구어체",
+   "text": "청약 넣으려는데 제출이 안 먹어요",
+   "expect": {
+    "confirmed": true,
+    "parent": "SUBSCRIPTION",
+    "business": "APPLICATION",
+    "question": null,
+    "inbox": "IB-SUBSCRIPTION",
+    "itGroup": "ITG-SUBSCRIPTION",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G16",
+   "type": "동의어·구어체",
+   "text": "전자 서명 링크가 고객한테 안 가요",
+   "expect": {
+    "confirmed": true,
+    "parent": "SUBSCRIPTION",
+    "business": "E_SIGN",
+    "question": null,
+    "inbox": "IB-SUBSCRIPTION",
+    "itGroup": "ITG-SUBSCRIPTION",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G17",
+   "type": "오타",
+   "text": "보험로 계산이 안돼요",
+   "expect": {
+    "confirmed": true,
+    "parent": "DESIGN",
+    "business": "DESIGN",
+    "question": null,
+    "inbox": "IB-DESIGN",
+    "itGroup": "ITG-DESIGN",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G18",
+   "type": "오타",
+   "text": "청약써 제출하면 에러나요",
+   "expect": {
+    "confirmed": true,
+    "parent": "SUBSCRIPTION",
+    "business": "APPLICATION",
+    "question": null,
+    "inbox": "IB-SUBSCRIPTION",
+    "itGroup": "ITG-SUBSCRIPTION",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G19",
+   "type": "오타",
+   "text": "로그안이 안 돼요",
+   "expect": {
+    "confirmed": true,
+    "parent": "COMMON",
+    "business": "LOGIN",
+    "question": null,
+    "inbox": "IB-COMMON",
+    "itGroup": "ITG-COMMON",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G20",
+   "type": "오타",
+   "text": "선심서 결과가 안 보여요",
+   "expect": {
+    "confirmed": true,
+    "parent": "PRE_UW",
+    "business": "PRE_UW",
+    "question": null,
+    "inbox": "IB-PRE_UW",
+    "itGroup": "ITG-DESIGN",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G21",
+   "type": "복수 업무",
+   "text": "가입설계하고 청약서 제출 둘 다 안 돼요",
+   "expect": {
+    "confirmed": false,
+    "parent": null,
+    "business": null,
+    "question": "CONFLICT",
+    "inbox": "IB-TRIAGE",
+    "itGroup": "ITG-COMMON",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G22",
+   "type": "복수 업무",
+   "text": "고객조회도 안 되고 로그인도 끊겨요",
+   "expect": {
+    "confirmed": false,
+    "parent": null,
+    "business": null,
+    "question": "CONFLICT",
+    "inbox": "IB-TRIAGE",
+    "itGroup": "ITG-COMMON",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G23",
+   "type": "질문 필요",
+   "text": "심사 결과가 안 나와요.",
+   "expect": {
+    "confirmed": false,
+    "parent": null,
+    "business": null,
+    "question": "UW_KIND",
+    "inbox": "IB-TRIAGE",
+    "itGroup": "ITG-COMMON",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G24",
+   "type": "질문 필요",
+   "text": "마지막 제출 버튼이 안 눌려요.",
+   "expect": {
+    "confirmed": false,
+    "parent": null,
+    "business": null,
+    "question": "SUBMIT_KIND",
+    "inbox": "IB-TRIAGE",
+    "itGroup": "ITG-COMMON",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G25",
+   "type": "질문 필요",
+   "text": "서명이 안 돼요",
+   "expect": {
+    "confirmed": false,
+    "parent": null,
+    "business": null,
+    "question": "SIGN_KIND",
+    "inbox": "IB-TRIAGE",
+    "itGroup": "ITG-COMMON",
+    "fallback": null
+   },
+   "note": "'서명'만으로는 부서를 정하지 않는다(ADR-031 결정 1)"
+  },
+  {
+   "id": "G26",
+   "type": "질문 답함",
+   "text": "심사 결과가 안 나와요.",
+   "businessAnswer": "UW_NEW",
+   "businessQuestionId": "UW_KIND",
+   "expect": {
+    "confirmed": true,
+    "parent": "UW_NEW",
+    "business": "UW_NEW",
+    "question": null,
+    "inbox": "IB-UNDERWRITING",
+    "itGroup": "ITG-DESIGN",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G27",
+   "type": "질문에 모름",
+   "text": "마지막 제출 버튼이 안 눌려요.",
+   "businessAnswer": "UNKNOWN",
+   "businessQuestionId": "SUBMIT_KIND",
+   "expect": {
+    "confirmed": false,
+    "parent": null,
+    "business": null,
+    "question": null,
+    "inbox": "IB-TRIAGE",
+    "itGroup": "ITG-COMMON",
+    "fallback": null
+   },
+   "note": "모름이면 다시 묻지 않고 공통 분류 문의함"
+  },
+  {
+   "id": "G28",
+   "type": "분류 불가",
+   "text": "그냥 화면이 안 돼요.",
+   "expect": {
+    "confirmed": false,
+    "parent": null,
+    "business": null,
+    "question": null,
+    "inbox": "IB-UNCLASSIFIED",
+    "itGroup": "ITG-COMMON",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G29",
+   "type": "분류 불가",
+   "text": "아까부터 계속 이상해요",
+   "expect": {
+    "confirmed": false,
+    "parent": null,
+    "business": null,
+    "question": null,
+    "inbox": "IB-UNCLASSIFIED",
+    "itGroup": "ITG-COMMON",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G30",
+   "type": "분류 불가",
+   "text": "버튼이 회색이에요",
+   "expect": {
+    "confirmed": false,
+    "parent": null,
+    "business": null,
+    "question": null,
+    "inbox": "IB-UNCLASSIFIED",
+    "itGroup": "ITG-COMMON",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G31",
+   "type": "접수 화면과 실제 업무 다름",
+   "text": "고객 휴대폰 동의 링크에서 키패드가 안 떠요",
+   "business": "CUSTOMER_LOOKUP",
+   "expect": {
+    "confirmed": false,
+    "parent": null,
+    "business": null,
+    "question": "CONFLICT",
+    "inbox": "IB-TRIAGE",
+    "itGroup": "ITG-COMMON",
+    "fallback": null
+   },
+   "note": "고객관리 화면에서 접수하며 업무를 고객조회로 골랐지만 문장은 상품소개동의"
+  },
+  {
+   "id": "G32",
+   "type": "고른 업무와 오류 화면 충돌",
+   "text": "링크가 이상해요",
+   "business": "CUSTOMER_CONSENT",
+   "diagnosticMode": "mobile",
+   "expect": {
+    "confirmed": false,
+    "parent": null,
+    "business": null,
+    "question": "CONFLICT",
+    "inbox": "IB-TRIAGE",
+    "itGroup": "ITG-COMMON",
+    "fallback": null
+   },
+   "note": "진단 이벤트의 오류 화면은 SIGN_LINK(가상)"
+  },
+  {
+   "id": "G33",
+   "type": "오류 화면만",
+   "text": "링크를 여니 다른 화면이 떠요",
+   "diagnosticMode": "mobile",
+   "expect": {
+    "confirmed": true,
+    "parent": "SUBSCRIPTION",
+    "business": "E_SIGN",
+    "question": null,
+    "inbox": "IB-SUBSCRIPTION",
+    "itGroup": "ITG-SUBSCRIPTION",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G34",
+   "type": "업무분장 누락",
+   "text": "영업 자료실에서 교육 자료가 안 열려요",
+   "expect": {
+    "confirmed": true,
+    "parent": "COMMON",
+    "business": "SALES_MATERIAL",
+    "question": null,
+    "inbox": "IB-TRIAGE",
+    "itGroup": "ITG-COMMON",
+    "fallback": "MAPPING_MISSING"
+   }
+  },
+  {
+   "id": "G35",
+   "type": "담당자 부재",
+   "text": "보장현황 조회가 안 돼요",
+   "expect": {
+    "confirmed": true,
+    "parent": "CONTRACT",
+    "business": "CONTRACT_LOOKUP",
+    "question": null,
+    "inbox": "IB-COMMON",
+    "itGroup": "ITG-CUSTOMER",
+    "fallback": "BACKUP"
+   }
+  },
+  {
+   "id": "G36",
+   "type": "업무 고름",
+   "text": "계산이 너무 느려요",
+   "business": "DESIGN",
+   "expect": {
+    "confirmed": true,
+    "parent": "DESIGN",
+    "business": "DESIGN",
+    "question": null,
+    "inbox": "IB-DESIGN",
+    "itGroup": "ITG-DESIGN",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G37",
+   "type": "업무 고름",
+   "text": "결과가 안 와요",
+   "business": "PRE_UW",
+   "expect": {
+    "confirmed": true,
+    "parent": "PRE_UW",
+    "business": "PRE_UW",
+    "question": null,
+    "inbox": "IB-PRE_UW",
+    "itGroup": "ITG-DESIGN",
+    "fallback": null
+   }
+  },
+  {
+   "id": "G38",
+   "type": "대표 시연",
+   "text": "고객 동의 화면에서 뒷자리 키패드가 안 떠요",
+   "expect": {
+    "confirmed": true,
+    "parent": "CONSENT",
+    "business": "CUSTOMER_CONSENT",
+    "question": null,
+    "inbox": "IB-CONSENT",
+    "itGroup": "ITG-CONSENT",
+    "fallback": null
+   }
+  }
+ ]
+}

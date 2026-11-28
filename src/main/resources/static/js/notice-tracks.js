@@ -131,3 +131,32 @@
 
   window.NoticeTracks = { tag: tag, handled: handled, now: now, fix: fix, view: view, recorded: recorded, steps: steps };
 })();
+
+/* 업무 지원 연락처 카드 (ADR-031, docs/06-ui-spec.md 0-3절 "업무 지원 연락처 카드").
+   info = ApiClient 의 routing/support 보기(inboxName·parentLabel·contact·fallback·groupName·assignee?).
+   연락처는 업무분장 표의 가상 업무용 내선만. 없으면 만들지 않고 "등록된 연락처 없음". IT 연락처는 받지 않는다. */
+(function () {
+  'use strict';
+  function el(tag, attrs, kids) {
+    var e = document.createElement(tag);
+    Object.keys(attrs || {}).forEach(function (k) { e.setAttribute(k === 'cls' ? 'class' : k, attrs[k]); });
+    (kids || []).forEach(function (k) { if (k != null && k !== false) e.appendChild(typeof k === 'string' ? document.createTextNode(k) : k); });
+    return e;
+  }
+  function icon(id) {
+    var ns = document.querySelector('svg').namespaceURI, s = document.createElementNS(ns, 'svg'), u = document.createElementNS(ns, 'use');
+    s.setAttribute('aria-hidden', 'true'); u.setAttribute('href', '#' + id); s.appendChild(u);
+    return s;
+  }
+  function ext(contact) { return contact ? '업무용 내선 ' + contact.ext + '(가상)' : '등록된 연락처 없음'; }
+  window.SupportContact = function (ui, info, id) {
+    if (!info) return null;
+    var lines = [el('p', null, [info.inboxName + ' · ' + ext(info.contact)])];
+    if (info.fallback === 'BACKUP' && info.groupName) lines.push(el('p', null, [info.groupName + ' 담당자가 부재 중이라 ' + info.inboxName + '이 대신 받아요.']));
+    if (info.assignee) lines.push(el('p', { cls: 'pq-contact-who' }, ['담당자 ' + info.assignee.name + ' · ' + ext(info.assignee.contact)]));
+    lines.push(el('p', { cls: 'pn-help' }, ['긴급한 경우 문의번호를 전달해 주세요. 담당자가 접수 내용을 확인하고 지원할 수 있어요.']));
+    return el('div', { cls: 'pn-note pq-contact', id: id, tabindex: '-1', role: 'region', 'aria-label': '업무 지원 연락처' },
+      [icon('i-call'), el('div', null, [el('b', null, [(info.parentLabel || '전산 문의') + ' 업무 지원'])].concat(lines))]);
+  };
+})();
+

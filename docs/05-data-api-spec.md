@@ -5,7 +5,7 @@
 ## 1. 엔티티
 | 엔티티 | 주요 필드 | 관계·비고 |
 |---|---|---|
-| `AppUser` | id, name(가상), role(FC/MANAGER/SALES/IT), branchId, unlinkedSeenAt? | 역할 전환 상자의 원본. `unlinkedSeenAt`: 담당자(SALES/IT)가 대장의 [아직 안 묶인 신고]를 마지막으로 본 시각. 이보다 뒤에 들어온 안 묶인 신고가 "새로 들어옴"(REQ-LG-07, ADR-017) |
+| `AppUser` | id, name(가상), role(FC/MANAGER/SALES/IT), branchId, unlinkedSeenAt?, inboxIds?(SALES), itGroupIds?(IT), contact?{label, ext}(가상 내선), primary?, active?, available? (ADR-031) | 역할 전환 상자의 원본. `unlinkedSeenAt`: 담당자(SALES/IT)가 대장의 [아직 안 묶인 신고]를 마지막으로 본 시각. 이보다 뒤에 들어온 안 묶인 신고가 "새로 들어옴"(REQ-LG-07, ADR-017) |
 | `Branch` | id, name(가상), regionGroup | 영향 지점 수 계산 |
 | `Report` | id, reporterId, submittedById, kind(FULL/ME_TOO), mode(A/B), business, symptom, maskedText, autoContext(JSON), slots(JSON), aiResult(JSON), aiType, finalType, grade, departmentCode, closedAsGuidance, defectId?, trialId?, createdAt | Defect N:1. **원문은 저장하지 않고 마스킹본만** |
 | `autoContext` 내용 | reportedFrom(접수 화면·기기), screenCode, errorCode, occurredAt | 오류가 난 기기·경로는 슬롯으로 별도 |
@@ -15,12 +15,14 @@
 | `DefectStatusHistory` | id, defectId, from, to, reason, backReason?, plannedFixDate?, resolution?{…, verification?}, actorId, at, notifiable | Defect 1:N. 검증·되돌림 사유는 ADR-029 |
 | `FieldVerification` | id, seq, reportId, defectId, resolutionEventId, result(CONFIRMED_OK/STILL_FAIL/NOT_TESTED), at, actorId, requestId | 덧붙이기만. `WorkResumption`과 별도(ADR-029) |
 | `FieldInvestigation` | id, reportId, defectId, resolutionEventId, code(STARTED/NEED_INFO/NOT_REPRODUCED/RESIDUAL_SUSPECTED), at, actorId | 문제 지속 신고의 IT 후속 조사(ADR-029) |
-| `BusinessRoute` (ADR-030) | code, label, parentCode, parentLabel, task, screenIds[], inboxId, itArea, needs[], active | 업무분장(가상). 기존 업무 코드 7종 + 화면 ID로만 걸리는 `UNDERWRITING`. `fixtures/business-routes.js` |
-| `Inbox` (ADR-030) | id, name, kind(DEPARTMENT/TRIAGE/UNCLASSIFIED) | 담당자는 `AppUser.inboxIds`로 정한다 |
-| `InquiryRoute` (ADR-030) | reportId, seq, inboxId, parentCode, businessCode, basis[{kind(BUSINESS/SCREEN/HISTORY), code}], method(RULE/STAFF), reasonCode?, actorId?, at | 덧붙이기만. 마지막이 지금 문의함. 시드 신고는 저장하지 않고 같은 규칙으로 계산 |
+| `BusinessRoute` (ADR-030·031) | code, label, parentCode, task, screenIds[], inboxId?, itArea?, needs[], selectable?, lexicon{objects[], actions[], names[]}, active | 업무분장(가상). 기존 업무 코드 7종 + 세부 업무 `PRE_UW`·`APPLICATION`·`E_SIGN`·`UW_NEW`·`SALES_MATERIAL`. `inboxId` 없음 = 매핑 누락. `selectable`이면 빠른 접수 업무 칸에 보임. `fixtures/business-routes.js` |
+| `Ambiguity` (ADR-031) | id, triggers[], resolvedBy[](세부 업무 코드), question, choices[[code,label]] | 모호 규칙. 마지막 선택지는 늘 `UNKNOWN`(잘 모르겠어요) |
+| `Inbox` (ADR-030·031) | id, name, kind(DEPARTMENT/TRIAGE/UNCLASSIFIED), contact?{label, ext}, backupInboxId?, active | 현업 담당 그룹. 담당자는 `AppUser.inboxIds`로 정한다 |
+| `ItGroup` (ADR-031) | id, name, itAreas[], contact?{label, ext}, active | IT 담당 그룹(가상). `ITG-COMMON` = 공통 IT 협의함. 구성원은 `AppUser.itGroupIds` |
+| `InquiryRoute` (ADR-030·031) | reportId, seq, inboxId, parentCode, businessCode, confirmed, basis[{kind(BUSINESS/ANSWER/SCREEN/TEXT/HISTORY), code, cue?}], needs[], questionId?, target?{groupInboxId, fallback(BACKUP/MAPPING_MISSING)}, method(RULE/STAFF), reasonCode?, actorId?, at | 덧붙이기만. 마지막이 지금 문의함. 시드 신고는 저장하지 않고 같은 규칙으로 계산 |
 | `InquiryAssignment` (ADR-030) | reportId, assigneeId, at, requestId | 문의당 한 명. 재분류하면 비워진다 |
 | `InquiryView` (ADR-030) | reportId, userId, at | 상세를 처음 연 시각. 알림 읽음·인수와 별도 |
-| `InquiryAction` (ADR-030) | id, reportId, type(INFO_REQUEST/GUIDE/SELF_RESOLVED/IT_CONSULT/IT_REPLY/REROUTE), codes[], guideDefectId?, actorId, at, requestId | 덧붙이기만. 문의 대응 상태는 마지막 기록에서 계산(02번 4-3절). 자유 메모 없음 |
+| `InquiryAction` (ADR-030·031) | id, reportId, type(INFO_REQUEST/GUIDE/SELF_RESOLVED/IT_CONSULT/IT_CLAIM/IT_REPLY/REROUTE/PHONE), codes[], guideDefectId?, inboxId?, itGroupId?(IT_CONSULT), actorId, at, requestId | 덧붙이기만. 문의 대응 상태는 마지막 기록에서 계산(02번 4-3절). 자유 메모 없음 |
 | `InfoReply` (ADR-030) | id, reportId, requestActionId, answers{항목 코드: 값 코드}, actorId, at, requestId | 추가 정보 요청에 대한 문의자 본인의 선택형 답. 출처 `USER_ADDED` |
 | `FcNotice` | id, defectId, draftText, approvedText, status(DRAFT/APPROVED), llmCallId, approverId | 승인본만 FC에 노출 |
 | `NotificationLog` | id, defectId, historyId, recipientId, reportId?, audience(REPORTER/SUBMITTER/STAFF), kind(STATUS/PROXY_RECEIPT/NEW_INQUIRY/IT_CONSULT/INFO_REQUEST/INQUIRY_GUIDE), bodySnapshot, summary{title,status,headline,line,action}, channel=PREVIEW, at, readAt? | 실발송 없음. `audience`·`kind`는 02번 4-1절(ADR-025). `PROXY_RECEIPT`는 `historyId`가 없음 |
@@ -67,13 +69,15 @@
 | POST | `/api/defects/{id}/notices/draft` | AI 안내문 초안 |
 | POST | `/api/notices/{id}/approve` | 담당자 승인 |
 | GET | `/api/notifications?userId=` | 알림 미리보기 내역 |
-| POST | `/api/inquiries/classify` | 규칙 분류 결과(문의함·업무·근거). 접수 저장 때 서버가 부른다 (REQ-LG-13) |
+| POST | `/api/inquiries/classify` | 규칙 분류 결과(문의함·업무·확정 여부·근거·질문). 접수 확인 화면의 미리보기와 접수 저장 때 부른다. 요청의 문장은 분류에만 쓰고 저장하지 않는다 (REQ-LG-13, REQ-IN-19) |
+| GET | `/api/inquiries/find?id=&userId=` | 문의번호 조회. 범위 안이면 상세 주소, 범위 밖이면 전달된 문의함 이름만 (REQ-LG-23) |
+| POST | `/api/inquiries/{id}/it-claim` | IT 협의 인수. 그 IT 그룹 구성원만, 한 협의에 한 명 (REQ-LG-21) |
 | GET | `/api/inquiries/inbox?userId=&filter=new\|mine\|info\|it&q=` | 내 문의함 목록과 요약 수 (REQ-LG-14) |
 | GET | `/api/inquiries/{id}?userId=` | 문의 상세(분류 이력·담당·대응 기록·문의자 답). 범위 밖이면 `FORBIDDEN` (REQ-LG-15) |
 | POST | `/api/inquiries/{id}/view` | 상세 열람 기록 |
 | POST | `/api/inquiries/{id}/claim` | 인수. 이미 다른 담당자면 `ALREADY_ASSIGNED` (REQ-LG-14) |
 | POST | `/api/inquiries/{id}/actions` | 추가 정보 요청·대응 방법 안내·자체 해결·IT 협의 요청·협의 결과·재분류 (REQ-LG-16·17) |
-| GET | `/api/inquiries/consults?userId=` | IT [IT 협의 요청] 목록 (REQ-LG-17) |
+| GET | `/api/inquiries/consults?userId=` | IT [IT 협의 요청] 목록. 내 IT 그룹 협의만 (REQ-LG-17·21) |
 | GET | `/api/inquiries/{id}/itgs-draft?userId=` | ITGS 요청 내용 초안(저장 안 함) (REQ-LG-18) |
 | POST | `/api/reports/{id}/info-replies` | 추가 정보 요청에 문의자 본인이 답함 (REQ-KN-10) |
 | POST | `/api/experiment/participants` | 참가자 등록과 칸 배정 |

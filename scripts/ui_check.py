@@ -39,6 +39,8 @@ from ref_outline import SURNAME3, UI_WORDS  # noqa: E402  (참고 원본은 읽�
 
 # 화면 문구에 흔한 3글자 낱말 중 성씨 글자로 시작하는 것 (이름 아님)
 EXTRA_UI_WORDS = {"사용자", "안내가", "부서가", "오류와", "설계일", "모바일",
+                  # ADR-031 업무분장 표의 업무 표현·전화 대응 코드·분류 질문(js/fixtures/business-routes.js) — 사람 이름 아님
+                  "고객명", "선심사", "설계서", "안나와", "안나타", "안보여", "인증서", "안내함", "전화로", "전화함", "정보를", "하다가",
                   # ADR-025 역할별 알림 문구(js/fixtures/notifications.js·defects.js)
                   "방법이", "안내된", "이어갈", "문의가",
                   # ADR-026 AI 문의 되묻기 문구(js/fixtures/intake-assistant.js)
@@ -101,6 +103,8 @@ LEDGER_STATES = ["role=SALES", "role=SALES&tab=defects", "role=IT&tab=defects&gr
                  S23 + "for=D-2026-001", "role=SALES&tab=history", "role=IT", "role=SALES&user=U-021",
                  S20 + "filter=new", S20 + "filter=it", S20 + "item=R-066", S20 + "item=R-062&dialog=reroute",
                  "role=SALES&user=U-021&item=R-061",   # 다른 문의함: 볼 수 없는 문의
+                 # ADR-031: 선심사·신계약심사 담당 문의함, 분류 근거(시드 R-066 로그인), 내 IT 그룹 협의(비어 있음)
+                 "role=SALES&user=U-025", S20 + "item=R-066&dialog=consult", "role=IT&user=U-032",
                  "role=SALES&tab=defects&item=D-2026-001", "role=SALES&tab=defects&item=D-2026-005", "role=SALES&tab=defects&item=D-2026-006",
                  LD + "dstep=pick", LD + "to=FIX_PLANNED&dstep=pick",
                  LD + "to=FIX_PLANNED&dstep=detail", LD + "to=FIX_PLANNED&dstep=detail&err=1",

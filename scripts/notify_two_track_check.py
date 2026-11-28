@@ -24,7 +24,7 @@ def check(chrome):
       await act('quick-submit');
       await wait('#quick-receipt-id');
       const body = $('#pn-body').innerText;
-      assert(body.includes('접수 사실을 정다솜(가상) 님에게 알렸어요') && body.includes('담당자 확인 전'), '완료 화면의 FC 알림·사실 표시');
+      assert(body.includes('접수 사실을 정다솜(가상) 님에게 알렸어요') && body.includes('담당자 확인 대기 중'), '완료 화면의 FC 알림·사실 표시');   // ADR-031 처리 상태 문구
       const record = IntakeDemoStore.read().reports.at(-1);
       assert(record.reporterId === 'U-011' && record.submittedById === 'U-010', '신고자와 대리 접수자 분리');
       const fc = (await ApiClient.getNotifications('U-011')).filter(n => n.kind === 'PROXY_RECEIPT' && n.reportId === record.id);

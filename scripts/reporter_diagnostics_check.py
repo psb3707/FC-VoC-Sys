@@ -26,7 +26,7 @@ const review = async (business, text) => {
 const submitted = async () => {
   await act('quick-submit');
   await wait('#quick-receipt-id');
-  const id = $('#quick-receipt-id').textContent.replace('접수번호 ', '').trim();
+  const id = $('#quick-receipt-id').textContent.replace(/^(접수|문의)번호 /, '').trim();
   return IntakeDemoStore.read().reports.find(r => r.id === id);
 };
 const leaks = (text) => ['Mozilla', 'HeadlessChrome', 'AppleWebKit', 'file://', '?selftest', 'DEMO-PRIVATE', 'sessionToken', 'customerId']

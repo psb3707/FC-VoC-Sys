@@ -52,7 +52,7 @@ def consult(chrome, user, support, answers, quick=False):
       for (const code of """ + repr(answers) + """) await answer(code);
       """ + ("await act('assistant-quick'); await act('assistant-quick-confirm');" if quick
              else "await act('assistant-handoff'); await wait('[data-identity]'); await act('quick-submit');") + """
-      return (await wait('#quick-receipt-id')).textContent.replace('접수번호 ', '').trim();
+      return (await wait('#quick-receipt-id')).textContent.replace(/^(접수|문의)번호 /, '').trim();
     """)
 
 
